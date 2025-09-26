@@ -1,4 +1,4 @@
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect } from "react";
 import { Mic, MicOff } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
@@ -13,9 +13,20 @@ export const SearchBar = ({ value, onChange, placeholder = "Type your question..
   const [isSupported] = useState(() => 'webkitSpeechRecognition' in window || 'SpeechRecognition' in window);
   const recognitionRef = useRef<any>(null);
   const isListeningRef = useRef(false);
+  const baseTextRef = useRef(''); // Store the finalized text
+
+  // Sync baseTextRef when value changes manually (not during speech recognition)
+  useEffect(() => {
+    if (!isListening) {
+      baseTextRef.current = value;
+    }
+  }, [value, isListening]);
 
   const startListening = () => {
     if (!isSupported) return;
+    
+    // Set base text to current value when starting
+    baseTextRef.current = value;
 
     const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
     recognitionRef.current = new SpeechRecognition();
@@ -30,18 +41,25 @@ export const SearchBar = ({ value, onChange, placeholder = "Type your question..
     };
 
     recognitionRef.current.onresult = (event: any) => {
+      let interimTranscript = '';
       let finalTranscript = '';
       
       for (let i = event.resultIndex; i < event.results.length; i++) {
         if (event.results[i].isFinal) {
           finalTranscript += event.results[i][0].transcript + ' ';
+        } else {
+          interimTranscript += event.results[i][0].transcript;
         }
       }
       
-      // Only append final transcripts to avoid duplicates
+      // Update base text with final results
       if (finalTranscript.trim()) {
-        onChange(value + finalTranscript);
+        baseTextRef.current += (baseTextRef.current ? ' ' : '') + finalTranscript.trim();
       }
+      
+      // Show real-time text: base + interim
+      const displayText = baseTextRef.current + (interimTranscript ? (baseTextRef.current ? ' ' : '') + interimTranscript : '');
+      onChange(displayText);
     };
 
     recognitionRef.current.onerror = (event: any) => {
