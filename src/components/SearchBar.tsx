@@ -12,6 +12,7 @@ export const SearchBar = ({ value, onChange, placeholder = "Type your question..
   const [isListening, setIsListening] = useState(false);
   const [isSupported] = useState(() => 'webkitSpeechRecognition' in window || 'SpeechRecognition' in window);
   const recognitionRef = useRef<any>(null);
+  const isListeningRef = useRef(false);
 
   const startListening = () => {
     if (!isSupported) return;
@@ -19,36 +20,63 @@ export const SearchBar = ({ value, onChange, placeholder = "Type your question..
     const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
     recognitionRef.current = new SpeechRecognition();
     
-    recognitionRef.current.continuous = false;
-    recognitionRef.current.interimResults = false;
+    recognitionRef.current.continuous = true;
+    recognitionRef.current.interimResults = true;
     recognitionRef.current.lang = 'en-US';
 
     recognitionRef.current.onstart = () => {
       setIsListening(true);
+      isListeningRef.current = true;
     };
 
     recognitionRef.current.onresult = (event: any) => {
-      const text = event.results[0][0].transcript;
-      onChange(text);
-      setIsListening(false);
+      let finalTranscript = '';
+      
+      for (let i = event.resultIndex; i < event.results.length; i++) {
+        if (event.results[i].isFinal) {
+          finalTranscript += event.results[i][0].transcript + ' ';
+        }
+      }
+      
+      // Only append final transcripts to avoid duplicates
+      if (finalTranscript.trim()) {
+        onChange(value + finalTranscript);
+      }
     };
 
-    recognitionRef.current.onerror = () => {
-      setIsListening(false);
+    recognitionRef.current.onerror = (event: any) => {
+      // Only stop listening on critical errors
+      if (event.error === 'network' || event.error === 'not-allowed') {
+        setIsListening(false);
+        isListeningRef.current = false;
+      }
     };
 
     recognitionRef.current.onend = () => {
-      setIsListening(false);
+      // Restart recognition if we're still supposed to be listening
+      if (isListeningRef.current) {
+        setTimeout(() => {
+          if (isListeningRef.current && recognitionRef.current) {
+            try {
+              recognitionRef.current.start();
+            } catch (error) {
+              setIsListening(false);
+              isListeningRef.current = false;
+            }
+          }
+        }, 100);
+      }
     };
 
     recognitionRef.current.start();
   };
 
   const stopListening = () => {
+    isListeningRef.current = false;
+    setIsListening(false);
     if (recognitionRef.current) {
       recognitionRef.current.stop();
     }
-    setIsListening(false);
   };
 
   const handleSpeechToggle = () => {
