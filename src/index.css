@@ -53,6 +53,29 @@ All colors MUST be HSL.
     
     --radius: 0.75rem;
 
+    /* Typography scale - sophisticated hierarchy */
+    --font-size-xs: 0.75rem;
+    --font-size-sm: 0.875rem;
+    --font-size-base: 1rem;
+    --font-size-lg: 1.125rem;
+    --font-size-xl: 1.25rem;
+    --font-size-2xl: 1.5rem;
+    --font-size-3xl: 1.875rem;
+    --font-size-4xl: 2.25rem;
+
+    /* Line heights for optimal readability */
+    --line-height-tight: 1.25;
+    --line-height-snug: 1.375;
+    --line-height-normal: 1.5;
+    --line-height-relaxed: 1.625;
+    --line-height-loose: 2;
+
+    /* Letter spacing for sophistication */
+    --letter-spacing-tight: -0.025em;
+    --letter-spacing-normal: 0;
+    --letter-spacing-wide: 0.025em;
+    --letter-spacing-wider: 0.05em;
+
     --sidebar-background: 0 0% 98%;
 
     --sidebar-foreground: 240 5.3% 26.1%;
@@ -107,6 +130,29 @@ All colors MUST be HSL.
     --shadow-md: 0 4px 6px -1px rgb(0 0 0 / 0.3), 0 2px 4px -2px rgb(0 0 0 / 0.3);
     --shadow-lg: 0 10px 15px -3px rgb(0 0 0 / 0.3), 0 4px 6px -4px rgb(0 0 0 / 0.3);
     --shadow-answer: 0 8px 25px -8px rgb(0 0 0 / 0.4);
+
+    /* Typography scale - sophisticated hierarchy */
+    --font-size-xs: 0.75rem;
+    --font-size-sm: 0.875rem;
+    --font-size-base: 1rem;
+    --font-size-lg: 1.125rem;
+    --font-size-xl: 1.25rem;
+    --font-size-2xl: 1.5rem;
+    --font-size-3xl: 1.875rem;
+    --font-size-4xl: 2.25rem;
+
+    /* Line heights for optimal readability */
+    --line-height-tight: 1.25;
+    --line-height-snug: 1.375;
+    --line-height-normal: 1.5;
+    --line-height-relaxed: 1.625;
+    --line-height-loose: 2;
+
+    /* Letter spacing for sophistication */
+    --letter-spacing-tight: -0.025em;
+    --letter-spacing-normal: 0;
+    --letter-spacing-wide: 0.025em;
+    --letter-spacing-wider: 0.05em;
     --sidebar-background: 240 5.9% 10%;
     --sidebar-foreground: 240 4.8% 95.9%;
     --sidebar-primary: 224.3 76.3% 48%;
@@ -125,5 +171,518 @@ All colors MUST be HSL.
 
   body {
     @apply bg-background text-foreground;
+  }
+}
+
+@layer components {
+  /* Sophisticated Typography System */
+  .typography-h1 {
+    font-size: var(--font-size-4xl);
+    font-weight: 700;
+    line-height: var(--line-height-tight);
+    letter-spacing: var(--letter-spacing-tight);
+    color: hsl(var(--foreground));
+  }
+
+  .typography-h2 {
+    font-size: var(--font-size-3xl);
+    font-weight: 600;
+    line-height: var(--line-height-snug);
+    letter-spacing: var(--letter-spacing-tight);
+    color: hsl(var(--foreground));
+  }
+
+  .typography-h3 {
+    font-size: var(--font-size-2xl);
+    font-weight: 600;
+    line-height: var(--line-height-snug);
+    letter-spacing: var(--letter-spacing-normal);
+    color: hsl(var(--foreground));
+  }
+
+  .typography-h4 {
+    font-size: var(--font-size-xl);
+    font-weight: 600;
+    line-height: var(--line-height-normal);
+    letter-spacing: var(--letter-spacing-normal);
+    color: hsl(var(--foreground));
+  }
+
+  .typography-body {
+    font-size: var(--font-size-base);
+    font-weight: 400;
+    line-height: var(--line-height-relaxed);
+    letter-spacing: var(--letter-spacing-normal);
+    color: hsl(var(--foreground));
+  }
+
+  .typography-caption {
+    font-size: var(--font-size-sm);
+    font-weight: 500;
+    line-height: var(--line-height-normal);
+    letter-spacing: var(--letter-spacing-wide);
+    color: hsl(var(--muted-foreground));
+    text-transform: uppercase;
+  }
+
+  /* Professional Table Design */
+  .table-professional {
+    width: 100%;
+    border-collapse: separate;
+    border-spacing: 0;
+    background: hsl(var(--card));
+    border-radius: 12px;
+    overflow: hidden;
+    box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1);
+    border: 1px solid hsl(var(--border));
+  }
+
+  .table-professional th {
+    background: linear-gradient(135deg, hsl(var(--muted)) 0%, hsl(var(--muted) / 0.8) 100%);
+    color: hsl(var(--muted-foreground));
+    font-weight: 600;
+    font-size: var(--font-size-sm);
+    letter-spacing: var(--letter-spacing-wide);
+    text-transform: uppercase;
+    padding: 16px 20px;
+    text-align: left;
+    border-bottom: 2px solid hsl(var(--border));
+    position: relative;
+  }
+
+  .table-professional th:first-child {
+    border-top-left-radius: 12px;
+  }
+
+  .table-professional th:last-child {
+    border-top-right-radius: 12px;
+  }
+
+  .table-professional td {
+    padding: 16px 20px;
+    border-bottom: 1px solid hsl(var(--border) / 0.5);
+    color: hsl(var(--foreground));
+    vertical-align: top;
+    font-size: var(--font-size-sm);
+    line-height: var(--line-height-normal);
+    transition: background-color 0.2s ease;
+  }
+
+  .table-professional tr:hover td {
+    background: hsl(var(--muted) / 0.3);
+  }
+
+  .table-professional tr:last-child td {
+    border-bottom: none;
+  }
+
+  .table-professional tr:last-child td:first-child {
+    border-bottom-left-radius: 12px;
+  }
+
+  .table-professional tr:last-child td:last-child {
+    border-bottom-right-radius: 12px;
+  }
+
+  /* Compact spacing for professional look */
+  .table-professional th,
+  .table-professional td {
+    padding: 12px 16px;
+  }
+
+  /* Enhanced spacing and layout improvements */
+  .space-y-3 > * + * {
+    margin-top: 0.75rem;
+  }
+
+  .space-y-2 > * + * {
+    margin-top: 0.5rem;
+  }
+
+  /* Refined button styling */
+  .btn-sophisticated {
+    font-weight: 500;
+    letter-spacing: var(--letter-spacing-wide);
+    text-transform: none;
+    transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  }
+
+  /* Enhanced card styling */
+  .card-sophisticated {
+    backdrop-filter: blur(12px);
+    background: hsl(var(--card) / 0.8);
+    border: 1px solid hsl(var(--border) / 0.5);
+    box-shadow: 0 8px 32px -8px rgb(0 0 0 / 0.1);
+  }
+
+  /* Professional focus states */
+  .focus-sophisticated:focus {
+    outline: 2px solid hsl(var(--primary));
+    outline-offset: 2px;
+    box-shadow: 0 0 0 4px hsl(var(--primary) / 0.1);
+  }
+
+  /* Streaming response formatting styles - applied to all content for consistency */
+  .streaming-content {
+    font-size: var(--font-size-sm) !important;
+    line-height: 1.4 !important;
+  }
+  
+  /* Ensure all text content uses consistent sizing */
+  .streaming-content p,
+  .streaming-content div,
+  .streaming-content span,
+  .streaming-content li,
+  .streaming-content ol,
+  .streaming-content ul {
+    font-size: var(--font-size-sm) !important;
+    line-height: 1.4 !important;
+  }
+  
+  /* Override prose classes to maintain consistent sizing */
+  .prose .streaming-content,
+  .prose .streaming-content p,
+  .prose .streaming-content div,
+  .prose .streaming-content span,
+  .prose .streaming-content li,
+  .prose .streaming-content ul,
+  .prose .streaming-content ol,
+  .prose .streaming-content strong,
+  .prose .streaming-content em {
+    font-size: var(--font-size-sm) !important;
+    line-height: 1.4 !important;
+  }
+  
+  /* Force all prose content to use consistent sizing */
+  .prose p,
+  .prose div,
+  .prose span,
+  .prose li,
+  .prose ul,
+  .prose ol,
+  .prose strong,
+  .prose em {
+    font-size: var(--font-size-sm) !important;
+    line-height: 1.4 !important;
+  }
+  
+  /* Override ALL possible prose typography classes */
+  .prose-neutral p,
+  .prose-neutral div,
+  .prose-neutral span,
+  .prose-neutral li,
+  .prose-neutral ul,
+  .prose-neutral ol,
+  .prose-neutral strong,
+  .prose-neutral em,
+  .prose-invert p,
+  .prose-invert div,
+  .prose-invert span,
+  .prose-invert li,
+  .prose-invert ul,
+  .prose-invert ol,
+  .prose-invert strong,
+  .prose-invert em {
+    font-size: var(--font-size-sm) !important;
+    line-height: 1.4 !important;
+  }
+  
+  /* Override max-w-none and other prose modifiers */
+  .max-w-none p,
+  .max-w-none div,
+  .max-w-none span,
+  .max-w-none li,
+  .max-w-none ul,
+  .max-w-none ol,
+  .max-w-none strong,
+  .max-w-none em {
+    font-size: var(--font-size-sm) !important;
+    line-height: 1.4 !important;
+  }
+  
+  .streaming-content .code-block {
+    margin: 0.5rem 0;
+    background: #0b1020;
+    border: 1px solid #30363d;
+    border-radius: 8px;
+    overflow: hidden;
+  }
+  
+  .streaming-content .code-block .code-header {
+    display: block;
+    background: #161b22;
+    color: #8b949e;
+    padding: 8px 16px;
+    font-size: 12px;
+    font-weight: 500;
+    border-bottom: 1px solid #30363d;
+  }
+  
+  .streaming-content .code-block.streaming .code-header {
+    background: #1c2128;
+    color: #f85149;
+    position: relative;
+  }
+  
+  .streaming-content .code-block.streaming .code-header::after {
+    content: "●";
+    position: absolute;
+    right: 12px;
+    top: 50%;
+    transform: translateY(-50%);
+    animation: pulse 1.5s ease-in-out infinite;
+  }
+  
+  .streaming-content .code-block pre {
+    margin: 0;
+    padding: 0;
+    background: transparent;
+  }
+  
+  .streaming-content .code-block code {
+    display: block;
+    padding: 12px;
+    font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
+    font-size: 13px;
+    line-height: 1.4;
+    color: #d4d4d4;
+    overflow-x: auto;
+    background: transparent;
+    white-space: pre; /* preserve spacing */
+  }
+  
+  .streaming-content .bullet-list {
+    list-style: none;
+    padding-left: 0;
+    margin: 0.25rem 0;
+  }
+  
+  .streaming-content .bullet-item {
+    position: relative;
+    padding-left: 0;
+    margin: 0.125rem 0;
+    line-height: 1.4;
+    font-size: var(--font-size-sm) !important;
+  }
+  
+  .streaming-content .bullet-item::before {
+    content: "• ";
+    position: static;
+    color: hsl(var(--primary));
+    font-weight: bold;
+    margin-right: 0.25rem;
+  }
+  
+  .streaming-content .numbered-list {
+    padding-left: 1.5rem;
+    margin: 0.5rem 0;
+  }
+  
+  .streaming-content .numbered-item {
+    margin: 0.25rem 0;
+    line-height: 1.4;
+    font-size: var(--font-size-sm) !important;
+  }
+  
+  .streaming-content .heading {
+    font-weight: 600;
+    margin: 0.125rem 0 0.125rem 0;
+    color: hsl(var(--foreground));
+    line-height: 1.3;
+    font-size: var(--font-size-sm);
+  }
+  
+  .streaming-content .paragraph {
+    margin: 0.125rem 0;
+    line-height: 1.4;
+    font-size: var(--font-size-sm) !important;
+  }
+  
+  /* Make bullet lists stick closer to their headings */
+  .streaming-content .heading + .bullet-list {
+    margin-top: 0.125rem;
+    margin-bottom: 0.125rem;
+  }
+  
+  /* Ensure bullet items within a list are tightly grouped */
+  .streaming-content .bullet-list {
+    padding-top: 0.125rem;
+    padding-bottom: 0.125rem;
+    margin: 0.125rem 0;
+  }
+  
+  /* Make the last bullet item in a list closer to the next section */
+  .streaming-content .bullet-list:last-child {
+    margin-bottom: 0.125rem;
+  }
+
+  /* Consistent heading sizes for streaming content */
+  .streaming-content h1,
+  .streaming-content h2,
+  .streaming-content h3,
+  .streaming-content h4,
+  .streaming-content h5,
+  .streaming-content h6 {
+    font-size: var(--font-size-sm);
+    font-weight: 600;
+    margin: 0.125rem 0 0.125rem 0;
+    color: hsl(var(--foreground));
+    line-height: 1.3;
+  }
+  
+  /* Better spacing for nested content */
+  .streaming-content .bullet-item .bullet-item {
+    margin: 0.125rem 0;
+    padding-left: 0.5rem;
+  }
+  
+  .streaming-content .bullet-item .bullet-item::before {
+    position: static;
+    margin-right: 0.25rem;
+  }
+  
+  /* Fix sub-heading alignment */
+  .streaming-content .bullet-item strong {
+    display: inline;
+    font-weight: 600;
+  }
+  
+  .streaming-content strong {
+    font-weight: bold;
+    color: hsl(var(--foreground));
+  }
+  
+  /* Code highlighting classes - ChatGPT-style colors */
+  .streaming-content .code-comment,
+  .code-comment {
+    color: #6a9955;
+    font-style: italic;
+  }
+  
+  .streaming-content .code-string,
+  .code-string { color: #ce9178; }
+  .streaming-content .code-number,
+  .code-number { color: #b5cea8; }
+  .streaming-content .code-keyword,
+  .code-keyword { color: #569cd6; font-weight: 700; }
+  .streaming-content .code-builtin,
+  .code-builtin { color: #dcdcaa; }
+  .streaming-content .code-function,
+  .code-function { color: #c586c0; }
+  .streaming-content .code-class,
+  .code-class { color: #4ec9b0; }
+  .streaming-content .code-variable,
+  .code-variable { color: #9cdcfe; }
+  .streaming-content .code-operator,
+  .code-operator { color: #d4d4d4; }
+  
+  .streaming-content .code-number {
+    color: #b5cea8;
+  }
+  
+  .streaming-content .code-keyword {
+    color: #569cd6;
+    font-weight: bold;
+  }
+  
+  .streaming-content .code-builtin {
+    color: #dcdcaa;
+  }
+  
+  .streaming-content .code-function {
+    color: #dcdcaa;
+  }
+  
+  .streaming-content .code-class {
+    color: #4ec9b0;
+  }
+  
+  .streaming-content .code-variable {
+    color: #9cdcfe;
+  }
+  
+  .streaming-content .code-operator {
+    color: #d4d4d4;
+  }
+  
+  /* Professional Table formatting styles */
+  .streaming-content .table-container {
+    margin: 1.5rem 0;
+    overflow: hidden;
+    border-radius: 12px;
+    border: 1px solid hsl(var(--border));
+    box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1);
+  }
+  
+  .streaming-content .table-wrapper {
+    overflow-x: auto;
+    background: hsl(var(--card));
+  }
+  
+  .streaming-content .data-table {
+    width: 100%;
+    border-collapse: separate;
+    border-spacing: 0;
+    font-size: var(--font-size-sm);
+    background: hsl(var(--card));
+  }
+  
+  .streaming-content .data-table th {
+    background: linear-gradient(135deg, hsl(var(--muted)) 0%, hsl(var(--muted) / 0.8) 100%);
+    color: hsl(var(--muted-foreground));
+    font-weight: 600;
+    padding: 14px 18px;
+    text-align: left;
+    border-bottom: 2px solid hsl(var(--border));
+    font-size: var(--font-size-xs);
+    text-transform: uppercase;
+    letter-spacing: var(--letter-spacing-wide);
+    position: relative;
+  }
+
+  .streaming-content .data-table th:first-child {
+    border-top-left-radius: 12px;
+  }
+
+  .streaming-content .data-table th:last-child {
+    border-top-right-radius: 12px;
+  }
+  
+  .streaming-content .data-table td {
+    padding: 14px 18px;
+    border-bottom: 1px solid hsl(var(--border) / 0.5);
+    color: hsl(var(--foreground));
+    vertical-align: top;
+    font-size: var(--font-size-sm);
+    line-height: var(--line-height-normal);
+    transition: background-color 0.2s ease;
+  }
+  
+  .streaming-content .data-table tr:hover td {
+    background: hsl(var(--muted) / 0.3);
+  }
+  
+  .streaming-content .data-table tr:last-child td {
+    border-bottom: none;
+  }
+
+  .streaming-content .data-table tr:last-child td:first-child {
+    border-bottom-left-radius: 12px;
+  }
+
+  .streaming-content .data-table tr:last-child td:last-child {
+    border-bottom-right-radius: 12px;
+  }
+  
+  /* Responsive table design */
+  @media (max-width: 768px) {
+    .streaming-content .data-table {
+      font-size: var(--font-size-xs);
+    }
+    
+    .streaming-content .data-table th,
+    .streaming-content .data-table td {
+      padding: 10px 14px;
+    }
   }
 }
