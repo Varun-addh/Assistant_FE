@@ -2,9 +2,10 @@ import { useEffect, useState } from "react";
 import { SearchBar } from "./SearchBar";
 import { AnswerCard } from "./AnswerCard";
 import { ThemeToggle } from "./ThemeToggle";
-import { MessageSquare, MoreVertical, Trash2 } from "lucide-react";
+import { MessageSquare, MoreVertical, Trash2, Menu, X } from "lucide-react";
 import { apiCreateSession, apiSubmitQuestion, apiGetHistory, apiGetSessions, apiDeleteHistoryItemByIndex, type AnswerStyle, type SessionSummary, type GetHistoryResponse } from "@/lib/api";
 import { useToast } from "@/hooks/use-toast";
+import { Button } from "@/components/ui/button";
 
 export const InterviewAssistant = () => {
   const [question, setQuestion] = useState("");
@@ -21,6 +22,17 @@ export const InterviewAssistant = () => {
   const [viewingHistory, setViewingHistory] = useState(false);
   const [openMenuIndex, setOpenMenuIndex] = useState<number | null>(null);
   const [menuPos, setMenuPos] = useState<{ top: number; left: number } | null>(null);
+  const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState(false);
+  
+  // Versioning for edit-and-compare flow
+  const [originalQA, setOriginalQA] = useState<{ q: string; a: string } | null>(null);
+  const [latestQA, setLatestQA] = useState<{ q: string; a: string } | null>(null);
+  const [currentVersion, setCurrentVersion] = useState<0 | 1>(0); // 0 original, 1 latest
+  const [isEditingFromAnswer, setIsEditingFromAnswer] = useState(false);
+  const [pendingEditedQuestion, setPendingEditedQuestion] = useState<string | null>(null);
+  const [isNavigatingVersion, setIsNavigatingVersion] = useState(false);
+
+  // Removed teleprompter/overlay UI
   
   const handleDeleteHistory = async (idx: number) => {
     try {
@@ -125,23 +137,25 @@ export const InterviewAssistant = () => {
 
   // Removed aggressive auto-scroll behavior to allow free scrolling
 
-  const handleGenerateAnswer = async () => {
+  const handleGenerateAnswer = async (overrideQuestion?: string) => {
+    setIsNavigatingVersion(false);
     // Do not generate if user is viewing a saved history item
     if (viewingHistory) {
       console.log('[ui] Generation blocked while viewing history');
       return;
     }
-    const currentQuestion = question.trim();
+    const currentQuestion = (overrideQuestion ?? question).trim();
     if (!currentQuestion) return;
 
     try {
       setIsGenerating(true);
-      // Focus user at the top where the composer sits
+      // Avoid jumping to the composer when editing inline
       try { window.scrollTo({ top: 0, behavior: 'smooth' }); } catch {}
       // Clear previous UI and stop mic/input accumulation for the next turn
+      // During inline edit, hide the previous card and show generating placeholder
       setAnswer("");
       setShowAnswer(true);
-      setQuestion("");
+      if (!overrideQuestion) setQuestion("");
       setResetToken((t) => t + 1);
       setLastQuestion(currentQuestion);
       
@@ -167,13 +181,40 @@ export const InterviewAssistant = () => {
         return res;
       })();
 
-      // Show immediate feedback that processing has started
-      setAnswer("Analyzing your question and generating a comprehensive response...");
+      // Versioning: decide whether this is a fresh question or an edit of existing response
+      if (!isEditingFromAnswer) {
+        // New question flow: reset versions
+        setOriginalQA(null);
+        setLatestQA(null);
+        setCurrentVersion(0);
+      }
+
+      // Show immediate feedback only when not inline-editing existing response
+      if (!(isEditingFromAnswer && originalQA)) {
+        setAnswer("Analyzing your question and generating a comprehensive response...");
+      }
       
       try {
         const res = await responsePromise;
         console.log("[question] response", res);
-        setAnswer(res.answer);
+        if (isEditingFromAnswer && originalQA) {
+          // Save as latest and show latest
+          const latest = { q: currentQuestion, a: res.answer };
+          setLatestQA(latest);
+          setCurrentVersion(1);
+          setLastQuestion(latest.q);
+          setAnswer(latest.a);
+          setIsEditingFromAnswer(false);
+          setPendingEditedQuestion(null);
+        } else {
+          // First response in this space
+          const orig = { q: currentQuestion, a: res.answer };
+          setOriginalQA(orig);
+          setLatestQA(null);
+          setCurrentVersion(0);
+          setLastQuestion(orig.q);
+          setAnswer(orig.a);
+        }
         setShowAnswer(true);
       } catch (err) {
         console.error("[question] error", err);
@@ -183,6 +224,40 @@ export const InterviewAssistant = () => {
       console.error("[question] error", err);
     } finally {
       setIsGenerating(false);
+    }
+  };
+
+  // Generate specifically for an edited question inline, preserving current view until response arrives
+  const handleSubmitInlineEdit = async (newQuestion: string) => {
+    // Keep current response visible; generate latest in background
+    setIsEditingFromAnswer(true);
+    setPendingEditedQuestion(newQuestion);
+    // Hide current card and show generating placeholder similar to new query flow
+    setShowAnswer(false);
+    await handleGenerateAnswer(newQuestion);
+  };
+
+  // Handlers for edit and version navigation
+  const handleEditCurrent = () => {
+    // Mark inline editing without hiding the current response
+    setIsEditingFromAnswer(true);
+  };
+
+  const handlePrevVersion = () => {
+    if (latestQA && originalQA && currentVersion === 1) {
+      setIsNavigatingVersion(true);
+      setCurrentVersion(0);
+      setLastQuestion(originalQA.q);
+      setAnswer(originalQA.a);
+    }
+  };
+
+  const handleNextVersion = () => {
+    if (latestQA && currentVersion === 0) {
+      setIsNavigatingVersion(true);
+      setCurrentVersion(1);
+      setLastQuestion(latestQA.q);
+      setAnswer(latestQA.a);
     }
   };
 
@@ -212,12 +287,138 @@ export const InterviewAssistant = () => {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-background via-background to-muted/20 transition-colors duration-300">
-      {/* Fixed Left Sidebar */}
+      {/* Mobile Header */}
+      <div className="md:hidden sticky top-0 z-50 bg-background/95 backdrop-blur-sm border-b border-border/40">
+        <div className="flex items-center justify-between px-4 py-3">
+          <div className="flex items-center gap-3">
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => setIsMobileSidebarOpen(true)}
+              className="h-8 w-8 p-0 hover:bg-muted/50"
+            >
+              <Menu className="h-5 w-5" />
+            </Button>
+            <h1 className="text-lg font-bold text-foreground">Interview Assist</h1>
+          </div>
+          <div className="flex items-center gap-2">
+            <ThemeToggle />
+          </div>
+        </div>
+      </div>
+
+      {/* Mobile Sidebar Overlay */}
+      {isMobileSidebarOpen && (
+        <div className="md:hidden fixed inset-0 z-50 bg-black/50" onClick={() => setIsMobileSidebarOpen(false)}>
+          <div 
+            className="fixed left-0 top-0 bottom-0 w-72 max-w-[75vw] bg-background border-r border-border/40 shadow-xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Mobile Sidebar Header */}
+            <div className="flex items-center justify-between p-4 border-b border-border/40">
+              <h2 className="text-lg font-bold text-foreground">History</h2>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => setIsMobileSidebarOpen(false)}
+                className="h-8 w-8 p-0 hover:bg-muted/50"
+              >
+                <X className="h-5 w-5" />
+              </Button>
+            </div>
+
+            {/* Mobile Sidebar Content */}
+            <div className="flex flex-col h-full">
+              {/* Sessions */}
+              <div className="px-2 py-2 overflow-y-auto">
+                {sessions?.length ? (
+                  <div className="mb-4">
+                    <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wide px-2 mb-2">Sessions</h3>
+                    <ul className="space-y-1">
+                      {sessions.map((s) => (
+                        <li key={s.session_id} className="group">
+                          <button
+                            className="w-full text-left px-3 py-2 rounded-md hover:bg-muted/50 transition-colors"
+                            onClick={async () => {
+                              try {
+                                setSessionId(s.session_id);
+                                const h = await apiGetHistory(s.session_id);
+                                setHistory(h);
+                                setIsMobileSidebarOpen(false);
+                                console.log(`[api] GET /api/history/${s.session_id} ->`, h);
+                              } catch (e) {
+                                console.error("[api] history error", e);
+                              }
+                            }}
+                          >
+                            <div className="text-sm font-medium truncate">{s.session_id}</div>
+                            <div className="text-[10px] text-muted-foreground flex items-center gap-2">
+                              <span>{new Date(s.last_update).toLocaleString()}</span>
+                              <span>•</span>
+                              <span>{s.qna_count} QnA</span>
+                            </div>
+                          </button>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                ) : null}
+
+                {/* Current History */}
+                <div>
+                  <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wide px-2 mb-2">Current History</h3>
+                  {history?.items?.length ? (
+                    <ul className="space-y-1">
+                      {history.items.map((it, idx) => (
+                        <li key={idx} className="group" data-history-item>
+                          <div
+                            className="relative rounded-md bg-card/40 border border-border/30 hover:bg-muted/50 transition-colors cursor-pointer"
+                            onClick={() => {
+                              try { window.scrollTo({ top: 0, behavior: 'smooth' }); } catch {}
+                              setLastQuestion(it.question);
+                              setAnswer(it.answer);
+                              setShowAnswer(true);
+                              setQuestion("");
+                              setViewingHistory(true);
+                              setIsMobileSidebarOpen(false);
+                              console.log('[ui] Opened history item', { index: idx, question: it.question });
+                            }}
+                          >
+                            {/* Content */}
+                            <div className="px-3 py-2 pr-10">
+                              <div className="text-xs font-medium line-clamp-2 leading-relaxed">Q: {it.question}</div>
+                            </div>
+                            
+                            {/* Three-dots menu - better positioned */}
+                            <button
+                              className="absolute right-2 top-2 p-1 rounded hover:bg-muted/60 transition-colors"
+                              title="Delete"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleDeleteHistory(idx);
+                              }}
+                            >
+                              <Trash2 className="h-3 w-3 text-muted-foreground hover:text-destructive" />
+                            </button>
+                          </div>
+                        </li>
+                      ))}
+                    </ul>
+                  ) : (
+                    <div className="px-2 text-xs text-muted-foreground">No history yet</div>
+                  )}
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Desktop Sidebar */}
       <aside className="hidden md:flex fixed left-0 top-0 bottom-0 w-64 border-r border-border/40 bg-background/70 backdrop-blur-sm z-40 flex-col">
         <div className="p-4 border-b border-border/40">
           <h1 className="text-xl font-bold text-foreground">Interview Assist</h1>
         </div>
-        {/* Theme toggle moved to top-right of the page */}
         {/* Sessions */}
         <div className="px-2 overflow-y-auto">
           {sessions?.length ? (
@@ -289,7 +490,6 @@ export const InterviewAssistant = () => {
                     >
                       <MoreVertical className="h-4 w-4" />
                     </button>
-                    {/* Context menu removed from sidebar; opens in right-side popover */}
 
                     {/* Content */}
                     <div className="px-3 py-2">
@@ -305,86 +505,95 @@ export const InterviewAssistant = () => {
         </div>
       </aside>
 
-      {/* Fixed Theme Toggle at top-right */}
-      <div className="fixed top-3 right-3 z-50">
-        <ThemeToggle />
-      </div>
-
-      {/* Main content area (accounts for fixed sidebar on md+) */}
-      <div className="flex flex-col min-h-screen md:pl-64">
-        {/* Response Section at Very Top - for eye contact */}
-        <div className="flex-1 container mx-auto px-4 py-6">
-        <div className="max-w-7xl mx-auto">
-          <div className="flex justify-center">
-            <div className="w-full max-w-4xl">
-              {showAnswer ? (
-                <div className="animate-in slide-in-from-top-4 duration-500">
-                  <AnswerCard 
-                    answer={answer}
-                    question={lastQuestion}
-                    streaming={!viewingHistory}
-                  />
-                </div>
-              ) : isGenerating ? (
-                <div className="flex flex-col items-center justify-center py-8 bg-card/30 backdrop-blur-sm border border-border/50 rounded-xl">
-                  <div className="relative">
-                    <div className="w-8 h-8 border-3 border-primary/20 rounded-full"></div>
-                    <div className="absolute top-0 left-0 w-8 h-8 border-3 border-primary border-t-transparent rounded-full animate-spin"></div>
-                  </div>
-                  <div className="mt-3 text-center">
-                    <h3 className="typography-h5 mb-1">Crafting Your Response</h3>
-                    <p className="typography-sm text-muted-foreground">Analyzing your question and generating a response...</p>
-                  </div>
-                </div>
-              ) : (
-                <div className="flex flex-col items-center justify-center py-8 text-center bg-card/30 backdrop-blur-sm border border-border/50 rounded-xl">
-                  <div className="relative mb-4">
-                    <div className="w-12 h-12 bg-gradient-to-br from-primary/20 to-primary/10 rounded-lg flex items-center justify-center">
-                      <MessageSquare className="h-6 w-6 text-primary" />
-                    </div>
-                    <div className="absolute -top-1 -right-1 w-4 h-4 bg-primary rounded-full flex items-center justify-center">
-                      <div className="w-1.5 h-1.5 bg-primary-foreground rounded-full animate-pulse"></div>
-                    </div>
-                  </div>
-                  <h3 className="typography-h5 mb-1">Ready to Help</h3>
-                  <p className="typography-sm text-muted-foreground max-w-sm">
-                    Ask your interview question and I'll provide a comprehensive response with examples and explanations.
-                  </p>
-                  <div className="mt-3 flex flex-wrap gap-1.5 justify-center">
-                    <span className="px-2 py-0.5 bg-primary/10 text-primary text-xs font-medium rounded-full">Code Examples</span>
-                    <span className="px-2 py-0.5 bg-primary/10 text-primary text-xs font-medium rounded-full">Best Practices</span>
-                    <span className="px-2 py-0.5 bg-primary/10 text-primary text-xs font-medium rounded-full">Real Examples</span>
-                  </div>
-                </div>
-              )}
-              {/* Right-side popover for history item actions */}
-              {openMenuIndex !== null && menuPos && (
-                <div
-                  data-right-popover
-                  className="fixed w-40 bg-popover border border-border rounded-md shadow-lg z-50"
-                  style={{ top: menuPos.top, left: menuPos.left }}
-                >
-                  <button
-                    className="w-full text-left px-3 py-2 text-sm hover:bg-destructive/10 text-destructive flex items-center gap-2"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      if (openMenuIndex !== null) handleDeleteHistory(openMenuIndex);
-                    }}
-                  >
-                    <Trash2 className="h-4 w-4 text-destructive" />
-                    Delete
-                  </button>
-                </div>
-              )}
-            </div>
-          </div>
+      {/* Desktop Controls - only theme toggle remains */}
+      <div className="hidden md:block fixed top-3 right-3 z-50">
+        <div className="flex items-center gap-2">
+          <ThemeToggle />
         </div>
       </div>
+
+      {/* Main content area */}
+      <div className="flex flex-col min-h-screen md:pl-64">
+        {/* Response Section */}
+        <div className="flex-1 px-3 py-4 md:px-6 md:py-6">
+          <div className="max-w-4xl mx-auto w-full">
+            {showAnswer ? (
+              <div className="animate-in slide-in-from-top-4 duration-500">
+              <AnswerCard 
+                answer={answer}
+                question={lastQuestion}
+                streaming={!isNavigatingVersion}
+                onEdit={handleEditCurrent}
+                onSubmitEdit={handleSubmitInlineEdit}
+                canPrev={!!(originalQA && latestQA) && currentVersion === 1}
+                canNext={!!latestQA && currentVersion === 0}
+                onPrev={handlePrevVersion}
+                onNext={handleNextVersion}
+                versionLabel={latestQA ? (currentVersion === 1 ? 'Latest' : 'Original') : undefined}
+                isGenerating={isGenerating}
+                versionIndex={latestQA ? (currentVersion === 1 ? 2 : 1) : 1}
+                versionTotal={latestQA ? 2 : 1}
+              />
+              </div>
+            ) : isGenerating ? (
+              <div className="flex flex-col items-center justify-center py-12 md:py-16 bg-card/30 backdrop-blur-sm border border-border/50 rounded-xl mx-2 md:mx-0">
+                <div className="relative">
+                  <div className="w-10 h-10 md:w-12 md:h-12 border-3 border-primary/20 rounded-full"></div>
+                  <div className="absolute top-0 left-0 w-10 h-10 md:w-12 md:h-12 border-3 border-primary border-t-transparent rounded-full animate-spin"></div>
+                </div>
+                <div className="mt-4 text-center px-4">
+                  <h3 className="text-lg md:text-xl font-semibold mb-2">Crafting Your Response</h3>
+                  <p className="text-sm md:text-base text-muted-foreground">Analyzing your question and generating a response...</p>
+                </div>
+              </div>
+            ) : (
+              <div className="flex flex-col items-center justify-center py-12 md:py-16 text-center bg-card/30 backdrop-blur-sm border border-border/50 rounded-xl mx-2 md:mx-0">
+                <div className="relative mb-6">
+                  <div className="w-14 h-14 md:w-16 md:h-16 bg-gradient-to-br from-primary/20 to-primary/10 rounded-xl flex items-center justify-center">
+                    <MessageSquare className="h-7 w-7 md:h-8 md:w-8 text-primary" />
+                  </div>
+                  <div className="absolute -top-1 -right-1 w-5 h-5 bg-primary rounded-full flex items-center justify-center">
+                    <div className="w-2 h-2 bg-primary-foreground rounded-full animate-pulse"></div>
+                  </div>
+                </div>
+                <h3 className="text-lg md:text-xl font-semibold mb-2">Ready to Help</h3>
+                <p className="text-sm md:text-base text-muted-foreground max-w-md px-4 mb-4">
+                  Ask your interview question and I'll provide a comprehensive response with examples and explanations.
+                </p>
+                <div className="flex flex-wrap gap-2 justify-center px-4">
+                  <span className="px-3 py-1 bg-primary/10 text-primary text-xs font-medium rounded-full">Code Examples</span>
+                  <span className="px-3 py-1 bg-primary/10 text-primary text-xs font-medium rounded-full">Best Practices</span>
+                  <span className="px-3 py-1 bg-primary/10 text-primary text-xs font-medium rounded-full">Real Examples</span>
+                </div>
+              </div>
+            )}
+            
+            {/* Right-side popover for history item actions */}
+            {openMenuIndex !== null && menuPos && (
+              <div
+                data-right-popover
+                className="fixed w-40 bg-popover border border-border rounded-md shadow-lg z-50"
+                style={{ top: menuPos.top, left: menuPos.left }}
+              >
+                <button
+                  className="w-full text-left px-3 py-2 text-sm hover:bg-destructive/10 text-destructive flex items-center gap-2"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    if (openMenuIndex !== null) handleDeleteHistory(openMenuIndex);
+                  }}
+                >
+                  <Trash2 className="h-4 w-4 text-destructive" />
+                  Delete
+                </button>
+              </div>
+            )}
+          </div>
+        </div>
       
         {/* Fixed Search Bar at Bottom */}
-        <div className="sticky bottom-0 z-30 bg-gradient-to-br from-background via-background to-muted/20 backdrop-blur-sm border-t border-border/20" data-ask-question>
-          <div className="container mx-auto px-4 py-2">
-            <div className="max-w-7xl mx-auto">
+        <div className="sticky bottom-0 z-30 bg-background/95 backdrop-blur-sm border-t border-border/40 safe-area-inset-bottom">
+          <div className="px-3 py-3 md:px-6 md:py-4">
+            <div className="max-w-4xl mx-auto">
               <SearchBar 
                 value={question}
                 onChange={(v) => {
@@ -392,7 +601,7 @@ export const InterviewAssistant = () => {
                   if (viewingHistory) setViewingHistory(false);
                   setQuestion(v);
                 }}
-                placeholder="Type or speak the interviewer's question..."
+                placeholder="Ask your question..."
                 resetToken={resetToken}
                 ensureSession={ensureSession}
                 onUploaded={({ characters, fileName }) => {
@@ -406,6 +615,8 @@ export const InterviewAssistant = () => {
           </div>
         </div>
       </div>
+
+      {/* Teleprompter/Overlay removed */}
     </div>
   );
 };

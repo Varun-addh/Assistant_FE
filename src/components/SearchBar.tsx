@@ -72,6 +72,24 @@ export const SearchBar = ({ value, onChange, placeholder = "Type your question..
     }
   }, [value, isListening]);
 
+  // Auto-resize textarea based on content, but keep initial height fixed
+  useEffect(() => {
+    if (textareaRef.current) {
+      const textarea = textareaRef.current;
+      if (value.trim() === '') {
+        // Reset to initial height when empty
+        textarea.style.height = '56px';
+      } else {
+        // Only expand if content requires it
+        textarea.style.height = '56px'; // Reset to base
+        const scrollHeight = textarea.scrollHeight;
+        if (scrollHeight > 56) {
+          textarea.style.height = Math.min(scrollHeight, 120) + 'px'; // Max 120px
+        }
+      }
+    }
+  }, [value]);
+
   // Reset everything when parent requests a reset (e.g., after Generate)
   useEffect(() => {
     if (resetToken === undefined) return;
@@ -1071,16 +1089,16 @@ export const SearchBar = ({ value, onChange, placeholder = "Type your question..
   return (
     <div className="relative w-full">
       <div className="relative group">
-        {/* ChatGPT-style search bar */}
-        <div className="flex items-end bg-background/50 backdrop-blur-sm border border-border/50 rounded-2xl shadow-lg focus-within:shadow-xl focus-within:ring-2 focus-within:ring-primary/50 focus-within:border-primary transition-all duration-300 group-hover:border-primary/30">
-          {/* Plus icon on left for upload */}
-          <div className="flex items-center p-3">
+        {/* Mobile-optimized search bar */}
+        <div className="flex items-end bg-background/95 backdrop-blur-sm border border-border/50 rounded-2xl shadow-lg focus-within:shadow-xl focus-within:ring-2 focus-within:ring-primary/50 focus-within:border-primary transition-all duration-300 group-hover:border-primary/30">
+          {/* Upload button - optimized for mobile */}
+          <div className="flex items-center p-2 md:p-3">
             <Button
               onClick={handleUploadClick}
               variant="ghost"
               size="sm"
               disabled={isUploading}
-              className="transition-all duration-300 rounded-full h-8 w-8 p-0 text-muted-foreground hover:text-foreground hover:bg-muted/50"
+              className="transition-all duration-300 rounded-full h-9 w-9 md:h-8 md:w-8 p-0 text-muted-foreground hover:text-foreground hover:bg-muted/50 touch-manipulation"
               title={isUploading ? 'Uploading...' : 'Upload Resume'}
             >
               {isUploading ? (
@@ -1091,7 +1109,7 @@ export const SearchBar = ({ value, onChange, placeholder = "Type your question..
             </Button>
           </div>
           
-          {/* Text area */}
+          {/* Text area - mobile optimized */}
           <textarea
             ref={textareaRef}
             value={value}
@@ -1100,19 +1118,28 @@ export const SearchBar = ({ value, onChange, placeholder = "Type your question..
             onFocus={handleFocus}
             onBlur={handleBlur}
             placeholder={placeholder}
-            className="flex-1 min-h-[60px] py-3 px-2 typography-body bg-transparent border-none outline-none resize-none placeholder:text-muted-foreground"
+            className="flex-1 h-[56px] md:h-[60px] py-4 px-3 text-base md:text-sm bg-transparent border-none outline-none resize-none placeholder:text-muted-foreground/70 leading-normal overflow-hidden"
             rows={1}
+            style={{ 
+              fontSize: '16px', // Prevents zoom on iOS
+              lineHeight: '1.5',
+              height: '56px',
+              maxHeight: '56px',
+              minHeight: '56px',
+              verticalAlign: 'top',
+              textAlign: 'left'
+            }}
           />
           
-          {/* Right side buttons */}
-          <div className="flex items-center p-3 gap-2">
+          {/* Right side buttons - mobile optimized */}
+          <div className="flex items-center p-2 md:p-3 gap-1.5 md:gap-2">
             {/* Microphone button */}
             {isSupported && (
               <Button
                 onClick={handleProMicToggle}
                 variant="ghost"
                 size="sm"
-                className={`transition-all duration-300 rounded-full h-8 w-8 p-0 ${
+                className={`transition-all duration-300 rounded-full h-9 w-9 md:h-8 md:w-8 p-0 touch-manipulation ${
                   isCapturingProMic
                     ? "text-destructive hover:bg-destructive/10"
                     : "text-muted-foreground hover:text-foreground hover:bg-muted/50"
@@ -1123,11 +1150,11 @@ export const SearchBar = ({ value, onChange, placeholder = "Type your question..
               </Button>
             )}
             
-            {/* Send button */}
+            {/* Send button - larger on mobile */}
             <Button
               onClick={() => canGenerate && value.trim() && onGenerate && !isGenerating ? onGenerate() : null}
               disabled={!canGenerate || !value.trim() || isGenerating}
-              className="transition-all duration-300 rounded-full h-8 w-8 p-0 bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed"
+              className="transition-all duration-300 rounded-full h-9 w-9 md:h-8 md:w-8 p-0 bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed touch-manipulation"
               title="Send message"
             >
               {isGenerating ? (
@@ -1151,12 +1178,14 @@ export const SearchBar = ({ value, onChange, placeholder = "Type your question..
         onChange={handleFileChange}
       />
       
-      {/* Upload status indicator */}
+      {/* Upload status indicator - mobile optimized */}
       {lastUploaded && (
-        <div className="mt-2 flex items-center justify-center">
-          <span className="text-xs text-muted-foreground flex items-center">
-            <Check className="h-3 w-3 mr-1 text-primary" />
-            Indexed: {lastUploaded.name} ({lastUploaded.characters.toLocaleString()} chars)
+        <div className="mt-2 flex items-center justify-center px-2">
+          <span className="text-xs text-muted-foreground flex items-center text-center">
+            <Check className="h-3 w-3 mr-1 text-primary flex-shrink-0" />
+            <span className="truncate">
+              Indexed: {lastUploaded.name} ({lastUploaded.characters.toLocaleString()} chars)
+            </span>
           </span>
         </div>
       )}

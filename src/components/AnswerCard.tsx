@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from "react";
-import { Copy, Check, MessageSquare } from "lucide-react";
+import { Copy, Check, MessageSquare, Edit3, ChevronLeft, ChevronRight, Send } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
@@ -10,16 +10,28 @@ interface AnswerCardProps {
   question: string;
   // When false, render instantly without typewriter/streaming effect (used for history)
   streaming?: boolean;
+  onEdit?: () => void;
+  onSubmitEdit?: (newQuestion: string) => void;
+  canPrev?: boolean;
+  canNext?: boolean;
+  onPrev?: () => void;
+  onNext?: () => void;
+  versionLabel?: string; // e.g., "Original" or "Latest"
+  isGenerating?: boolean;
+  versionIndex?: number; // 1-based index
+  versionTotal?: number;
 }
 
-export const AnswerCard = ({ answer, question, streaming = true }: AnswerCardProps) => {
+export const AnswerCard = ({ answer, question, streaming = true, onEdit, onSubmitEdit, canPrev, canNext, onPrev, onNext, versionLabel, isGenerating, versionIndex, versionTotal }: AnswerCardProps) => {
   const [copied, setCopied] = useState(false);
-  const [isDetailed, setIsDetailed] = useState(true);
+  const [isDetailed] = useState(true);
   const [typedText, setTypedText] = useState("");
   const [displayedBlocks, setDisplayedBlocks] = useState<Array<{type: string, content: string, lang?: string}>>([]);
   const { toast } = useToast();
   const typingTimerRef = useRef<any>(null);
   const lastAnswerRef = useRef<string>("");
+  const [isEditing, setIsEditing] = useState(false);
+  const [editedQuestion, setEditedQuestion] = useState<string>(question);
 
   // Typewriter effect for progressive reveal with real-time formatting
   useEffect(() => {
@@ -631,57 +643,106 @@ export const AnswerCard = ({ answer, question, streaming = true }: AnswerCardPro
   const displayAnswer = isDetailed ? answer : generateShorterAnswer(answer);
 
   return (
-    <Card className="w-full shadow-2xl border border-border/50 bg-card/80 backdrop-blur-sm transition-all duration-500 hover:shadow-3xl">
-      <CardHeader className="pb-2">
-        <div className="flex items-start justify-between">
-          <div className="flex items-start space-x-3">
-            <div className="p-2 bg-gradient-to-br from-primary/20 to-primary/10 rounded-xl shadow-lg">
+    <Card className="w-full shadow-lg md:shadow-2xl border border-border/50 bg-card/95 md:bg-card/80 backdrop-blur-sm transition-all duration-500 hover:shadow-xl md:hover:shadow-3xl mx-2 md:mx-0">
+      <CardHeader className="pb-3 px-4 md:px-6">
+        <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3">
+          <div className="flex items-start space-x-3 flex-1 min-w-0">
+            <div className="p-2 bg-gradient-to-br from-primary/20 to-primary/10 rounded-xl shadow-lg flex-shrink-0">
               <MessageSquare className="h-5 w-5 text-primary" />
             </div>
-          </div>
-          <div className="flex items-center space-x-2">
-            <div className="flex items-center bg-muted/50 backdrop-blur-sm rounded-lg p-0.5 border border-border/30">
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={() => setIsDetailed(false)}
-                className={`h-7 px-3 text-xs font-medium transition-all duration-300 rounded-md ${
-                  !isDetailed 
-                    ? "bg-background text-foreground shadow-md border border-border/50" 
-                    : "text-muted-foreground hover:text-foreground hover:bg-muted/50"
-                }`}
-              >
-                Concise
-              </Button>
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={() => setIsDetailed(true)}
-                className={`h-7 px-3 text-xs font-medium transition-all duration-300 rounded-md ${
-                  isDetailed 
-                    ? "bg-background text-foreground shadow-md border border-border/50" 
-                    : "text-muted-foreground hover:text-foreground hover:bg-muted/50"
-                }`}
-              >
-                Detailed
-              </Button>
+            <div className="min-w-0 flex-1">
+              <div className="flex items-center gap-2 min-w-0">
+                {isEditing ? (
+                  <div className="flex items-center gap-2 w-full">
+                    <input
+                      className="flex-1 bg-transparent border border-border rounded-md px-2 py-1 text-sm outline-none focus:ring-2 focus:ring-primary/40"
+                      value={editedQuestion}
+                      onChange={(e) => setEditedQuestion(e.target.value)}
+                    />
+                    <button
+                      type="button"
+                      disabled={!editedQuestion.trim() || isGenerating}
+                      onClick={() => {
+                        if (!editedQuestion.trim()) return;
+                        onSubmitEdit && onSubmitEdit(editedQuestion.trim());
+                        setIsEditing(false);
+                      }}
+                      className={`shrink-0 inline-flex items-center justify-center h-7 w-8 rounded-md border border-border ${(!editedQuestion.trim() || isGenerating) ? 'opacity-50 cursor-not-allowed' : 'hover:bg-muted/60'}`}
+                      title="Send"
+                    >
+                      <Send className="h-3.5 w-3.5" />
+                    </button>
+                  </div>
+                ) : (
+                  <>
+                    <div className="text-sm md:text-base font-medium text-foreground truncate" title={question}>
+                      {question}
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setEditedQuestion(question);
+                        setIsEditing(true);
+                        onEdit && onEdit();
+                      }}
+                      className="shrink-0 inline-flex items-center justify-center h-6 w-6 rounded-md border border-border hover:bg-muted/60"
+                      title="Edit prompt"
+                    >
+                      <Edit3 className="h-3.5 w-3.5" />
+                    </button>
+                  </>
+                )}
+              </div>
+              <div className="text-xs text-muted-foreground mt-0.5 hidden sm:flex items-center gap-2">
+                <span>AI generated response</span>
+                {versionLabel ? <span className="px-1.5 py-0.5 rounded bg-muted text-foreground/80">{versionLabel}</span> : null}
+              </div>
             </div>
-            
+          </div>
+          <div className="flex items-center gap-1 sm:self-auto self-end">
+            {(canPrev || canNext) ? (
+              <div className="flex items-center gap-1 mr-1">
+                <button
+                  type="button"
+                  onClick={onPrev}
+                  disabled={!canPrev}
+                  className={`h-8 w-8 inline-flex items-center justify-center rounded-md border border-border ${canPrev ? 'hover:bg-muted/60' : 'opacity-50 cursor-not-allowed'}`}
+                  title="Previous response"
+                >
+                  <ChevronLeft className="h-4 w-4" />
+                </button>
+                {(versionIndex && versionTotal) ? (
+                  <span className="text-xs text-muted-foreground select-none w-10 text-center">
+                    {versionIndex}/{versionTotal}
+                  </span>
+                ) : null}
+                <button
+                  type="button"
+                  onClick={onNext}
+                  disabled={!canNext}
+                  className={`h-8 w-8 inline-flex items-center justify-center rounded-md border border-border ${canNext ? 'hover:bg-muted/60' : 'opacity-50 cursor-not-allowed'}`}
+                  title="Next response"
+                >
+                  <ChevronRight className="h-4 w-4" />
+                </button>
+              </div>
+            ) : null}
             <Button
               variant="outline"
               size="sm"
               onClick={() => handleCopy(displayAnswer)}
-              className="h-7 px-3 text-xs bg-gradient-to-r from-primary/10 to-primary/5 text-primary hover:from-primary/20 hover:to-primary/10 border border-primary/20 shadow-md hover:shadow-lg transition-all duration-300 font-medium"
+              className="h-8 px-3 text-xs bg-gradient-to-r from-primary/10 to-primary/5 text-primary hover:from-primary/20 hover:to-primary/10 border border-primary/20 shadow-md hover:shadow-lg transition-all duration-300 font-medium touch-manipulation"
             >
               {copied ? (
                 <>
-                  <Check className="h-3 w-3 mr-1" />
-                  Copied!
+                  <Check className="h-3 w-3 mr-1.5 flex-shrink-0" />
+                  <span className="hidden sm:inline">Copied!</span>
+                  <span className="sm:hidden">✓</span>
                 </>
               ) : (
                 <>
-                  <Copy className="h-3 w-3 mr-1" />
-                  Copy Answer
+                  <Copy className="h-3 w-3 mr-1.5 flex-shrink-0" />
+                  <span className="hidden sm:inline">Copy</span>
                 </>
               )}
             </Button>
@@ -689,7 +750,7 @@ export const AnswerCard = ({ answer, question, streaming = true }: AnswerCardPro
         </div>
       </CardHeader>
       
-      <CardContent>
+      <CardContent className="px-4 md:px-6">
         <div className="space-y-1 streaming-content">
           {/* Display completed blocks */}
           {displayedBlocks.map((block, index) => (
@@ -821,15 +882,13 @@ export const AnswerCard = ({ answer, question, streaming = true }: AnswerCardPro
           
         </div>
         
+        {/* Prompt review section removed per requirement */}
+
         {/* Footer */}
         <div className="mt-4 pt-3 border-t border-border">
-          <div className="flex items-center justify-between typography-caption">
+          <div className="flex items-center justify-center typography-caption text-muted-foreground">
             <span>
               {displayAnswer.split(' ').filter(Boolean).length} words • {Math.ceil(displayAnswer.split(' ').filter(Boolean).length / 150)} min read
-            </span>
-            <span className="flex items-center space-x-1">
-              <span className={`w-2 h-2 rounded-full ${isDetailed ? 'bg-primary' : 'bg-muted-foreground'}`}></span>
-              <span>{isDetailed ? 'Detailed' : 'Concise'} version</span>
             </span>
           </div>
         </div>
