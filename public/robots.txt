@@ -12,3 +12,5 @@ Allow: /
 
 User-agent: *
 Allow: /
+
+# PWA offline resources can be cached by clients

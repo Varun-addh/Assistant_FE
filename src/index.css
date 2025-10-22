@@ -2,6 +2,167 @@
 @tailwind components;
 @tailwind utilities;
 
+/* Mermaid diagram styling */
+.mermaid-rendered {
+  display: block;
+  text-align: center;
+  margin: 1rem 0;
+}
+
+.mermaid-rendered svg {
+  max-width: 100%;
+  height: auto;
+}
+
+/* Diagram container - responsive scaling */
+.diagram-container {
+  width: 100%;
+  max-width: 1400px;
+  margin: 0 auto;
+  padding: 20px;
+  overflow: auto;
+}
+
+/* Desktop: scale down large diagrams */
+@media (min-width: 1024px) {
+  .diagram-container svg {
+    transform: scale(0.9);
+    transform-origin: top center;
+  }
+}
+
+/* Mobile: full width, vertical scroll only */
+@media (max-width: 768px) {
+  .diagram-container svg {
+    width: 100%;
+    height: auto;
+    transform: none;
+  }
+}
+
+/* Optional: Add zoom controls */
+.diagram-controls {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  z-index: 10;
+  display: flex;
+  gap: 4px;
+}
+
+.zoom-btn {
+  background: hsl(var(--muted));
+  color: hsl(var(--muted-foreground));
+  border: 1px solid hsl(var(--border));
+  padding: 4px 8px;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 500;
+  transition: all 0.2s ease;
+  min-width: 24px;
+  height: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.zoom-btn:hover {
+  background: hsl(var(--muted) / 0.8);
+  border-color: hsl(var(--border) / 0.8);
+}
+
+.zoom-btn:active {
+  background: hsl(var(--primary) / 0.1);
+  border-color: hsl(var(--primary) / 0.3);
+}
+
+/* Prevent global streaming typography from clipping Mermaid labels */
+.streaming-content .mermaid-rendered div,
+.streaming-content .mermaid-rendered span,
+.streaming-content .mermaid div,
+.streaming-content .mermaid span {
+  font-size: 14px !important;
+  line-height: 1.2 !important;
+  font-weight: 400 !important;
+}
+
+/* Ensure Mermaid node/edge labels have enough line height and are not clipped */
+.mermaid-rendered .nodeLabel,
+.mermaid-rendered .label,
+.mermaid-rendered .edgeLabel,
+.mermaid-rendered .cluster-label,
+.mermaid .nodeLabel,
+.mermaid .label,
+.mermaid .edgeLabel,
+.mermaid .cluster-label {
+  line-height: 1.2 !important;
+  white-space: pre-wrap !important;
+}
+
+/* Allow label content to overflow inside foreignObject without being cut */
+/* Keep text contained within nodes while wrapping gracefully */
+.mermaid-rendered foreignObject,
+.mermaid foreignObject {
+  overflow: hidden !important;
+}
+
+/* Futuristic visual styling (scoped to Mermaid only) */
+.mermaid-rendered svg .node rect,
+.mermaid svg .node rect {
+  rx: 12px;
+  ry: 12px;
+  fill: rgba(99, 102, 241, 0.06); /* subtle indigo wash */
+  stroke: rgba(99, 102, 241, 0.35);
+  stroke-width: 1.2px;
+}
+
+.mermaid-rendered svg .cluster rect,
+.mermaid svg .cluster rect {
+  rx: 14px;
+  ry: 14px;
+  fill: rgba(148, 163, 184, 0.08);
+  stroke: rgba(148, 163, 184, 0.45);
+  stroke-width: 1.2px;
+}
+
+.mermaid-rendered svg .node,
+.mermaid svg .node {
+  filter: drop-shadow(0 4px 10px rgba(0,0,0,0.10));
+}
+
+.mermaid-rendered svg .edgePath path,
+.mermaid svg .edgePath path {
+  stroke: rgba(100, 116, 139, 0.7);
+  stroke-width: 1.4px;
+}
+
+.mermaid-rendered svg .marker path,
+.mermaid svg .marker path {
+  fill: rgba(100, 116, 139, 0.7);
+}
+
+/* Node label typography and containment */
+.mermaid-rendered .nodeLabel > div,
+.mermaid .nodeLabel > div,
+.mermaid-rendered .label > div,
+.mermaid .label > div {
+  padding: 10px 14px; /* pseudo-padding inside the rect */
+  font-size: 15px !important;
+  line-height: 1.4 !important;
+  word-break: break-word;
+  overflow-wrap: anywhere;
+  min-width: 130px;
+}
+
+/* Cluster titles slightly stronger */
+.mermaid-rendered .cluster-label,
+.mermaid .cluster-label {
+  font-size: 12px !important;
+  font-weight: 600 !important;
+  letter-spacing: 0.01em;
+}
+
 /* Definition of the design system. All colors, gradients, fonts, etc should be defined here. 
 All colors MUST be HSL.
 */
@@ -337,6 +498,19 @@ All colors MUST be HSL.
   .streaming-content ul {
     font-size: var(--font-size-sm) !important;
     line-height: 1.4 !important;
+    font-weight: 400 !important; /* Prevent accidental bold inheritance */
+  }
+  
+  /* Preserve bold formatting for headings */
+  .streaming-content .heading,
+  .streaming-content .section-heading,
+  .streaming-content h1,
+  .streaming-content h2,
+  .streaming-content h3,
+  .streaming-content h4,
+  .streaming-content h5,
+  .streaming-content h6 {
+    font-weight: 600 !important;
   }
   
   /* Override prose classes to maintain consistent sizing */
@@ -346,11 +520,22 @@ All colors MUST be HSL.
   .prose .streaming-content span,
   .prose .streaming-content li,
   .prose .streaming-content ul,
-  .prose .streaming-content ol,
-  .prose .streaming-content strong,
-  .prose .streaming-content em {
+  .prose .streaming-content ol {
     font-size: var(--font-size-sm) !important;
     line-height: 1.4 !important;
+    font-weight: 400 !important; /* Reset weight inside prose as well */
+  }
+  
+  /* Preserve bold formatting for headings in prose */
+  .prose .streaming-content .heading,
+  .prose .streaming-content .section-heading,
+  .prose .streaming-content h1,
+  .prose .streaming-content h2,
+  .prose .streaming-content h3,
+  .prose .streaming-content h4,
+  .prose .streaming-content h5,
+  .prose .streaming-content h6 {
+    font-weight: 600 !important;
   }
   
   /* Force all prose content to use consistent sizing */
@@ -359,11 +544,22 @@ All colors MUST be HSL.
   .prose span,
   .prose li,
   .prose ul,
-  .prose ol,
-  .prose strong,
-  .prose em {
+  .prose ol {
     font-size: var(--font-size-sm) !important;
     line-height: 1.4 !important;
+    font-weight: 400 !important;
+  }
+  
+  /* Preserve bold formatting for headings in general prose */
+  .prose .heading,
+  .prose .section-heading,
+  .prose h1,
+  .prose h2,
+  .prose h3,
+  .prose h4,
+  .prose h5,
+  .prose h6 {
+    font-weight: 600 !important;
   }
   
   /* Override ALL possible prose typography classes */
@@ -387,17 +583,48 @@ All colors MUST be HSL.
     line-height: 1.4 !important;
   }
   
+  /* Preserve bold formatting for headings in prose-neutral and prose-invert */
+  .prose-neutral .heading,
+  .prose-neutral .section-heading,
+  .prose-neutral h1,
+  .prose-neutral h2,
+  .prose-neutral h3,
+  .prose-neutral h4,
+  .prose-neutral h5,
+  .prose-neutral h6,
+  .prose-invert .heading,
+  .prose-invert .section-heading,
+  .prose-invert h1,
+  .prose-invert h2,
+  .prose-invert h3,
+  .prose-invert h4,
+  .prose-invert h5,
+  .prose-invert h6 {
+    font-weight: 600 !important;
+  }
+  
   /* Override max-w-none and other prose modifiers */
   .max-w-none p,
   .max-w-none div,
   .max-w-none span,
   .max-w-none li,
   .max-w-none ul,
-  .max-w-none ol,
-  .max-w-none strong,
-  .max-w-none em {
+  .max-w-none ol {
     font-size: var(--font-size-sm) !important;
     line-height: 1.4 !important;
+    font-weight: 400 !important;
+  }
+  
+  /* Preserve bold formatting for headings in max-w-none */
+  .max-w-none .heading,
+  .max-w-none .section-heading,
+  .max-w-none h1,
+  .max-w-none h2,
+  .max-w-none h3,
+  .max-w-none h4,
+  .max-w-none h5,
+  .max-w-none h6 {
+    font-weight: 600 !important;
   }
   
   .streaming-content .code-block {
@@ -443,7 +670,8 @@ All colors MUST be HSL.
     display: block;
     padding: 12px;
     font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
-    font-size: 13px;
+    /* Keep code the same size as surrounding small text */
+    font-size: var(--font-size-sm);
     line-height: 1.4;
     color: #d4d4d4;
     overflow-x: auto;
@@ -548,8 +776,49 @@ All colors MUST be HSL.
   }
   
   .streaming-content strong {
-    font-weight: bold;
+    font-weight: 600 !important; /* Only keywords/titles bold */
     color: hsl(var(--foreground));
+  }
+  .prose .streaming-content strong,
+  .prose strong {
+    font-weight: 600 !important;
+  }
+
+  /* Final rendered blocks wrapper: ensure bold persists post-stream */
+  .answer-content strong { font-weight: 600 !important; }
+  .answer-content .heading,
+  .answer-content .section-heading { font-weight: 600 !important; }
+
+  /* Ensure section headings remain bold even with resets above */
+  .section-heading,
+  .section-heading *,
+  .prose .section-heading,
+  .prose .section-heading * {
+    font-weight: 600 !important;
+  }
+  .streaming-content .heading,
+  .prose .heading {
+    font-weight: 600 !important;
+  }
+  
+  /* Comprehensive bold preservation for all heading types */
+  .answer-content .heading,
+  .answer-content .section-heading,
+  .answer-content h1,
+  .answer-content h2,
+  .answer-content h3,
+  .answer-content h4,
+  .answer-content h5,
+  .answer-content h6,
+  .streaming-content .heading,
+  .streaming-content .section-heading,
+  .streaming-content h1,
+  .streaming-content h2,
+  .streaming-content h3,
+  .streaming-content h4,
+  .streaming-content h5,
+  .streaming-content h6 {
+    font-weight: 600 !important;
   }
   
   /* Code highlighting classes - ChatGPT-style colors */
@@ -690,7 +959,7 @@ All colors MUST be HSL.
   @media (max-width: 768px) {
     /* Ensure cards don't touch the viewport edges */
     .mx-2 { margin-left: 0.5rem; margin-right: 0.5rem; }
-    .answer-card-mobile { margin-left: 0.5rem; margin-right: 0.5rem; }
+    .answer-card-mobile { margin-left: 0rem !important; margin-right: 0rem !important; }
 
     /* Prevent horizontal overflow */
     body {
@@ -753,7 +1022,8 @@ All colors MUST be HSL.
     
     /* Mobile-friendly code blocks */
     .streaming-content pre {
-      font-size: 14px;
+      /* Keep code text size consistent with surrounding content on mobile */
+      font-size: var(--font-size-sm);
       line-height: 1.4;
       padding: 1rem;
       white-space: pre-wrap; /* allow wrapping to avoid horizontal scroll on very long lines */

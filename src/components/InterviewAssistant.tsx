@@ -6,6 +6,7 @@ import { MessageSquare, MoreVertical, Trash2, Menu, X } from "lucide-react";
 import { apiCreateSession, apiSubmitQuestion, apiGetHistory, apiGetSessions, apiDeleteHistoryItemByIndex, type AnswerStyle, type SessionSummary, type GetHistoryResponse } from "@/lib/api";
 import { useToast } from "@/hooks/use-toast";
 import { Button } from "@/components/ui/button";
+import { startEvaluationOverlay } from "@/overlayHost";
 
 export const InterviewAssistant = () => {
   const [question, setQuestion] = useState("");
@@ -23,6 +24,7 @@ export const InterviewAssistant = () => {
   const [openMenuIndex, setOpenMenuIndex] = useState<number | null>(null);
   const [menuPos, setMenuPos] = useState<{ top: number; left: number } | null>(null);
   const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState(false);
+  const [deferredPrompt, setDeferredPrompt] = useState<any>(null);
   
   // Versioning for edit-and-compare flow
   const [originalQA, setOriginalQA] = useState<{ q: string; a: string } | null>(null);
@@ -88,13 +90,29 @@ export const InterviewAssistant = () => {
     (async () => {
       try {
         const s = await apiGetSessions();
-        setSessions(s);
+          setSessions(s);
         console.log("[api] GET /api/sessions ->", s);
       } catch (e) {
         console.error("[api] sessions error", e);
       }
     })();
   }, []);
+
+  // Capture install prompt and surface an Install action
+  useEffect(() => {
+    const handler = (e: any) => {
+      e.preventDefault();
+      setDeferredPrompt(e);
+      try {
+        toast({
+          title: "Install available",
+          description: "Install Interview Assistant as an app for a better mobile experience.",
+        });
+      } catch {}
+    };
+    window.addEventListener('beforeinstallprompt', handler);
+    return () => window.removeEventListener('beforeinstallprompt', handler);
+  }, [toast]);
 
   // Load history when sessionId available or reset token changes
   useEffect(() => {
@@ -139,6 +157,7 @@ export const InterviewAssistant = () => {
 
   const handleGenerateAnswer = async (overrideQuestion?: string) => {
     setIsNavigatingVersion(false);
+    setViewingHistory(false);
     // Do not generate if user is viewing a saved history item
     if (viewingHistory) {
       console.log('[ui] Generation blocked while viewing history');
@@ -227,6 +246,16 @@ export const InterviewAssistant = () => {
     }
   };
 
+  // Example Evaluate button handler (streams evaluation overlay)
+  const handleEvaluateCode = async () => {
+    // This is a sample hook-up. Replace `code` and `problem` with your current editor/problem state.
+    const code = `def two_sum(nums, target):\n    seen = {}\n    for i, n in enumerate(nums):\n        d = target - n\n        if d in seen:\n            return [seen[d], i]\n        seen[n] = i\n    return []`;
+    const problem = "Implement two_sum. Return indices of two numbers adding to target.";
+    try {
+      await startEvaluationOverlay({ code, problem, language: "python", title: "Running Evaluation" });
+    } catch {}
+  };
+
   // Generate specifically for an edited question inline, preserving current view until response arrives
   const handleSubmitInlineEdit = async (newQuestion: string) => {
     // Keep current response visible; generate latest in background
@@ -234,6 +263,7 @@ export const InterviewAssistant = () => {
     setPendingEditedQuestion(newQuestion);
     // Hide current card and show generating placeholder similar to new query flow
     setShowAnswer(false);
+    setViewingHistory(false);
     await handleGenerateAnswer(newQuestion);
   };
 
@@ -299,10 +329,26 @@ export const InterviewAssistant = () => {
             >
               <Menu className="h-5 w-5" />
             </Button>
-            <h1 className="text-lg font-bold text-foreground">Interview Assist</h1>
+            <h1 className="text-lg font-bold text-foreground">InterviewPrep</h1>
           </div>
           <div className="flex items-center gap-2">
             <ThemeToggle />
+            {deferredPrompt && (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={async () => {
+                  const prompt = deferredPrompt;
+                  setDeferredPrompt(null);
+                  try {
+                    await prompt.prompt();
+                    await prompt.userChoice;
+                  } catch {}
+                }}
+              >
+                Install
+              </Button>
+            )}
           </div>
         </div>
       </div>
@@ -417,7 +463,7 @@ export const InterviewAssistant = () => {
       {/* Desktop Sidebar */}
       <aside className="hidden md:flex fixed left-0 top-0 bottom-0 w-64 border-r border-border/40 bg-background/70 backdrop-blur-sm z-40 flex-col">
         <div className="p-4 border-b border-border/40">
-          <h1 className="text-xl font-bold text-foreground">Interview Assist</h1>
+          <h1 className="text-xl font-bold text-foreground">InterviewPrep</h1>
         </div>
         {/* Sessions */}
         <div className="px-2 overflow-y-auto">
@@ -515,14 +561,14 @@ export const InterviewAssistant = () => {
       {/* Main content area */}
       <div className="flex flex-col min-h-screen md:pl-64">
         {/* Response Section */}
-        <div className="flex-1 px-3 py-4 md:px-6 md:py-6">
+        <div className="flex-1 px-0 py-2 md:px-6 md:py-6">
           <div className="max-w-4xl mx-auto w-full">
             {showAnswer ? (
               <div className="animate-in slide-in-from-top-4 duration-500">
               <AnswerCard 
                 answer={answer}
                 question={lastQuestion}
-                streaming={!isNavigatingVersion}
+                streaming={!viewingHistory && !isNavigatingVersion}
                 onEdit={handleEditCurrent}
                 onSubmitEdit={handleSubmitInlineEdit}
                 canPrev={!!(originalQA && latestQA) && currentVersion === 1}

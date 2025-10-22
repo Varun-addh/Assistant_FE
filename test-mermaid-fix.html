@@ -1,0 +1,96 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Mermaid Fix Test</title>
+    <script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
+    <style>
+        .mermaid-rendered {
+            display: block;
+            text-align: center;
+            margin: 1rem 0;
+        }
+        .mermaid-rendered svg {
+            max-width: 100%;
+            height: auto;
+        }
+    </style>
+</head>
+<body>
+    <h1>Mermaid Fix Test</h1>
+    
+    <div class="mermaid">
+flowchart TD
+    HP[Homepage Container]
+    HP --> A[Header (Sticky Navigation, Logo, Search)]
+    HP --> B[Hero Section (Max 1 Featured Story + 3 Sub-Stories)]
+    HP --> C[Main Content Grid (Modular & Dynamic)]
+    C --> C1[Module 1: Must Reads/Local News]
+    C --> C2[Module 2: Opinion & Analysis]
+    C --> C3[Sidebar: Trending Topics, High-Value Ads, Widgets]
+    C --> C4[Module 3: International & Sports (Lazy Loaded)]
+    HP --> D[Footer (Legal Links, Site Map)]
+    </div>
+
+    <script>
+        // Test our fix logic
+        function cleanSvgContent(svgContent) {
+            let cleaned = svgContent
+                .replace(/aria-roledescription="[^"]*"/g, '')
+                .replace(/role="graphics-document[^"]*"/g, '')
+                .replace(/\s+/g, ' ')
+                .replace(/\s*=\s*/g, '=')
+                .trim();
+            
+            cleaned = cleaned.replace(/aria-roledescription\s*=\s*"[^"]*"/g, '');
+            cleaned = cleaned.replace(/role\s*=\s*"graphics-document[^"]*"/g, '');
+            
+            return cleaned;
+        }
+
+        function setSvgContentSafely(element, svgContent) {
+            element.classList.remove('mermaid');
+            element.classList.add('mermaid-rendered');
+            element.dataset.processed = '1';
+            
+            const originalMermaid = window.mermaid;
+            window.mermaid = null;
+            
+            element.innerHTML = svgContent;
+            
+            setTimeout(() => {
+                window.mermaid = originalMermaid;
+            }, 200);
+        }
+
+        // Initialize Mermaid
+        mermaid.initialize({ startOnLoad: false, theme: 'default', securityLevel: 'loose' });
+
+        // Process the diagram
+        setTimeout(() => {
+            const nodes = document.querySelectorAll('.mermaid');
+            console.log('Found', nodes.length, 'Mermaid nodes');
+            
+            nodes.forEach((el, i) => {
+                if (el.dataset.processed === '1') return;
+                
+                const src = el.textContent || '';
+                console.log('Processing node', i, ':', src.substring(0, 100) + '...');
+                
+                // Simulate backend response with error attribute
+                const mockSvg = `<svg id="mermaidInkSvg" width="100%" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 300" role="graphics-document" aria-roledescription="error">
+                    <rect x="10" y="10" width="380" height="280" fill="lightblue" stroke="black"/>
+                    <text x="200" y="150" text-anchor="middle" font-family="Arial" font-size="16">Test Diagram</text>
+                </svg>`;
+                
+                console.log('Original SVG contains aria-roledescription:', mockSvg.includes('aria-roledescription'));
+                const cleanedSvg = cleanSvgContent(mockSvg);
+                console.log('Cleaned SVG contains aria-roledescription:', cleanedSvg.includes('aria-roledescription'));
+                
+                setSvgContentSafely(el, cleanedSvg);
+            });
+        }, 100);
+    </script>
+</body>
+</html>

@@ -55,6 +55,35 @@ export async function apiSubmitQuestion(body: SubmitQuestionRequest): Promise<Su
   return res.json();
 }
 
+// Streaming evaluation
+export interface EvaluateRequest {
+  session_id: string;
+  code: string;
+  problem: string;
+  language: string; // e.g., "python"
+}
+
+export async function apiEvaluateStream(body: EvaluateRequest, onChunk: (text: string) => void): Promise<void> {
+  // Ensure session exists upstream; assume caller created session_id
+  const res = await fetch(`${BASE_URL}/api/evaluate`, {
+    method: "POST",
+    headers: buildHeaders(),
+    body: JSON.stringify(body),
+  });
+  if (!res.ok || !res.body) {
+    const text = await res.text().catch(() => "");
+    throw new Error(`Evaluate failed: ${res.status} ${text}`);
+  }
+  const reader = res.body.getReader();
+  const decoder = new TextDecoder();
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    const chunk = decoder.decode(value, { stream: true });
+    if (chunk) onChunk(chunk);
+  }
+}
+
 export interface HistoryItem {
   question: string;
   answer: string;
@@ -135,6 +164,22 @@ export async function apiDeleteHistoryItemByIndex(params: { session_id: string; 
   return res.json();
 }
 
+// Render Mermaid to SVG via backend (preferred over direct Kroki calls)
+export async function apiRenderMermaid(params: { code: string; theme?: string; style?: string; size?: "compact" | "medium" | "large" }): Promise<string> {
+  const { code, theme = "default", style = "modern", size = "medium" } = params;
+  const res = await fetch(`${BASE_URL}/api/render_mermaid`, {
+    method: "POST",
+    headers: buildHeaders(),
+    body: JSON.stringify({ code, theme, style, size }),
+  });
+  if (!res.ok) {
+    const text = await res.text().catch(() => "");
+    throw new Error(`Render mermaid failed: ${res.status} ${text}`);
+  }
+  // Backend returns raw SVG text
+  return res.text();
+}
+
 export type SttEvent =
   | { type: "partial_transcript"; text: string }
   | { type: "end" };
@@ -171,6 +216,110 @@ export async function apiUploadProfile(params: { session_id: string; file: File 
     throw new Error(`Upload profile failed: ${res.status} ${text}`);
   }
   return res.json();
+}
+
+// Revolutionary Code Analysis System
+export interface CodeAnalysisRequest {
+  code: string;
+  language: string;
+  include_diagrams?: boolean;
+  include_memory_analysis?: boolean;
+  include_complexity_analysis?: boolean;
+  problem?: string;
+}
+
+export interface ExecutionStep {
+  line: number;
+  action: string;
+  variables: Record<string, any>;
+  memory: {
+    stack: Array<{name: string, value: any, type: string}>;
+    heap: Array<{address: string, value: any, type: string}>;
+  };
+  explanation: {
+    beginner: string;
+    professional: string;
+  };
+}
+
+export interface CodeAnalysisResponse {
+  execution_steps: Array<{
+    line_number: number;
+    line_content: string;
+    step_type: string;
+    description: string;
+    variables?: Record<string, any>;
+    memory?: {
+      stack: Array<{name: string, value: any, type: string}>;
+      heap: Array<{address: string, value: any, type: string}>;
+    };
+    beginner_explanation?: string;
+    professional_explanation?: string;
+  }>;
+  execution_flow: string;
+}
+
+export async function apiAnalyzeCode(params: CodeAnalysisRequest): Promise<CodeAnalysisResponse> {
+  console.log('🔬 Starting Code Analysis API Call...');
+  console.log('📊 Request Parameters:', params);
+  
+  const res = await fetch(`${BASE_URL}/api/analyze`, {
+    method: "POST",
+    headers: buildHeaders(),
+    body: JSON.stringify(params),
+  });
+  
+  if (!res.ok) {
+    const text = await res.text().catch(() => "");
+    console.error('❌ Code Analysis API Error:', res.status, text);
+    throw new Error(`Code analysis failed: ${res.status} ${text}`);
+  }
+  
+  const result = await res.json();
+  console.log('✅ Code Analysis API Success:', result);
+  return result;
+}
+
+export interface StepByStepAnalysisRequest {
+  code: string;
+  language: string;
+  step?: number;
+}
+
+export interface StepByStepStep {
+  step_number: number;
+  line_number: number;
+  line_content: string;
+  line_explanation: string;
+  visual_flow: string;
+}
+
+export interface StepByStepAnalysisResponse {
+  code: string;
+  language: string;
+  total_steps: number;
+  step_by_step_analysis: StepByStepStep[];
+}
+
+export async function apiStepByStepAnalysis(params: StepByStepAnalysisRequest): Promise<StepByStepAnalysisResponse> {
+  console.log('📝 Starting Step-by-Step Analysis API Call...');
+  console.log('📊 Request Parameters:', params);
+  
+  const res = await fetch(`${BASE_URL}/api/analyze/step-by-step`, {
+    method: "POST",
+    headers: buildHeaders(),
+    body: JSON.stringify(params),
+  });
+  
+  if (!res.ok) {
+    const text = await res.text().catch(() => "");
+    console.error('❌ Step-by-Step Analysis API Error:', res.status, text);
+    throw new Error(`Step-by-step analysis failed: ${res.status} ${text}`);
+  }
+  
+  const result = await res.json();
+  console.log('✅ Step-by-Step Analysis API Success:', result);
+  return result;
 }
 
 
