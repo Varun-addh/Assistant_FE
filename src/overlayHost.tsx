@@ -163,15 +163,29 @@ function processRawEvaluation(raw: string): string {
     if (typeof json?.markdown === 'string' && json.markdown.trim()) {
       return json.markdown as string;
     }
-    // Build a pleasant textual representation
+    // Build a pleasant textual representation with better formatting
     const parts: string[] = [];
     if (json.problem) parts.push(`### Problem\n${json.problem}`);
-    if (json.approach_auto_explanation) parts.push(`### Approach\n${json.approach_auto_explanation}`);
+    
+    // Format approach with bullet points for better UX
+    if (json.approach_auto_explanation) {
+      const approach = json.approach_auto_explanation;
+      // If it's already a string, try to convert to bullets
+      if (typeof approach === 'string') {
+        // Split by sentences and convert to bullet points
+        const sentences = approach.split(/[.!?]+/).filter(s => s.trim().length > 0);
+        const bulletPoints = sentences.map(sentence => `- ${sentence.trim()}`).join('\n');
+        parts.push(`### Approach\n${bulletPoints}`);
+      } else {
+        parts.push(`### Approach\n${approach}`);
+      }
+    }
+    
     if (Array.isArray(json.strengths) && json.strengths.length) {
-      parts.push(`### Strengths\n- ${json.strengths.join('\n- ')}`);
+      parts.push(`### Strengths\n${json.strengths.map(s => `- ${s}`).join('\n')}`);
     }
     if (Array.isArray(json.weaknesses) && json.weaknesses.length) {
-      parts.push(`### Areas for Improvement\n- ${json.weaknesses.join('\n- ')}`);
+      parts.push(`### Areas for Improvement\n${json.weaknesses.map(w => `- ${w}`).join('\n')}`);
     }
     if (json.scores && typeof json.scores === 'object') {
       const scoreLines = Object.entries(json.scores).map(([k,v]) => `- ${k}: ${v}`);

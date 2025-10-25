@@ -76,9 +76,31 @@ export const EvaluationOverlay = ({ open, title = "Evaluating...", streamedText,
       .replace(/^###\s+(.+)$/gm, '<h4 class="section-title">$1</h4>')
       .replace(/^##\s+(.+)$/gm, '<h3 class="section-title">$1</h3>')
       .replace(/^#\s+(.+)$/gm, '<h2 class="section-title">$1</h2>');
-    // bullets to list
-    out = out.replace(/^(?:-\s+)(.+)$/gm, '<li class="bullet">$1</li>');
-    out = out.replace(/(<li class=\"bullet\">.*?<\/li>\s*)+/gs, (m) => `<ul class=\"bullet-list\">${m}</ul>`);
+    
+    // Enhanced bullet point formatting for better UX
+    // Handle different bullet styles: -, *, •, and numbered lists
+    out = out.replace(/^(?:[-*•]\s+)(.+)$/gm, '<li class="bullet-item">$1</li>');
+    out = out.replace(/^(\d+\.\s+)(.+)$/gm, '<li class="numbered-item">$2</li>');
+    
+    // Group consecutive bullet items into lists
+    out = out.replace(/(<li class=\"bullet-item\">.*?<\/li>\s*)+/gs, (m) => `<ul class=\"bullet-list\">${m}</ul>`);
+    out = out.replace(/(<li class=\"numbered-item\">.*?<\/li>\s*)+/gs, (m) => `<ol class=\"numbered-list\">${m}</ol>`);
+    
+    // Special handling for approach section - ensure it gets bullet formatting
+    out = out.replace(/^###\s+Approach\s*$/gm, '<h4 class="section-title">Approach</h4>');
+    
+    // Convert approach content to bullets if it's not already formatted
+    out = out.replace(/(<h4 class="section-title">Approach<\/h4>)\s*([^<]+?)(?=<h[1-6]|$)/gs, (match, heading, content) => {
+      const trimmedContent = content.trim();
+      if (trimmedContent && !trimmedContent.includes('<li')) {
+        // Split by sentences and convert to bullet points
+        const sentences = trimmedContent.split(/[.!?]+/).filter(s => s.trim().length > 0);
+        const bulletItems = sentences.map(sentence => `<li class="bullet-item">${sentence.trim()}</li>`).join('');
+        return `${heading}\n<ul class="bullet-list">${bulletItems}</ul>`;
+      }
+      return match;
+    });
+    
     // paragraphs
     out = out.replace(/\n{2,}/g, '</p><p class="section-content">');
     out = `<p class="section-content">${out}</p>`;
@@ -122,12 +144,6 @@ export const EvaluationOverlay = ({ open, title = "Evaluating...", streamedText,
 
         <div ref={scrollRef} className="flex-1 overflow-auto px-4 sm:px-6 py-5 sm:py-6" style={{ overscrollBehavior: 'contain', WebkitOverflowScrolling: 'touch' }}>
           <div className="prose prose-invert max-w-none">
-            {(!isTyping && summaryHtml && summaryHtml.trim()) ? (
-              <div className="mb-6">
-                <h4 className="section-title">Evaluation Summary</h4>
-                <div dangerouslySetInnerHTML={{ __html: summaryHtml }} />
-              </div>
-            ) : null}
             {(!displayedText || !displayedText.trim()) && isStreaming ? (
               <div className="flex flex-col items-center justify-center py-16 select-none">
                 <div className={`h-8 w-8 rounded-full border-2 ${isDark ? 'border-white/30 border-t-white' : 'border-gray-400/50 border-t-gray-900'} animate-spin`} aria-label="Loading" />
@@ -167,8 +183,30 @@ export const EvaluationOverlay = ({ open, title = "Evaluating...", streamedText,
           margin-bottom: 0;
           color: ${isDark ? '#ffffff' : '#1f2937'};
         }
-        .bullet-list { padding-left: 1.25rem; margin: 0.5rem 0 1rem; }
-        .bullet { margin: 0.25rem 0; }
+        .bullet-list { 
+          padding-left: 1.25rem; 
+          margin: 0.5rem 0 1rem; 
+          list-style: none;
+        }
+        .bullet-item { 
+          margin: 0.25rem 0; 
+          position: relative;
+          padding-left: 0.5rem;
+        }
+        .bullet-item::before {
+          content: "•";
+          position: absolute;
+          left: -0.75rem;
+          color: ${isDark ? '#60a5fa' : '#3b82f6'};
+          font-weight: bold;
+        }
+        .numbered-list {
+          padding-left: 1.25rem;
+          margin: 0.5rem 0 1rem;
+        }
+        .numbered-item {
+          margin: 0.25rem 0;
+        }
       `}</style>
     </div>
   );

@@ -90,7 +90,7 @@ export const InterviewAssistant = () => {
     (async () => {
       try {
         const s = await apiGetSessions();
-          setSessions(s);
+        setSessions(s);
         console.log("[api] GET /api/sessions ->", s);
       } catch (e) {
         console.error("[api] sessions error", e);
@@ -582,7 +582,7 @@ export const InterviewAssistant = () => {
               />
               </div>
             ) : isGenerating ? (
-              <div className="flex flex-col items-center justify-center py-12 md:py-16 bg-card/30 backdrop-blur-sm border border-border/50 rounded-xl mx-2 md:mx-0">
+              <div className="flex flex-col items-center justify-center py-12 md:py-16 bg-card/30 backdrop-blur-sm rounded-xl mx-2 md:mx-0">
                 <div className="relative">
                   <div className="w-10 h-10 md:w-12 md:h-12 border-3 border-primary/20 rounded-full"></div>
                   <div className="absolute top-0 left-0 w-10 h-10 md:w-12 md:h-12 border-3 border-primary border-t-transparent rounded-full animate-spin"></div>
@@ -593,7 +593,7 @@ export const InterviewAssistant = () => {
                 </div>
               </div>
             ) : (
-              <div className="flex flex-col items-center justify-center py-12 md:py-16 text-center bg-card/30 backdrop-blur-sm border border-border/50 rounded-xl mx-2 md:mx-0">
+              <div className="flex flex-col items-center justify-center py-12 md:py-16 text-center bg-card/30 backdrop-blur-sm rounded-xl mx-2 md:mx-0">
                 <div className="relative mb-6">
                   <div className="w-14 h-14 md:w-16 md:h-16 bg-gradient-to-br from-primary/20 to-primary/10 rounded-xl flex items-center justify-center">
                     <MessageSquare className="h-7 w-7 md:h-8 md:w-8 text-primary" />
