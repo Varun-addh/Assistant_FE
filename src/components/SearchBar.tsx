@@ -46,6 +46,8 @@ export const SearchBar = ({ value, onChange, placeholder = "Type your question..
   const inUtteranceRef = useRef<boolean>(false);
   // Global flag to completely disable speech processing
   const speechProcessingEnabledRef = useRef<boolean>(false);
+  
+  // Fixed height for consistent layout
   const { toast } = useToast();
 
   // Deepgram meeting/tab audio capture
@@ -72,21 +74,15 @@ export const SearchBar = ({ value, onChange, placeholder = "Type your question..
     }
   }, [value, isListening]);
 
-  // Auto-resize textarea based on content, but keep initial height fixed
+  // Simple height management for consistent layout
   useEffect(() => {
     if (textareaRef.current) {
       const textarea = textareaRef.current;
-      if (value.trim() === '') {
-        // Reset to initial height when empty
-        textarea.style.height = '56px';
-      } else {
-        // Only expand if content requires it
-        textarea.style.height = '56px'; // Reset to base
-        const scrollHeight = textarea.scrollHeight;
-        if (scrollHeight > 56) {
-          textarea.style.height = Math.min(scrollHeight, 120) + 'px'; // Max 120px
-        }
-      }
+      // Always maintain consistent height
+      textarea.style.height = 'auto';
+      const scrollHeight = textarea.scrollHeight;
+      const newHeight = Math.min(Math.max(scrollHeight, 40), 275);
+      textarea.style.height = `${newHeight}px`;
     }
   }, [value]);
 
@@ -833,6 +829,17 @@ export const SearchBar = ({ value, onChange, placeholder = "Type your question..
         onGenerate();
       }
     }
+    
+    // Adjust height after key press
+    setTimeout(() => {
+      if (textareaRef.current) {
+        const textarea = textareaRef.current;
+        textarea.style.height = 'auto';
+        const scrollHeight = textarea.scrollHeight;
+        const newHeight = Math.min(Math.max(scrollHeight, 40), 275);
+        textarea.style.height = `${newHeight}px`;
+      }
+    }, 0);
   };
 
   const restartRecognition = () => {
@@ -1089,82 +1096,86 @@ export const SearchBar = ({ value, onChange, placeholder = "Type your question..
   return (
     <div className="relative w-full">
       <div className="relative group">
-        {/* Mobile-optimized search bar */}
-        <div className="flex items-end bg-background/95 backdrop-blur-sm border border-border/50 rounded-2xl shadow-lg focus-within:shadow-xl focus-within:ring-2 focus-within:ring-primary/50 focus-within:border-primary transition-all duration-300 group-hover:border-primary/30">
-          {/* Upload button - optimized for mobile */}
-          <div className="flex items-center p-2 md:p-3">
-            <Button
-              onClick={handleUploadClick}
-              variant="ghost"
-              size="sm"
-              disabled={isUploading}
-              className="transition-all duration-300 rounded-full h-9 w-9 md:h-8 md:w-8 p-0 text-muted-foreground hover:text-foreground hover:bg-muted/50 touch-manipulation"
-              title={isUploading ? 'Uploading...' : 'Upload Resume'}
-            >
-              {isUploading ? (
-                <div className="w-4 h-4 border-2 border-muted-foreground rounded-full border-t-transparent animate-spin"></div>
-              ) : (
-                <span className="text-lg font-light">+</span>
-              )}
-            </Button>
-          </div>
-          
-          {/* Text area - mobile optimized */}
-          <textarea
-            ref={textareaRef}
-            value={value}
-            onChange={(e) => onChange(e.target.value)}
-            onKeyDown={handleKeyDown}
-            onFocus={handleFocus}
-            onBlur={handleBlur}
-            placeholder={placeholder}
-            className="flex-1 h-[56px] md:h-[60px] py-4 px-3 text-base md:text-sm bg-transparent border-none outline-none resize-none placeholder:text-muted-foreground/70 leading-normal overflow-hidden"
-            rows={1}
-            style={{ 
-              fontSize: '16px', // Prevents zoom on iOS
-              lineHeight: '1.5',
-              height: '56px',
-              maxHeight: '56px',
-              minHeight: '56px',
-              verticalAlign: 'top',
-              textAlign: 'left'
-            }}
-          />
-          
-          {/* Right side buttons - mobile optimized */}
-          <div className="flex items-center p-2 md:p-3 gap-1.5 md:gap-2">
-            {/* Microphone button */}
-            {isSupported && (
-              <Button
-                onClick={handleProMicToggle}
-                variant="ghost"
-                size="sm"
-                className={`transition-all duration-300 rounded-full h-9 w-9 md:h-8 md:w-8 p-0 touch-manipulation ${
-                  isCapturingProMic
-                    ? "text-destructive hover:bg-destructive/10"
-                    : "text-muted-foreground hover:text-foreground hover:bg-muted/50"
-                }`}
-                title={isCapturingProMic ? 'Stop microphone' : 'Start microphone'}
-              >
-                <Mic className="h-4 w-4" />
-              </Button>
-            )}
-            
-            {/* Send button - larger on mobile */}
-            <Button
-              onClick={() => canGenerate && value.trim() && onGenerate && !isGenerating ? onGenerate() : null}
-              disabled={!canGenerate || !value.trim() || isGenerating}
-              className="transition-all duration-300 rounded-full h-9 w-9 md:h-8 md:w-8 p-0 bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed touch-manipulation"
-              title="Send message"
-            >
-              {isGenerating ? (
-                <div className="w-4 h-4 border-2 border-primary-foreground rounded-full border-t-transparent animate-spin"></div>
-              ) : (
-                <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" />
-                </svg>
-              )}
-            </Button>
+        {/* ChatGPT-style compact mobile search bar */}
+        <div className="search-bar bg-background/95 backdrop-blur-sm border border-border/50 rounded-2xl shadow-lg focus-within:shadow-xl focus-within:ring-2 focus-within:ring-primary/20 focus-within:border-primary transition-all duration-300 group-hover:border-primary/30">
+          {/* Main content container */}
+          <div className="flex items-center p-2">
+            {/* Text area with stable positioned icons */}
+            <div className="flex-1 relative flex items-center">
+              <textarea
+                ref={textareaRef}
+                value={value}
+                onChange={(e) => onChange(e.target.value)}
+                onKeyDown={handleKeyDown}
+                onFocus={handleFocus}
+                onBlur={handleBlur}
+                placeholder={placeholder}
+                className="w-full py-2 px-0 pr-20 text-sm bg-transparent border-none outline-none resize-none placeholder:text-muted-foreground/70 leading-relaxed overflow-y-auto scrollbar-thin"
+                rows={1}
+                style={{ 
+                  fontSize: '16px', // Prevents zoom on iOS
+                  lineHeight: '1.5',
+                  minHeight: '32px',
+                  maxHeight: '200px',
+                  verticalAlign: 'top',
+                  textAlign: 'left'
+                }}
+              />
+              
+              {/* Fixed + icon positioned at bottom left */}
+              <div className="absolute left-0 bottom-1 flex-shrink-0">
+                <Button
+                  onClick={handleUploadClick}
+                  variant="ghost"
+                  size="sm"
+                  disabled={isUploading}
+                  className="rounded-full h-8 w-8 p-0 text-muted-foreground hover:text-foreground hover:bg-muted/50 touch-manipulation"
+                  title={isUploading ? 'Uploading...' : 'Upload Resume'}
+                >
+                  {isUploading ? (
+                    <div className="w-4 h-4 border-2 border-muted-foreground rounded-full border-t-transparent animate-spin"></div>
+                  ) : (
+                    <span className="text-lg font-medium">+</span>
+                  )}
+                </Button>
+              </div>
+              
+              {/* Fixed action buttons positioned at bottom right */}
+              <div className="absolute right-0 bottom-1 flex items-center gap-1 flex-shrink-0">
+                {/* Microphone button */}
+                {isSupported && (
+                  <Button
+                    onClick={handleProMicToggle}
+                    variant="ghost"
+                    size="sm"
+                    className={`rounded-full h-6 w-6 p-0 touch-manipulation ${
+                      isCapturingProMic
+                        ? "text-destructive hover:bg-destructive/10"
+                        : "text-muted-foreground hover:text-foreground hover:bg-muted/50"
+                    }`}
+                    title={isCapturingProMic ? 'Stop microphone' : 'Start microphone'}
+                  >
+                    <Mic className="h-3 w-3" />
+                  </Button>
+                )}
+                
+                {/* Send button */}
+                <Button
+                  onClick={() => canGenerate && value.trim() && onGenerate && !isGenerating ? onGenerate() : null}
+                  disabled={!canGenerate || !value.trim() || isGenerating}
+                  className="rounded-full h-6 w-6 p-0 bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed touch-manipulation"
+                  title="Send message"
+                >
+                  {isGenerating ? (
+                    <div className="w-3 h-3 border-2 border-primary-foreground rounded-full border-t-transparent animate-spin"></div>
+                  ) : (
+                    <svg className="h-3 w-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" />
+                    </svg>
+                  )}
+                </Button>
+              </div>
+            </div>
           </div>
         </div>
       </div>

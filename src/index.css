@@ -2,6 +2,53 @@
 @tailwind components;
 @tailwind utilities;
 
+/* Custom scrollbar styles for professional look */
+@layer utilities {
+  .scrollbar-thin {
+    scrollbar-width: thin;
+    scrollbar-color: rgba(255, 255, 255, 0.2) transparent;
+  }
+  
+  .scrollbar-thin::-webkit-scrollbar {
+    width: 6px;
+  }
+  
+  .scrollbar-thin::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  
+  .scrollbar-thin::-webkit-scrollbar-thumb {
+    background: rgba(255, 255, 255, 0.3);
+    border-radius: 3px;
+    transition: background 0.2s ease;
+  }
+  
+  .scrollbar-thin::-webkit-scrollbar-thumb:hover {
+    background: rgba(255, 255, 255, 0.5);
+  }
+  
+  .scrollbar-thin::-webkit-scrollbar-thumb:active {
+    background: rgba(255, 255, 255, 0.7);
+  }
+  
+  /* Dark theme scrollbar */
+  .dark .scrollbar-thin {
+    scrollbar-color: rgba(255, 255, 255, 0.15) transparent;
+  }
+  
+  .dark .scrollbar-thin::-webkit-scrollbar-thumb {
+    background: rgba(255, 255, 255, 0.25);
+  }
+  
+  .dark .scrollbar-thin::-webkit-scrollbar-thumb:hover {
+    background: rgba(255, 255, 255, 0.4);
+  }
+  
+  .dark .scrollbar-thin::-webkit-scrollbar-thumb:active {
+    background: rgba(255, 255, 255, 0.6);
+  }
+}
+
 /* Mermaid diagram styling */
 .mermaid-rendered {
   display: block;
@@ -1086,9 +1133,9 @@ All colors MUST be HSL.
     }
   }
 
-  /* Mobile optimizations */
+  /* ChatGPT-style Compact Mobile Design */
   @media (max-width: 768px) {
-    /* Ensure cards don't touch the viewport edges */
+    /* Clean mobile layout */
     .mx-2 { margin-left: 0.5rem; margin-right: 0.5rem; }
     .answer-card-mobile { margin-left: 0rem !important; margin-right: 0rem !important; }
 
@@ -1097,12 +1144,13 @@ All colors MUST be HSL.
       overflow-x: hidden;
     }
     
-    /* Improve touch targets */
+    /* Clean touch targets */
     .touch-manipulation {
       touch-action: manipulation;
+      -webkit-tap-highlight-color: transparent;
     }
     
-    /* Mobile action buttons - ensure proper touch targets */
+    /* Compact mobile action buttons */
     .mobile-action-button {
       min-height: 44px;
       min-width: 44px;
@@ -1110,29 +1158,28 @@ All colors MUST be HSL.
       -webkit-tap-highlight-color: transparent;
     }
     
-    /* Better text rendering on mobile */
+    /* Clean text rendering */
     .streaming-content {
       -webkit-font-smoothing: antialiased;
       -moz-osx-font-smoothing: grayscale;
       word-wrap: break-word;
       overflow-wrap: break-word;
-      hyphens: auto;
     }
     
-    /* Code blocks mobile optimization */
+    /* Clean code blocks */
     .code-block pre {
       overflow-x: auto;
       -webkit-overflow-scrolling: touch;
     }
     
-    /* Table responsive behavior */
+    /* Clean table responsive behavior */
     .table-wrapper {
       overflow-x: auto;
       -webkit-overflow-scrolling: touch;
       max-width: calc(100vw - 2rem);
     }
     
-    /* Prevent zoom on input focus (iOS) */
+    /* Prevent zoom on input focus */
     input[type="text"],
     input[type="email"],
     input[type="password"],
@@ -1141,12 +1188,12 @@ All colors MUST be HSL.
       font-size: 16px !important;
     }
     
-    /* Better spacing for mobile cards */
+    /* Clean spacing for mobile content */
     .streaming-content .paragraph {
       margin-bottom: 0.75rem;
     }
 
-    /* Prevent long tokens from breaking layout */
+    /* Clean text wrapping */
     .streaming-content,
     .prose,
     .prose p,
@@ -1159,44 +1206,158 @@ All colors MUST be HSL.
       overflow-wrap: anywhere;
     }
     
-    /* Mobile-friendly code blocks */
+    /* Clean mobile code blocks */
     .streaming-content pre {
-      /* Keep code text size consistent with surrounding content on mobile */
       font-size: var(--font-size-sm);
       line-height: 1.4;
       padding: 1rem;
-      white-space: pre-wrap; /* allow wrapping to avoid horizontal scroll on very long lines */
+      white-space: pre-wrap;
     }
 
-    /* Fix textarea placeholder alignment */
-    textarea {
-      vertical-align: top !important;
-      box-sizing: border-box;
-      text-align: left;
+    /* ChatGPT-style compact search bar */
+    .search-bar {
+      background: hsl(var(--background) / 0.95);
+      backdrop-filter: blur(8px);
+      border: 1px solid hsl(var(--border) / 0.5);
+      border-radius: 16px;
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+      transition: all 0.3s ease;
+      min-height: 40px;
+      display: flex;
+      align-items: center;
     }
     
-    textarea::placeholder {
+    .search-bar:focus-within {
+      border-color: hsl(var(--primary) / 0.8);
+      box-shadow: 0 6px 16px rgba(0, 0, 0, 0.15), 0 0 0 2px hsl(var(--primary) / 0.1);
+    }
+    
+    /* Stable textarea with fixed positioning */
+    .search-bar textarea {
+      min-height: 32px !important;
+      max-height: 200px !important;
+      display: flex !important;
+      align-items: flex-start !important;
+      box-sizing: border-box !important;
+      overflow-y: auto !important;
+      resize: none !important;
+      width: 100% !important;
+      max-width: 100% !important;
+      padding-left: 40px !important;
+      padding-right: 80px !important;
+      padding-top: 8px !important;
+      padding-bottom: 8px !important;
+      font-size: 14px;
       line-height: 1.5;
-      vertical-align: top;
-      text-align: left;
-      opacity: 0.7;
-      transition: opacity 0.2s ease;
     }
     
-    /* Ensure textarea content starts at top */
-    textarea:focus::placeholder {
-      opacity: 0.5;
+    /* Stable textarea container */
+    .search-bar .flex-1 {
+      min-width: 0 !important;
+      overflow: visible !important;
+      position: relative;
+      display: flex;
+      align-items: flex-start;
     }
     
-    /* Prevent textarea from scrolling when empty */
-    textarea:empty {
-      overflow: hidden;
+    /* Fixed + icon positioning */
+    .search-bar .absolute.left-0 {
+      pointer-events: auto !important;
+      z-index: 10 !important;
+      left: 4px;
+      bottom: 4px;
     }
     
-    /* Force textarea to start text at top */
-    textarea {
-      padding-top: 16px !important;
-      padding-bottom: 16px !important;
+    /* Fixed action buttons positioning */
+    .search-bar .absolute.right-0 {
+      pointer-events: auto !important;
+      z-index: 10 !important;
+      right: 4px;
+      bottom: 4px;
+    }
+    
+    /* Clean scrollbar */
+    .search-bar textarea {
+      scrollbar-gutter: stable !important;
+      scrollbar-width: thin;
+      scrollbar-color: hsl(var(--muted-foreground) / 0.3) transparent;
+    }
+    
+    .search-bar textarea::-webkit-scrollbar {
+      width: 3px;
+    }
+    
+    .search-bar textarea::-webkit-scrollbar-track {
+      background: transparent;
+    }
+    
+    .search-bar textarea::-webkit-scrollbar-thumb {
+      background: hsl(var(--muted-foreground) / 0.3);
+      border-radius: 2px;
+    }
+    
+    .search-bar textarea::-webkit-scrollbar-thumb:hover {
+      background: hsl(var(--muted-foreground) / 0.5);
+    }
+    
+    /* Clean button container */
+    .search-bar .flex-shrink-0 {
+      width: auto !important;
+      flex-shrink: 0 !important;
+    }
+    
+    /* Clean placeholder styling */
+    .search-bar textarea::placeholder {
+      position: relative !important;
+      top: 0 !important;
+      transform: none !important;
+      line-height: 1.5 !important;
+      vertical-align: top !important;
+      color: hsl(var(--muted-foreground) / 0.7);
+    }
+    
+    /* Compact search bar container */
+    .search-bar-container {
+      height: auto !important;
+      min-height: 40px !important;
+      padding: 8px 12px;
+      background: hsl(var(--background) / 0.95);
+      backdrop-filter: blur(8px);
+      border-top: 1px solid hsl(var(--border) / 0.5);
+    }
+  }
+
+  /* Desktop button positioning - also fixed */
+  @media (min-width: 769px) {
+    /* Fixed + icon positioning for desktop */
+    .search-bar .absolute.left-0 {
+      pointer-events: auto !important;
+      z-index: 10 !important;
+      left: 4px;
+      bottom: 4px;
+    }
+    
+    /* Fixed action buttons positioning for desktop */
+    .search-bar .absolute.right-0 {
+      pointer-events: auto !important;
+      z-index: 10 !important;
+      right: 4px;
+      bottom: 4px;
+    }
+    
+    /* Desktop textarea with stable alignment */
+    .search-bar textarea {
+      padding-left: 40px !important;
+      padding-right: 80px !important;
+      padding-top: 8px !important;
+      padding-bottom: 8px !important;
+      align-items: flex-start !important;
+    }
+    
+    /* Desktop textarea container with stable alignment */
+    .search-bar .flex-1 {
+      display: flex;
+      align-items: flex-start;
     }
   }
 

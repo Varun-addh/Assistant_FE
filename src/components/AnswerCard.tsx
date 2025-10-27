@@ -1575,9 +1575,9 @@ export const AnswerCard = ({ answer, question, streaming = true, onEdit, onSubmi
     if (trimmedCode.startsWith('/**') && trimmedCode.endsWith('*/')) {
       // This is definitely a docstring - treat as plain text with orange color
       const escapedCode = code
-        .replace(/&/g, '&amp;')
-        .replace(/</g, '&lt;')
-        .replace(/>/g, '&gt;');
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;');
       return `<span class="code-string">${escapedCode}</span>`;
     }
     

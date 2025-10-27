@@ -636,9 +636,9 @@ export const InterviewAssistant = () => {
           </div>
         </div>
       
-        {/* Fixed Search Bar at Bottom */}
-        <div className="sticky bottom-0 z-30 bg-background/95 backdrop-blur-sm border-t border-border/40 safe-area-inset-bottom">
-          <div className="px-3 py-3 md:px-6 md:py-4">
+        {/* ChatGPT-style Compact Search Bar at Bottom */}
+        <div className="sticky bottom-0 z-30 bg-background/95 backdrop-blur-sm border-t border-border/50 safe-area-inset-bottom search-bar-container">
+          <div className="px-3 py-2 md:px-6 md:py-4">
             <div className="max-w-4xl mx-auto">
               <SearchBar 
                 value={question}
@@ -647,7 +647,7 @@ export const InterviewAssistant = () => {
                   if (viewingHistory) setViewingHistory(false);
                   setQuestion(v);
                 }}
-                placeholder="Ask your question..."
+                placeholder="Ask InterviewMate..."
                 resetToken={resetToken}
                 ensureSession={ensureSession}
                 onUploaded={({ characters, fileName }) => {
