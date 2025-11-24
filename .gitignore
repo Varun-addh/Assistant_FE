@@ -6,6 +6,9 @@
 .pnp.js
 .env
 
+# Bun
+bun.lockb
+
 # testing
 /coverage
 
