@@ -7,6 +7,9 @@ import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { useToast } from "@/hooks/use-toast";
 import { MermaidEditor } from "@/components/MermaidEditor";
+import { downloadAnswerPdf, waitForSvgInDiagram, preloadHtml2Pdf } from "@/lib/utils";
+import { svgElementToPngImage } from "@/lib/utils";
+import { replaceDiagramSvgWithImg } from "@/lib/utils";
 
 interface AnswerCardProps {
   answer: string;
@@ -33,6 +36,7 @@ export const AnswerCard = ({ answer, question, streaming = true, onEdit, onSubmi
   const { toast } = useToast();
   const typingTimerRef = useRef<any>(null);
   const lastAnswerRef = useRef<string>("");
+  const lastStreamingRef = useRef<boolean>(streaming);
   const [isEditing, setIsEditing] = useState(false);
   const [editedQuestion, setEditedQuestion] = useState<string>(question);
   const [showQuickActions, setShowQuickActions] = useState(false);
@@ -48,6 +52,7 @@ export const AnswerCard = ({ answer, question, streaming = true, onEdit, onSubmi
   const [expandedLoading, setExpandedLoading] = useState<boolean>(false);
   const [responseComplete, setResponseComplete] = useState<boolean>(false);
   const [isTypingAnimation, setIsTypingAnimation] = useState<boolean>(false);
+  const contentRef = useRef<HTMLDivElement | null>(null);
 
   // Track when response is complete - only when typing animation finishes AND not generating
   useEffect(() => {
@@ -265,6 +270,85 @@ export const AnswerCard = ({ answer, question, streaming = true, onEdit, onSubmi
     updateScale();
   };
 
+  const handleDownloadPdf = async () => {
+    try {
+      // Try to prepare diagram if it exists, but don't block export if it doesn't
+      try {
+        await waitForSvgInDiagram(800);
+      } catch (_) {
+        // No diagram detected within the timeout — proceed with export anyway
+      }
+
+      // Work on a cloned tree so we do NOT mutate the on-screen UI
+      const root = (contentRef.current?.cloneNode(true) as HTMLElement) || null;
+      if (root) {
+        // 1) Convert diagram SVG to IMG inside the clone (if present)
+        const diagramContainer = root.querySelector('.diagram-container') as HTMLElement | null;
+        const svg = diagramContainer?.querySelector('svg') as SVGElement | null;
+        if (svg && diagramContainer) {
+          const img = await svgElementToPngImage(svg, (svg as any).clientWidth || 800, (svg as any).clientHeight || 400);
+          img.style.maxWidth = "100%";
+          img.style.height = "auto";
+          diagramContainer.innerHTML = "";
+          diagramContainer.appendChild(img);
+        }
+
+        // 2) Force white text in all tables and bold first column cells (PDF-only)
+        const sanitizeInlineColor = (el: HTMLElement) => {
+          const style = el.getAttribute('style') || '';
+          const cleaned = style.replace(/color\s*:[^;]+;?/gi, '').trim();
+          el.setAttribute('style', (cleaned ? cleaned + '; ' : '') + 'color:#fff !important;');
+        };
+
+        root.querySelectorAll('table').forEach((table) => {
+          const t = table as HTMLElement;
+          sanitizeInlineColor(t);
+          t.style.borderCollapse = 'collapse';
+          t.querySelectorAll('th, td').forEach((cell) => {
+            const c = cell as HTMLElement;
+            sanitizeInlineColor(c);
+            if (!c.style.padding) c.style.padding = '8px';
+          });
+          // First column bold
+          t.querySelectorAll('tr').forEach((tr) => {
+            const first = tr.querySelector('td, th') as HTMLElement | null;
+            if (first) {
+              first.style.fontWeight = '600';
+              sanitizeInlineColor(first);
+            }
+          });
+          // Replace bold tags with spans that carry explicit white + bold
+          t.querySelectorAll('strong, b').forEach((el) => {
+            const e = el as HTMLElement;
+            const span = document.createElement('span');
+            span.setAttribute('style', 'color:#fff !important; font-weight:700;');
+            span.innerHTML = e.innerHTML;
+            e.replaceWith(span);
+          });
+          // Force ALL descendants to white (handles remaining spans inside cells)
+          t.querySelectorAll('*').forEach((el) => {
+            const node = el as HTMLElement;
+            // strip classes to avoid Tailwind/prose overrides
+            node.removeAttribute('class');
+            // remove any existing color then set white with !important
+            const s = node.getAttribute('style') || '';
+            const cleaned = s.replace(/color\s*:[^;]+;?/gi, '').trim();
+            node.setAttribute('style', (cleaned ? cleaned + '; ' : '') + 'color:#fff !important;');
+          });
+        });
+      }
+
+      const html = root ? root.innerHTML : (contentRef.current?.innerHTML || "");
+      await downloadAnswerPdf({ question, answerHtml: html, fileName: `InterviewMate-${new Date().toISOString().slice(0,10)}.pdf` });
+    } catch (e) {
+      toast({
+        title: "Download failed",
+        description: "We couldn't generate the PDF. Please try again.",
+        variant: "destructive"
+      });
+    }
+  };
+
   const updateScale = () => {
     const container = document.querySelector('.diagram-container') as HTMLElement | null;
     if (container) applyScale(container);
@@ -341,16 +425,103 @@ export const AnswerCard = ({ answer, question, streaming = true, onEdit, onSubmi
     return out;
   };
 
+  // Detect crow's-foot ER syntax and convert to erDiagram
+  const crowFootToErDiagram = (src: string): string => {
+    const t = (src || '').trim();
+    if (!t) return t;
+    const relLineRegex = /(^|\n)\s*[A-Za-z_][\w]*\s+(\|\||\|o|o\||\{o|o\{|\{\}|\}\{|\}\}|o\{|\}o|\}\||\|\{)\s*-{1,2}\s*(\|\||\|o|o\||\{o|o\{|\{\}|\}\{|\}\}|o\{|\}o|\}\||\|\{)\s+[A-Za-z_][\w]*/;
+    const hasCrow = relLineRegex.test(t);
+    const hasEntityBlocks = /(\n|^)\s*[A-Za-z_][A-Za-z0-9_]*\s*\{[\s\S]*?\}/.test(t);
+    if (!hasCrow && !hasEntityBlocks) return t;
+    const ensureErDirective = (body: string) => {
+      if (/^erDiagram\b/.test(body)) return body;
+      const lines = body.split(/\r?\n/);
+      const withoutDirective = lines.filter((l, idx) => idx !== 0 || !( /^\s*(flowchart|graph)\b/.test(l) ) ).join('\n');
+      return `erDiagram\n${withoutDirective}`.trim();
+    };
+    const sanitizeBlocks = (body: string): string => {
+      return body.replace(/(^|\n)\s*([A-Za-z_][A-Za-z0-9_]*)\s*\{([\s\S]*?)\}/g, (_m, lead, entity, inner) => {
+        const cleaned: string[] = [];
+        inner.split(/\r?\n/).forEach((raw) => {
+          let line = raw.trim();
+          if (!line) return;
+          if (/^(KEY|UNIQUE|INDEX)\b/i.test(line)) return;
+          if (/^"[^"]*"$/.test(line)) return; // pure quoted comment line
+          line = line.replace(/\s+"[^"]*"$/g, ''); // strip trailing quotes
+          line = line.replace(/\b(unique|optional)\b/gi, '').replace(/\s{2,}/g, ' ').trim();
+          const keyOnly = /^([A-Za-z_][\w]*)\s+(PK|FK|pk|fk)$/.exec(line);
+          if (keyOnly) {
+            line = `VARCHAR ${keyOnly[1]} ${keyOnly[2].toUpperCase()}`;
+          }
+          const parts = line.split(/\s+/);
+          if (parts.length >= 1 && parts[0] && (parts.length === 1 || ["PK","FK","pk","fk"].includes(parts[1]))) {
+            const name = parts[0];
+            const rest = parts.slice(1).map(s => s.toUpperCase()).join(' ');
+            line = `VARCHAR ${name}${rest ? ' ' + rest : ''}`;
+          }
+          cleaned.push(`  ${line}`);
+        });
+        return `${lead}${entity} {\n${cleaned.join('\n')}\n}`;
+      });
+    };
+    return ensureErDirective(sanitizeBlocks(t));
+  };
+
+  // Helper retained if needed later
+  const isErDiagramCode = (src: string): boolean => /^erDiagram\b/.test(crowFootToErDiagram(src).trim());
+
+  // Remove code fences/BOM and HTML wrappers that can sneak into blocks
+  const stripMermaidFences = (s: string): string => {
+    if (!s) return '';
+    let t = s.replace(/^[\uFEFF\u200B\u200C\u200D]+/, '');
+    // Remove ```mermaid ... ``` or generic ``` blocks (start/end on own lines)
+    t = t.replace(/^```(?:mermaid)?\s*/i, '').replace(/```\s*$/i, '');
+    // Remove duplicated fences if present within
+    t = t.replace(/^```[\s\S]*?\n/, (m) => m.replace(/^```.*?\n/, ''));
+    t = t.replace(/\n```\s*$/, '');
+    // Remove <pre><code> wrappers
+    t = t.replace(/<pre[^>]*><code[^>]*>/gi, '').replace(/<\/code><\/pre>/gi, '');
+    return t.trim();
+  };
+
+  const containsSubgraph = (s: string): boolean => /(^|\n)\s*subgraph\b/.test(s);
+
   // PROACTIVE APPROACH: Comprehensive Mermaid syntax validation and correction
   const validateAndFixMermaidSyntax = (mermaidCode: string): { isValid: boolean; fixedCode: string; errors: string[] } => {
     const errors: string[] = [];
     let fixed = mermaidCode.trim();
+
+    // EARLY: If it's ER-style content, force erDiagram directive
+    const maybeEr = crowFootToErDiagram(fixed);
+    if (maybeEr !== fixed) {
+      fixed = maybeEr;
+    }
+
+    // ER-specific fast path: skip flowchart/class validations
+    if (fixed.startsWith('erDiagram')) {
+      // Normalize line endings and trim trailing spaces
+      fixed = fixed.replace(/\r\n?/g, '\n').replace(/[ \t]+$/gm, '');
+      // Ensure consistent two-space indentation inside entity blocks
+      fixed = fixed.replace(/(^|\n)([A-Za-z_][A-Za-z0-9_]*)\s*\{([\s\S]*?)\}/g, (_m, lead, entity, inner) => {
+        const lines = (inner || '').split(/\n/)
+          .map(l => l.trim())
+          .filter(l => !!l);
+        const body = lines.map(l => `  ${l}`).join('\n');
+        return `${lead}${entity} {\n${body}\n}`;
+      });
+      return { isValid: true, fixedCode: fixed, errors: [] };
+    }
     
     // Validation 1: Check for diagram type declaration
-    if (!fixed.startsWith('flowchart') && !fixed.startsWith('graph') && !fixed.startsWith('sequenceDiagram') && !fixed.startsWith('classDiagram')) {
+    if (!fixed.startsWith('flowchart') && !fixed.startsWith('graph') && !fixed.startsWith('sequenceDiagram') && !fixed.startsWith('classDiagram') && !fixed.startsWith('erDiagram')) {
       if (fixed.includes('-->') || fixed.includes('--') || fixed.includes('subgraph')) {
         errors.push('Missing diagram type declaration');
-        fixed = 'flowchart TD\n' + fixed;
+        // Prefer erDiagram if ER markers exist
+        if (/^erDiagram\b/.test(maybeEr)) {
+          fixed = maybeEr;
+        } else {
+          fixed = 'flowchart TD\n' + fixed;
+        }
       }
     }
     
@@ -684,18 +855,13 @@ export const AnswerCard = ({ answer, question, streaming = true, onEdit, onSubmi
         let fixedSrc = srcRaw;
         if (!containsSubgraph) {
           // For simple diagrams (no subgraphs), keep lightweight normalization/validation.
-          const src = normalizeMermaid(srcRaw);
+          let src = normalizeMermaid(srcRaw);
+          // Convert ER crow's-foot to erDiagram early
+          src = crowFootToErDiagram(src);
           const validation = validateAndFixMermaidSyntax(src);
           fixedSrc = validation.fixedCode;
           if (!validation.isValid) {
-            console.warn('Mermaid syntax errors detected and fixed:', validation.errors);
-            // If too many errors, use template as fallback
-            if (validation.errors.length > 3) {
-              console.warn('PROACTIVE: Too many syntax errors, using template fallback');
-              const template = getMermaidTemplate('architecture');
-              el.textContent = template;
-              fixedSrc = template;
-            }
+            console.warn('Mermaid syntax issues detected; proceeding with normalized code without fallback. Errors:', validation.errors);
           }
           if (fixedSrc !== srcRaw) {
             el.textContent = fixedSrc;
@@ -761,16 +927,42 @@ export const AnswerCard = ({ answer, question, streaming = true, onEdit, onSubmi
           
           // Check if response is SVG (starts with <svg) or raw Mermaid
           if (responseText.trim().startsWith('<svg')) {
+            // Detect if the backend-rendered SVG is actually an error page
+            const looksLikeErrorSvg = /aria-roledescription\s*=\s*["']?error|Syntax error in text|Syntax error/i.test(responseText) || responseText.includes('class="error"');
+            console.log('Original SVG contains aria-roledescription:', responseText.includes('aria-roledescription'));
+            console.log('Backend SVG looks like error:', looksLikeErrorSvg);
+
+            if (looksLikeErrorSvg) {
+              // Try a quick retry with the raw, original source (srcRaw) to avoid the transformations
+              console.warn('Backend returned an error SVG; retrying render with original source');
+              try {
+                const retry = await apiRenderMermaid({ code: (el.textContent || '').trim() || fixedSrc, theme: 'neutral', style: 'modern', size: 'medium' });
+                if (retry && retry.trim().startsWith('<svg') && !/Syntax error/i.test(retry) && !/aria-roledescription\s*=\s*["']?error/i.test(retry)) {
+                  const cleanedRetry = cleanSvgContent(retry);
+                  console.log('Retry succeeded with cleaned SVG preview:', cleanedRetry.substring(0, 300) + '...');
+                  setSvgContentSafely(el, cleanedRetry);
+                  return;
+                }
+                console.warn('Retry did not produce a valid SVG, falling back to client/Kroki');
+              } catch (e) {
+                console.warn('Retry render with original source failed:', e);
+              }
+              // fall through to client-side/Kroki fallback below
+            }
+
             // Clean the SVG to remove attributes that might cause false positive error detection
             const cleanedSvg = cleanSvgContent(responseText);
-            console.log('Original SVG contains aria-roledescription:', responseText.includes('aria-roledescription'));
             console.log('Cleaned SVG contains aria-roledescription:', cleanedSvg.includes('aria-roledescription'));
             console.log('Cleaned SVG preview:', cleanedSvg.substring(0, 300) + '...');
-            
-            // Use the safe SVG setting function
-            setSvgContentSafely(el, cleanedSvg);
-            
-            return;
+
+            // If the cleaned SVG still contains an obvious error message, don't set it directly
+            if (/Syntax error in text|Syntax error|aria-roledescription\s*=\s*["']?error/i.test(cleanedSvg)) {
+              console.warn('Cleaned backend SVG still appears to be an error; skipping direct set and falling back');
+            } else {
+              // Use the safe SVG setting function
+              setSvgContentSafely(el, cleanedSvg);
+              return;
+            }
           } else {
             console.warn('Backend returned Mermaid code instead of SVG, using client fallback');
           }
@@ -839,6 +1031,8 @@ export const AnswerCard = ({ answer, question, streaming = true, onEdit, onSubmi
             console.error(`Error processing Mermaid node ${i}:`, error);
           }
         }
+        // Mark complete to allow future runs on changes
+        mermaidProcessingRef.current = false;
       };
       
       processNodes();
@@ -854,28 +1048,49 @@ export const AnswerCard = ({ answer, question, streaming = true, onEdit, onSubmi
 
   // Typewriter effect for progressive reveal with real-time formatting
   useEffect(() => {
-    if (lastAnswerRef.current !== answer || !streaming) {
-      lastAnswerRef.current = answer;
-      if (!streaming) {
-        // Render immediately without typewriter when streaming is disabled
+    const answerChanged = lastAnswerRef.current !== answer;
+    const streamingChanged = lastStreamingRef.current !== streaming;
+    
+    // Check streaming prop FIRST to avoid unnecessary animation triggers
+    if (!streaming) {
+      // Update refs
+      lastStreamingRef.current = streaming;
+      
+      // Only update if answer content actually changed (prevent re-renders on streaming prop change)
+      if (answerChanged) {
+        lastAnswerRef.current = answer;
         if (typingTimerRef.current) clearInterval(typingTimerRef.current);
         setTypedText("");
         setIsTypingAnimation(false); // No typing animation for non-streaming content
         try {
           const blocks = parseContent(answer);
           setDisplayedBlocks(blocks);
-          
-          // Force Mermaid processing for history view after a short delay
-          setTimeout(() => {
-            console.log('Force processing Mermaid for history view');
-            // Trigger Mermaid processing by updating the dependency
-            setDisplayedBlocks([...blocks]);
-          }, 100);
         } catch {
           setDisplayedBlocks([{ type: 'p', content: answer } as any]);
         }
-        return;
+      } else if (streamingChanged && lastAnswerRef.current === answer) {
+        // Streaming changed to false but answer is the same - ensure displayed
+        if (typingTimerRef.current) clearInterval(typingTimerRef.current);
+        setTypedText("");
+        setIsTypingAnimation(false);
+        if (displayedBlocks.length === 0) {
+          try {
+            const blocks = parseContent(answer);
+            setDisplayedBlocks(blocks);
+          } catch {
+            setDisplayedBlocks([{ type: 'p', content: answer } as any]);
+          }
+        }
       }
+      return;
+    }
+
+    // Update streaming ref
+    lastStreamingRef.current = streaming;
+
+    // Only trigger animation if answer actually changed AND streaming is enabled
+    if (answerChanged) {
+      lastAnswerRef.current = answer;
 
       setTypedText("");
       setDisplayedBlocks([]);
@@ -1186,33 +1401,26 @@ export const AnswerCard = ({ answer, question, streaming = true, onEdit, onSubmi
     return result;
   };
 
-  // Render table as HTML string
+  // Render table as HTML string (UI only; PDF transforms happen during export)
   const renderTable = (tableData: { headers: string[], rows: string[][] }): string => {
     const { headers, rows } = tableData;
-    
     let tableHtml = '<div class="table-wrapper" style="overflow-x:auto;">';
     tableHtml += '<table class="data-table" style="width:100%; border-collapse:collapse;">';
-    
-    // Table header
     tableHtml += '<thead><tr>';
     headers.forEach(header => {
       tableHtml += `<th>${header}</th>`;
     });
     tableHtml += '</tr></thead>';
-    
-    // Table body
     tableHtml += '<tbody>';
     rows.forEach(row => {
       tableHtml += '<tr>';
-      row.forEach(cell => {
+      row.forEach((cell) => {
         tableHtml += `<td>${cell}</td>`;
       });
       tableHtml += '</tr>';
     });
     tableHtml += '</tbody>';
-    
     tableHtml += '</table></div>';
-    
     return tableHtml;
   };
 
@@ -1280,6 +1488,38 @@ export const AnswerCard = ({ answer, question, streaming = true, onEdit, onSubmi
     return { start, end, headers: headerCells, rows };
   };
 
+  // More tolerant: detect pipe-delimited tables even without a markdown separator row
+  const findLoosePipeTable = (text: string): { start: number, end: number, headers: string[], rows: string[][] } | null => {
+    const lines = text.split('\n');
+    const isPipeRow = (s: string) => (s.match(/\|/g) || []).length >= 2; // at least 2 pipes
+    const isSeparatorRow = (s: string) => /^\s*\|?\s*[:\-\s|]+\s*\|?\s*$/.test(s);
+    let start = -1;
+    for (let i = 0; i < lines.length; i++) {
+      if (isPipeRow(lines[i])) { start = i; break; }
+    }
+    if (start === -1) return null;
+    let end = start;
+    for (let i = start + 1; i < lines.length; i++) {
+      if (isPipeRow(lines[i])) end = i; else break;
+    }
+    // Need at least 2 pipe-rows to call it a table
+    if (end - start + 1 < 2) return null;
+    const slice = lines.slice(start, end + 1);
+    let bodyStartIdx = 1;
+    // Skip markdown-style separator row if present
+    if (slice.length >= 2 && isSeparatorRow(slice[1])) bodyStartIdx = 2;
+    const toCells = (line: string) => line
+      .replace(/^\s*\|/, '')
+      .replace(/\|\s*$/, '')
+      .split('|')
+      .map(c => c.trim())
+      .filter((c, i, arr) => !(i === arr.length - 1 && c === ''));
+    const headers = toCells(slice[0]);
+    const rows: string[][] = slice.slice(bodyStartIdx).map(toCells).filter(r => r.length > 0);
+    if (headers.length < 2 || rows.length === 0) return null;
+    return { start, end, headers, rows };
+  };
+
   const parseContent = (text: string) => {
     const blocks: Array<{type: string, content: string, lang?: string}> = [];
     
@@ -1307,7 +1547,11 @@ export const AnswerCard = ({ answer, question, streaming = true, onEdit, onSubmi
             continue;
           }
           // If a table exists, split around it to preserve surrounding text
-          const region = findStrictMarkdownTable(textContent);
+          let region = findStrictMarkdownTable(textContent);
+          // Fallback: accept loose pipe tables without separator rows
+          if (!region) {
+            region = findLoosePipeTable(textContent);
+          }
           if (region) {
             const lines = textContent.split('\n');
             const before = lines.slice(0, region.start).join('\n');
@@ -1342,6 +1586,26 @@ export const AnswerCard = ({ answer, question, streaming = true, onEdit, onSubmi
             const trimmedLine = line.trim();
             if (!trimmedLine) return;
             
+            // Normalize single-line pipe rows like "| a | b | c |" into a readable sentence when
+            // they are not part of a multi-row table. This prevents leftover raw pipe content.
+            if (/^\|.*\|$/.test(trimmedLine)) {
+              const cells = trimmedLine
+                .replace(/^\|/, '')
+                .replace(/\|$/, '')
+                .split('|')
+                .map(c => c.trim())
+                .filter(Boolean);
+              if (cells.length >= 2) {
+                const normalized = cells.join(' • ');
+                if (currentBlock?.type !== 'p') {
+                  if (currentBlock) blocks.push(currentBlock);
+                  currentBlock = { type: 'p', content: '' };
+                }
+                currentBlock.content += (currentBlock.content ? '\n' : '') + normalized;
+                return;
+              }
+            }
+
             // Check for headings first (##, ###, ####, etc.)
             const headingMatch = trimmedLine.match(/^(#{1,6})\s+(.*)/);
             if (headingMatch) {
@@ -1570,6 +1834,22 @@ export const AnswerCard = ({ answer, question, streaming = true, onEdit, onSubmi
   const highlightCode = (code: string, lang: string) => {
     // Enhanced multi-language syntax highlighting
     
+    // Note: keep syntax highlighting enabled even when Python triple quotes exist.
+    // Normalize duplicated Python docstring delimiters that sometimes arrive as
+    // '""" """' or "'''
+    // ''' on the same line during streaming/merging. We collapse them to a
+    // single delimiter BEFORE tokenization so highlighting isn't affected.
+    if ((lang || '').toLowerCase() === 'python') {
+      code = code
+        // Collapse:  """   """  ->  """
+        .replace(/(^|\n)([\t ]*)(""")\s*(""")(\s*)(?=\n|$)/g, '$1$2$3$5')
+        // Collapse:  '''   '''  ->  '''
+        .replace(/(^|\n)([\t ]*)(''')\s*(''')(\s*)(?=\n|$)/g, '$1$2$3$5')
+        // Overkill guard: six consecutive quotes on a line -> three
+        .replace(/(^|\n)([\t ]*)"{6}(\s*)(?=\n|$)/g, '$1$2"""$3')
+        .replace(/(^|\n)([\t ]*)'{6}(\s*)(?=\n|$)/g, "$1$2'''$3");
+    }
+
     // Check if this is a pure docstring block (starts with /** and ends with */)
     const trimmedCode = code.trim();
     if (trimmedCode.startsWith('/**') && trimmedCode.endsWith('*/')) {
@@ -1674,11 +1954,119 @@ export const AnswerCard = ({ answer, question, streaming = true, onEdit, onSubmi
     let multilineCommentEnd = '';
     let isDocstringComment = false; // Track if we're in a docstring (/** or """)
     
+    // Dedicated Python docstring state to avoid color bleed and simplify handling
+    let pythonDocOpen = false;
+    // Language-agnostic Javadoc/KDoc-style doc block guard: /** ... */ across lines
+    let universalDocBlockOpen = false;
+
     for (let lineIndex = 0; lineIndex < lines.length; lineIndex++) {
       const line = lines[lineIndex];
       let highlightedLine = '';
       let i = 0;
       
+      // Python-only: handle triple-quote docstrings first and bypass generic logic
+      if ((lang || '').toLowerCase() === 'python') {
+        const OPEN = '"""';
+        const CLOSE = '"""';
+        if (!pythonDocOpen) {
+          const openIdx = line.indexOf(OPEN);
+          if (openIdx !== -1) {
+            const closeIdx = line.indexOf(CLOSE, openIdx + OPEN.length);
+            if (closeIdx !== -1) {
+              // Single-line docstring
+              const before = line.substring(0, openIdx);
+              const inner = line.substring(openIdx + OPEN.length, closeIdx);
+              const after = line.substring(closeIdx + CLOSE.length);
+              const escBefore = before.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+              const escInner = inner.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+              // Tokenize the after segment normally
+              let tokenizedAfter = '';
+              let k = 0;
+              while (k < after.length) {
+                if (/\s/.test(after[k])) { tokenizedAfter += after[k]; k++; continue; }
+                let tok = '';
+                let j = k;
+                while (j < after.length && !/\s/.test(after[j])) { tok += after[j]; j++; }
+                const ttype = getTokenType(tok, languageConfigs.python, 'python');
+                tokenizedAfter += applyHighlighting(tok, ttype);
+                k = j;
+              }
+              highlightedLine = `${escBefore}${OPEN}<span class="code-string">${escInner}</span>${CLOSE}` + tokenizedAfter;
+              highlightedLines.push(highlightedLine);
+              continue;
+            } else {
+              // Start of multi-line docstring
+              pythonDocOpen = true;
+              const esc = line.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+              highlightedLines.push(`<span class="code-string">${esc}</span>`);
+              continue;
+            }
+          }
+        } else {
+          // Inside multi-line docstring
+          const closeIdx = line.indexOf(CLOSE);
+          if (closeIdx !== -1) {
+            const before = line.substring(0, closeIdx + CLOSE.length);
+            const after = line.substring(closeIdx + CLOSE.length);
+            const escBefore = before.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+            // Tokenize after normally
+            let tokenizedAfter = '';
+            let k = 0;
+            while (k < after.length) {
+              if (/\s/.test(after[k])) { tokenizedAfter += after[k]; k++; continue; }
+              let tok = '';
+              let j = k;
+              while (j < after.length && !/\s/.test(after[j])) { tok += after[j]; j++; }
+              const ttype = getTokenType(tok, languageConfigs.python, 'python');
+              tokenizedAfter += applyHighlighting(tok, ttype);
+              k = j;
+            }
+            highlightedLines.push(`<span class="code-string">${escBefore}</span>` + tokenizedAfter);
+            pythonDocOpen = false;
+            continue;
+          } else {
+            const esc = line.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+            highlightedLines.push(`<span class="code-string">${esc}</span>`);
+            continue;
+          }
+        }
+      }
+
+      // Universal /** ... */ doc block handling (CPP/Java/TS/JS/C)
+      const tLine = line.trim();
+      if (!universalDocBlockOpen && tLine.startsWith('/**')) {
+        universalDocBlockOpen = true;
+        const esc = line.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+        highlightedLines.push(`<span class="code-string">${esc}</span>`);
+        continue;
+      }
+      if (universalDocBlockOpen) {
+        const endIdx = line.indexOf('*/');
+        if (endIdx !== -1) {
+          const before = line.substring(0, endIdx + 2)
+            .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+          const after = line.substring(endIdx + 2);
+          // Tokenize the remainder normally
+          let tokenizedAfter = '';
+          let k = 0;
+          while (k < after.length) {
+            if (/\s/.test(after[k])) { tokenizedAfter += after[k]; k++; continue; }
+            let tok = '';
+            let j = k;
+            while (j < after.length && !/\s/.test(after[j])) { tok += after[j]; j++; }
+            const ttype = getTokenType(tok, config, lang);
+            tokenizedAfter += applyHighlighting(tok, ttype);
+            k = j;
+          }
+          highlightedLines.push(`<span class="code-string">${before}</span>` + tokenizedAfter);
+          universalDocBlockOpen = false;
+        } else {
+          const esc = line.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+          highlightedLines.push(`<span class="code-string">${esc}</span>`);
+        }
+        continue;
+      }
+
       // Check if this line is a comment (full line comment)
       const trimmedLine = line.trim();
       const isFullLineComment = config.commentChars.some(char => trimmedLine.startsWith(char));
@@ -1687,16 +2075,32 @@ export const AnswerCard = ({ answer, question, streaming = true, onEdit, onSubmi
         // For full line comments, wrap the entire line
         highlightedLine = `<span class="code-comment">${line}</span>`;
       } else if (inMultilineComment) {
-        // We're inside a multi-line comment/docstring - treat as plain text
-        if (trimmedLine.includes(multilineCommentEnd)) {
-          // End of multi-line comment/docstring - escape HTML entities first, then wrap
-          const escapedLine = line
+        // We're inside a multi-line comment/docstring
+        const endPos = line.indexOf(multilineCommentEnd);
+        if (endPos !== -1) {
+          // Split the line at the closing delimiter so only the docstring part is orange
+          const before = line.substring(0, endPos + multilineCommentEnd.length);
+          const after = line.substring(endPos + multilineCommentEnd.length);
+          const className = isDocstringComment ? 'code-string' : 'code-comment';
+          const escapedBefore = before
             .replace(/&/g, '&amp;')
             .replace(/</g, '&lt;')
             .replace(/>/g, '&gt;');
-          // Use the docstring flag to determine color
-          const className = isDocstringComment ? 'code-string' : 'code-comment';
-          highlightedLine = `<span class="${className}">${escapedLine}</span>`;
+
+          // Tokenize the remainder of the line normally
+          let tokenizedAfter = '';
+          let k = 0;
+          while (k < after.length) {
+            if (/\s/.test(after[k])) { tokenizedAfter += after[k]; k++; continue; }
+            let tok = '';
+            let j = k;
+            while (j < after.length && !/\s/.test(after[j])) { tok += after[j]; j++; }
+            const ttype = getTokenType(tok, config, lang);
+            tokenizedAfter += applyHighlighting(tok, ttype);
+            k = j;
+          }
+
+          highlightedLine = `<span class="${className}">${escapedBefore}</span>` + tokenizedAfter;
           inMultilineComment = false;
           multilineCommentEnd = '';
           isDocstringComment = false;
@@ -1706,10 +2110,8 @@ export const AnswerCard = ({ answer, question, streaming = true, onEdit, onSubmi
             .replace(/&/g, '&amp;')
             .replace(/</g, '&lt;')
             .replace(/>/g, '&gt;');
-          // Use the docstring flag to determine color
           const className = isDocstringComment ? 'code-string' : 'code-comment';
           highlightedLine = `<span class="${className}">${escapedLine}</span>`;
-          
         }
       } else {
         // Check for start of multi-line comment (prioritize longer matches first)
@@ -1726,15 +2128,37 @@ export const AnswerCard = ({ answer, question, streaming = true, onEdit, onSubmi
             
             // Handle single-line multi-line comments (must start AND end on same line)
             if (trimmedLine.includes(endChar) && trimmedLine.indexOf(endChar) > trimmedLine.indexOf(startChar)) {
-              // Single-line multi-line comment/docstring - escape HTML entities first, then wrap
-              const escapedLine = line
-                .replace(/&/g, '&amp;')
-                .replace(/</g, '&lt;')
-                .replace(/>/g, '&gt;');
-              // Check if it's a docstring (/** or """) - use string color, otherwise comment color
+              // Single-line multi-line comment/docstring
               const isDocstring = startChar === '/**' || startChar === '"""' || startChar === "'''";
-              const className = isDocstring ? 'code-string' : 'code-comment';
-              highlightedLine = `<span class="${className}">${escapedLine}</span>`;
+              // For Python docstrings, color only the inner text, not the delimiters
+              if (isDocstring) {
+                const firstPos = line.indexOf(startChar);
+                const endPos = line.indexOf(endChar, firstPos + startChar.length);
+                if (firstPos !== -1 && endPos !== -1) {
+                  const before = line.substring(0, firstPos);
+                  const open = startChar;
+                  const inner = line.substring(firstPos + startChar.length, endPos);
+                  const close = endChar;
+                  const after = line.substring(endPos + endChar.length);
+                  const escapedBefore = before.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+                  const escapedInner = inner.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+                  const escapedAfter = after.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+                  // Color the entire docstring (including /** and */) in orange for C/CPP/Java
+                  highlightedLine = `${escapedBefore}<span class="code-string">${open}${escapedInner}${close}</span>${escapedAfter}`;
+                } else {
+                  const escapedLine = line
+                    .replace(/&/g, '&amp;')
+                    .replace(/</g, '&lt;')
+                    .replace(/>/g, '&gt;');
+                  highlightedLine = `<span class="code-string">${escapedLine}</span>`;
+                }
+              } else {
+                const escapedLine = line
+                  .replace(/&/g, '&amp;')
+                  .replace(/</g, '&lt;')
+                  .replace(/>/g, '&gt;');
+                highlightedLine = `<span class="code-comment">${escapedLine}</span>`;
+              }
             } else {
               // Multi-line comment/docstring start - escape HTML entities first, then wrap
               const escapedLine = line
@@ -1826,82 +2250,21 @@ export const AnswerCard = ({ answer, question, streaming = true, onEdit, onSubmi
             }
           }
         }
-        
-        // For non-Python languages, use multi-language tokenization
-        const commentIndex = findCommentIndex(line, config.commentChars);
-        if (commentIndex !== -1) {
-          // Split line into code part and comment part
-          const codePart = line.substring(0, commentIndex);
-          const commentPart = line.substring(commentIndex);
-          
-          // Process the code part with tokenization
-          let codeHighlighted = '';
-          let codeIndex = 0;
-          
-          while (codeIndex < codePart.length) {
-            let token = '';
-            let tokenType = 'text';
-            
-            // Skip whitespace
-            if (/\s/.test(codePart[codeIndex])) {
-              codeHighlighted += codePart[codeIndex];
-              codeIndex++;
-              continue;
-            }
-            
-            // Extract token
-            let j = codeIndex;
-            while (j < codePart.length && !/\s/.test(codePart[j])) {
-              token += codePart[j];
-              j++;
-            }
-            
-            // Determine token type based on language
-            tokenType = getTokenType(token, config, lang);
-            
-            // Apply highlighting
-            codeHighlighted += applyHighlighting(token, tokenType);
-            
-            codeIndex = j;
-          }
-          
-          // Combine code and comment parts
-          highlightedLine = codeHighlighted + `<span class="code-comment">${commentPart}</span>`;
-        } else {
-          // No inline comment, process normally
-          while (i < line.length) {
-            let token = '';
-            let tokenType = 'text';
-            
-            // Skip whitespace
-            if (/\s/.test(line[i])) {
-              highlightedLine += line[i];
-              i++;
-              continue;
-            }
-            
-            // Extract token
-            let j = i;
-            while (j < line.length && !/\s/.test(line[j])) {
-              token += line[j];
-              j++;
-            }
-            
-            // Determine token type based on language
-            tokenType = getTokenType(token, config, lang);
-            
-            // Apply highlighting
-            highlightedLine += applyHighlighting(token, tokenType);
-            
-            i = j;
-          }
-        }
       }
       
       highlightedLines.push(highlightedLine);
     }
     
-    return highlightedLines.join('\n');
+    let html = highlightedLines.join('\n');
+    // Collapse accidental duplicated Python/Docstring delimiters that may appear
+    // when tokens are split around triple quotes. This preserves highlighting
+    // for the rest of the code while fixing lines that showed `""" """`.
+    if ((lang || '').toLowerCase() === 'python') {
+      html = html
+        .replace(/("""\s*){2,}/g, '"""')
+        .replace(/('''\s*){2,}/g, "'''");
+    }
+    return html;
   };
 
   const handleCopy = async (text: string) => {
@@ -1994,6 +2357,8 @@ export const AnswerCard = ({ answer, question, streaming = true, onEdit, onSubmi
 
   // Debug useEffect to monitor streaming and evaluate button state
   useEffect(() => {
+    // Preload html2pdf early to avoid fallback to print pipeline
+    preloadHtml2Pdf().catch(() => {});
     console.log('AnswerCard State Debug:', {
       streaming,
       isGenerating,
@@ -2019,18 +2384,21 @@ export const AnswerCard = ({ answer, question, streaming = true, onEdit, onSubmi
   };
 
   const handleDownloadDiagram = async (mermaidCode: string) => {
-    // Auto-fix common syntax errors
-    const fixedCode = autoFixMermaidSyntax(mermaidCode);
-    
-    // Validate syntax after auto-fix
-    const validation = validateMermaidSyntax(fixedCode);
-    if (!validation.isValid) {
-      toast({
-        title: "Invalid Diagram Syntax",
-        description: validation.error || "The diagram contains syntax errors that prevent rendering.",
-        variant: "destructive",
-      });
-      return;
+    // Use the same pipeline as on-screen render to avoid mismatch
+    let fixedCode = autoFixMermaidSyntax(stripMermaidFences(mermaidCode));
+    fixedCode = crowFootToErDiagram(fixedCode);
+    // For complex subgraph diagrams, skip strict validation and let backend render
+    if (!containsSubgraph(fixedCode)) {
+      const validation = validateAndFixMermaidSyntax(fixedCode);
+      if (!validation.isValid) {
+        toast({
+          title: "Invalid Diagram Syntax",
+          description: (validation.errors && validation.errors[0]) || "The diagram contains syntax errors that prevent rendering.",
+          variant: "destructive",
+        });
+        return;
+      }
+      fixedCode = validation.fixedCode;
     }
 
     try {
@@ -2138,6 +2506,7 @@ export const AnswerCard = ({ answer, question, streaming = true, onEdit, onSubmi
   };
 
   const handleExpandDiagram = async (mermaidCode: string) => {
+    // Allow expand for ER as well (handled by ER-safe pipeline below)
     if (expandedDiagram === mermaidCode) {
       setExpandedDiagram(null);
       setExpandedSvgHtml(null);
@@ -2156,18 +2525,20 @@ export const AnswerCard = ({ answer, question, streaming = true, onEdit, onSubmi
       return;
     }
     
-    // Auto-fix common syntax errors
-    const fixedCode = autoFixMermaidSyntax(mermaidCode);
-    
-    // Validate syntax after auto-fix
-    const validation = validateMermaidSyntax(fixedCode);
-    if (!validation.isValid) {
-      toast({
-        title: "Invalid Diagram Syntax",
-        description: validation.error || "The diagram contains syntax errors that prevent rendering.",
-        variant: "destructive",
-      });
-      return;
+    // Match normal-view pipeline
+    let fixedCode = autoFixMermaidSyntax(stripMermaidFences(mermaidCode));
+    fixedCode = crowFootToErDiagram(fixedCode);
+    if (!containsSubgraph(fixedCode)) {
+      const validation = validateAndFixMermaidSyntax(fixedCode);
+      if (!validation.isValid) {
+        toast({
+          title: "Invalid Diagram Syntax",
+          description: (validation.errors && validation.errors[0]) || "The diagram contains syntax errors that prevent rendering.",
+          variant: "destructive",
+        });
+        return;
+      }
+      fixedCode = validation.fixedCode;
     }
     
     setExpandedDiagram(mermaidCode);
@@ -2388,6 +2759,16 @@ export const AnswerCard = ({ answer, question, streaming = true, onEdit, onSubmi
               )}
             </Button>
             <Button
+              variant="ghost"
+              size="sm"
+              onClick={handleDownloadPdf}
+              className={`h-8 px-3 text-xs ${responseComplete ? 'hover:bg-muted' : 'opacity-50 cursor-not-allowed'}`}
+              title={!responseComplete ? 'Please wait for response to complete' : 'Download as PDF'}
+              disabled={!responseComplete}
+            >
+              <Download className="h-3.5 w-3.5 mr-1" />
+            </Button>
+            <Button
               variant="default"
               size="sm"
               onClick={handleEvaluate}
@@ -2411,7 +2792,7 @@ export const AnswerCard = ({ answer, question, streaming = true, onEdit, onSubmi
       </CardHeader>
       
       <CardContent className="px-3 md:px-6 pt-2 md:pt-0">
-        <div className="space-y-1 streaming-content answer-content">
+        <div ref={contentRef} className="space-y-1 streaming-content answer-content">
           {/* Display completed blocks */}
           {displayedBlocks.map((block, index) => (
             <div key={index} className="streaming-content">
@@ -2560,7 +2941,7 @@ export const AnswerCard = ({ answer, question, streaming = true, onEdit, onSubmi
                               {tableData.rows.map((row: string[], rowIdx: number) => (
                                 <TableRow key={rowIdx} className="hover:bg-muted/50">
                                   {row.map((cell: string, cellIdx: number) => (
-                                    <TableCell key={cellIdx} className="typography-body">
+                                    <TableCell key={cellIdx} className={"typography-body"}>
                                       <span dangerouslySetInnerHTML={{ __html: formatTextContent(cell) }} />
                                     </TableCell>
                                   ))}

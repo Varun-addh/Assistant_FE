@@ -1,3 +1,5 @@
+import { resolveIntelligenceFlag } from "./intelligenceConfig";
+
 export type AnswerStyle = "short" | "detailed";
 
 const BASE_URL = (import.meta as any).env?.VITE_API_BASE_URL || "https://chat-assistant-xeij.onrender.com";
@@ -99,6 +101,10 @@ export async function apiGetHistory(sessionId: string): Promise<GetHistoryRespon
     method: "GET",
     headers: buildHeaders(),
   });
+  if (res.status === 404) {
+    // Gracefully handle missing session/history as empty
+    return { session_id: sessionId, items: [] };
+  }
   if (!res.ok) throw new Error(`Get history failed: ${res.status}`);
   return res.json();
 }
@@ -216,6 +222,515 @@ export async function apiUploadProfile(params: { session_id: string; file: File 
     throw new Error(`Upload profile failed: ${res.status} ${text}`);
   }
   return res.json();
+}
+
+// Interview Intelligence API
+const INTELLIGENCE_BASE_URL = (import.meta as any).env?.VITE_INTELLIGENCE_API_URL || "http://127.0.0.1:8000/api/intelligence";
+// History API - use same server as intelligence API (extract base URL)
+// If INTELLIGENCE_BASE_URL is "http://127.0.0.1:8000/api/intelligence", history should be "http://127.0.0.1:8000/api/history/"
+// Note: Trailing slash is required to avoid 307 redirects from FastAPI
+const getHistoryBaseUrl = () => {
+  if ((import.meta as any).env?.VITE_HISTORY_API_URL) {
+    const url = (import.meta as any).env.VITE_HISTORY_API_URL;
+    return url.endsWith('/') ? url : `${url}/`;
+  }
+  // Extract base URL from intelligence API (remove /api/intelligence suffix)
+  const intelligenceUrl = INTELLIGENCE_BASE_URL;
+  const urlObj = new URL(intelligenceUrl);
+  return `${urlObj.origin}/api/intel-history/`;
+};
+const HISTORY_BASE_URL = getHistoryBaseUrl();
+
+export interface InterviewQuestion {
+  question: string;
+  answer: string;
+  source: string;
+  updated_at: string;
+  topic?: string;
+}
+
+export interface TopicsResponse {
+  topics: string[];
+}
+
+export interface QuestionsByTopicResponse {
+  topic: string;
+  questions: InterviewQuestion[];
+  count: number;
+}
+
+export interface SearchQuestionsResponse {
+  query: string;
+  questions: InterviewQuestion[];
+  count: number;
+  tab_id?: string;
+  metadata?: Record<string, unknown>;
+}
+
+export interface UpdateResponse {
+  status: string;
+  message: string;
+}
+
+// Ultra-production Interview Intelligence search
+export interface UltraSearchRequest {
+  query: string;
+  limit?: number; // default 20, max 50 server side
+  verified_only?: boolean; // default false
+  min_credibility?: number; // 0.0 - 1.0, default 0.0
+  company?: string | null; // e.g., "amazon"
+  refresh?: boolean; // default false
+  enable_reranking?: boolean;
+  enable_query_expansion?: boolean;
+}
+
+export type EnhancedSearchRequest = UltraSearchRequest;
+
+export interface EnhancedQuestion extends InterviewQuestion {
+  source_type?: "verified" | "community" | "generated" | string;
+  verification_status?: "verified" | "unverified" | "ai" | string;
+  credibility_score?: number; // 0.0 - 1.0
+  metadata?: {
+    warning?: string;
+    [k: string]: any;
+  };
+}
+
+export interface EnhancedSearchResponse {
+  query: string;
+  questions: EnhancedQuestion[];
+  count: number;
+  metadata?: {
+    verified_ratio?: number; // 0.0 - 1.0
+    warning?: string;
+    [k: string]: any;
+  };
+  tab_id?: string;
+}
+
+export interface SourceStatsResponse {
+  totals_by_source: Array<{ source: string; count: number }>;
+  credibility_buckets?: Array<{ range: string; count: number }>;
+  verified_sources?: string[];
+  generated_sources?: string[];
+}
+
+export interface CompanyInfo {
+  slug: string;
+  name: string;
+  question_count?: number;
+}
+
+export interface HistoryTabMetadata {
+  limit?: number;
+  refresh?: boolean;
+  [k: string]: any;
+}
+
+export interface HistoryTabSummary {
+  tab_id: string;
+  query: string;
+  questions: InterviewQuestion[];
+  created_at: string;
+  metadata?: HistoryTabMetadata;
+  question_count: number;
+}
+
+export interface HistoryTabsResponse {
+  tabs: HistoryTabSummary[];
+  total: number;
+  offset: number;
+  limit: number;
+}
+
+export interface HistoryTabsQueryParams {
+  limit?: number;
+  offset?: number;
+  sort_by?: string;
+  ascending?: boolean;
+}
+
+export interface HistoryStatsResponse {
+  total_tabs: number;
+  total_questions: number;
+  avg_questions_per_tab: number;
+  most_common_queries: Array<[string, number]>;
+  oldest_tab: string;
+  newest_tab: string;
+}
+
+export interface HistorySearchResponse {
+  tabs: HistoryTabSummary[];
+  total: number;
+}
+
+function buildUltraSearchQuery(params: Record<string, unknown>): string {
+  const search = new URLSearchParams();
+  const entries = Object.entries(params);
+  for (const [key, value] of entries) {
+    if (value === undefined || value === null || value === "") continue;
+    if (typeof value === "boolean") {
+      search.set(key, value ? "true" : "false");
+    } else {
+      search.set(key, String(value));
+    }
+  }
+  return search.toString();
+}
+
+async function getUltraSearch(params: Record<string, unknown>) {
+  const query = buildUltraSearchQuery(params);
+  const url =
+    query.length > 0
+      ? `${INTELLIGENCE_BASE_URL}/search/ultra-production?${query}`
+      : `${INTELLIGENCE_BASE_URL}/search/ultra-production`;
+  return fetch(url, {
+    method: "GET",
+    headers: { "Accept": "application/json" },
+  });
+}
+
+export async function apiSearchQuestionsEnhanced(req: EnhancedSearchRequest): Promise<EnhancedSearchResponse> {
+  const safeLimit = Math.max(1, Math.min(50, req.limit ?? 20));
+  const enableReranking = resolveIntelligenceFlag(req.enable_reranking, "enableReranking");
+  const enableQueryExpansion = resolveIntelligenceFlag(req.enable_query_expansion, "enableQueryExpansion");
+
+  const body: Record<string, unknown> = {
+    query: req.query,
+    limit: safeLimit,
+    verified_only: !!req.verified_only,
+    min_credibility: typeof req.min_credibility === "number" ? req.min_credibility : 0.0,
+    company: req.company ?? null,
+    refresh: !!req.refresh,
+    save_to_history: true,
+  };
+  if (typeof enableReranking === "boolean") {
+    body.enable_reranking = enableReranking;
+  }
+  if (typeof enableQueryExpansion === "boolean") {
+    body.enable_query_expansion = enableQueryExpansion;
+  }
+
+  let res = await getUltraSearch({
+    q: body.query,
+    limit: body.limit,
+    verified_only: body.verified_only,
+    min_credibility: body.min_credibility,
+    company: body.company,
+    refresh: body.refresh,
+    enable_reranking: body.enable_reranking,
+    enable_query_expansion: body.enable_query_expansion,
+    save_to_history: body.save_to_history,
+  });
+  if (res.status === 404 || res.status === 405) {
+    console.warn("[Intelligence API] /search/ultra-production not available (status", res.status, ") – falling back to /search/enhanced");
+    // Remove ultra-only flags for legacy endpoint compatibility
+    const legacyBody = { ...body };
+    delete legacyBody.enable_reranking;
+    delete legacyBody.enable_query_expansion;
+    const fallbackUrl = new URL(`${INTELLIGENCE_BASE_URL}/search/enhanced`);
+    fallbackUrl.searchParams.set("save_to_history", "true");
+    res = await fetch(fallbackUrl.toString(), {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(legacyBody),
+    });
+  }
+  if (!res.ok) {
+    const text = await res.text().catch(() => "");
+    throw new Error(`Enhanced search failed: ${res.status} ${text}`);
+  }
+  const data = await res.json();
+  console.log("[Intelligence API] Search response:", { 
+    hasTabId: !!data?.tab_id, 
+    tabId: data?.tab_id,
+    questionCount: data?.questions?.length,
+    query: data?.query 
+  });
+  return data;
+}
+
+export async function apiGetSourceStats(): Promise<SourceStatsResponse> {
+  const res = await fetch(`${INTELLIGENCE_BASE_URL}/sources/stats`, {
+    method: "GET",
+    headers: { "Content-Type": "application/json" },
+  });
+  if (!res.ok) {
+    const text = await res.text().catch(() => "");
+    throw new Error(`Get source stats failed: ${res.status} ${text}`);
+  }
+  return res.json();
+}
+
+export async function apiGetCompanies(): Promise<CompanyInfo[]> {
+  const res = await fetch(`${INTELLIGENCE_BASE_URL}/companies`, {
+    method: "GET",
+    headers: { "Content-Type": "application/json" },
+  });
+  if (!res.ok) {
+    const text = await res.text().catch(() => "");
+    throw new Error(`Get companies failed: ${res.status} ${text}`);
+  }
+  return res.json();
+}
+
+export interface CommunitySubmitRequest {
+  question: string;
+  company?: string;
+  position?: string;
+  level?: string;
+  interview_round?: string;
+  year_asked?: string;
+  difficulty?: string;
+  question_type?: string;
+  answer?: string;
+  code_solution?: string;
+}
+export interface CommunitySubmitResponse { status: string; id?: string; message?: string }
+export async function apiSubmitCommunityQuestion(params: { submitted_by: string; body: CommunitySubmitRequest }): Promise<CommunitySubmitResponse> {
+  const { submitted_by, body } = params;
+  const url = new URL(`${INTELLIGENCE_BASE_URL}/community/submit`);
+  url.searchParams.set("submitted_by", submitted_by);
+  const res = await fetch(url.toString(), {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) {
+    const text = await res.text().catch(() => "");
+    throw new Error(`Community submit failed: ${res.status} ${text}`);
+  }
+  return res.json();
+}
+
+export async function apiGetTransparency(): Promise<string> {
+  const res = await fetch(`${INTELLIGENCE_BASE_URL}/transparency`, {
+    method: "GET",
+    headers: { "Content-Type": "application/json" },
+  });
+  if (!res.ok) throw new Error(`Get transparency failed: ${res.status}`);
+  return res.text();
+}
+
+export async function apiGetEnhancedHealth(): Promise<any> {
+  const res = await fetch(`${INTELLIGENCE_BASE_URL}/health/enhanced`, {
+    method: "GET",
+    headers: { "Content-Type": "application/json" },
+  });
+  if (!res.ok) throw new Error(`Enhanced health failed: ${res.status}`);
+  return res.json();
+}
+export async function apiGetTopics(): Promise<TopicsResponse> {
+  const res = await fetch(`${INTELLIGENCE_BASE_URL}/topics`, {
+    method: "GET",
+    headers: { "Content-Type": "application/json" },
+  });
+  if (!res.ok) {
+    const text = await res.text().catch(() => "");
+    throw new Error(`Get topics failed: ${res.status} ${text}`);
+  }
+  const data = await res.json();
+  console.log("[Intelligence API] GET /topics ->", data);
+  return data;
+}
+
+export async function apiGetQuestionsByTopic(topic: string, limit: number = 50): Promise<QuestionsByTopicResponse> {
+  const url = new URL(`${INTELLIGENCE_BASE_URL}/questions/${encodeURIComponent(topic)}`);
+  url.searchParams.set("limit", String(Math.max(1, Math.min(100, limit))));
+  const res = await fetch(url.toString(), {
+    method: "GET",
+    headers: { "Content-Type": "application/json" },
+  });
+  if (!res.ok) {
+    const text = await res.text().catch(() => "");
+    throw new Error(`Get questions by topic failed: ${res.status} ${text}`);
+  }
+  const data = await res.json();
+  console.log(`[Intelligence API] GET /questions/${topic}?limit=${limit} ->`, data);
+  return data;
+}
+
+export async function apiSearchQuestions(
+  query: string,
+  limit: number = 20,
+  refresh: boolean = false
+): Promise<SearchQuestionsResponse> {
+  const safeLimit = Math.max(1, Math.min(50, limit));
+  const url = new URL(`${INTELLIGENCE_BASE_URL}/search`);
+  url.searchParams.set("save_to_history", "true");
+  const res = await fetch(url.toString(), {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ query, limit: safeLimit, refresh })
+  });
+  if (!res.ok) {
+    const text = await res.text().catch(() => "");
+    throw new Error(`Search questions failed: ${res.status} ${text}`);
+  }
+  const data = await res.json();
+  console.log("[Intelligence API] Regular search response:", { 
+    hasTabId: !!data?.tab_id, 
+    tabId: data?.tab_id,
+    questionCount: data?.questions?.length,
+    query: data?.query 
+  });
+  return data;
+}
+
+export async function apiTriggerUpdate(): Promise<UpdateResponse> {
+  const res = await fetch(`${INTELLIGENCE_BASE_URL}/update`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+  });
+  if (!res.ok) {
+    const text = await res.text().catch(() => "");
+    throw new Error(`Trigger update failed: ${res.status} ${text}`);
+  }
+  const data = await res.json();
+  console.log("[Intelligence API] POST /update ->", data);
+  return data;
+}
+
+// History management APIs
+export async function apiGetHistoryTabs(params?: HistoryTabsQueryParams): Promise<HistoryTabsResponse> {
+  const url = new URL(HISTORY_BASE_URL);
+  if (typeof params?.limit === "number") url.searchParams.set("limit", String(params.limit));
+  if (typeof params?.offset === "number") url.searchParams.set("offset", String(params.offset));
+  if (params?.sort_by) url.searchParams.set("sort_by", params.sort_by);
+  if (typeof params?.ascending === "boolean") url.searchParams.set("ascending", params.ascending ? "true" : "false");
+
+  const res = await fetch(url.toString(), {
+    method: "GET",
+    headers: { "Content-Type": "application/json" },
+  });
+  if (!res.ok) {
+    // If 404, return empty result instead of throwing (API might not be deployed yet)
+    if (res.status === 404) {
+      console.warn("[History API] Endpoint not found, returning empty history");
+      return { tabs: [], total: 0, offset: 0, limit: params?.limit || 50 };
+    }
+    const text = await res.text().catch(() => "");
+    console.error("[History API] GET /api/history failed:", res.status, text);
+    throw new Error(`Get history tabs failed: ${res.status} ${text}`);
+  }
+  const data = await res.json();
+  console.log("[History API] GET /api/history ->", data);
+  return data;
+}
+
+export async function apiGetHistoryTab(tabId: string): Promise<HistoryTabSummary> {
+  // HISTORY_BASE_URL already ends with /, so no need to add another slash
+  const res = await fetch(`${HISTORY_BASE_URL}${encodeURIComponent(tabId)}`, {
+    method: "GET",
+    headers: { "Content-Type": "application/json" },
+  });
+  if (!res.ok) {
+    const text = await res.text().catch(() => "");
+    throw new Error(`Get history tab failed: ${res.status} ${text}`);
+  }
+  return res.json();
+}
+
+export async function apiSaveHistoryTab(payload: {
+  query: string;
+  questions: InterviewQuestion[];
+  metadata?: HistoryTabMetadata;
+}): Promise<{ tab_id: string }> {
+  const res = await fetch(HISTORY_BASE_URL, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+  if (!res.ok) {
+    const text = await res.text().catch(() => "");
+    throw new Error(`Save history tab failed: ${res.status} ${text}`);
+  }
+  return res.json();
+}
+
+export async function apiUpdateHistoryTab(
+  tabId: string,
+  payload: {
+    query?: string;
+    questions?: InterviewQuestion[];
+    metadata?: HistoryTabMetadata;
+  }
+): Promise<{ tab_id: string }> {
+  // HISTORY_BASE_URL already ends with /, so no need to add another slash
+  const res = await fetch(`${HISTORY_BASE_URL}${encodeURIComponent(tabId)}`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+  if (!res.ok) {
+    const text = await res.text().catch(() => "");
+    throw new Error(`Update history tab failed: ${res.status} ${text}`);
+  }
+  return res.json();
+}
+
+export async function apiDeleteHistoryTab(tabId: string): Promise<{ status: string }> {
+  // HISTORY_BASE_URL already ends with /, so no need to add another slash
+  const res = await fetch(`${HISTORY_BASE_URL}${encodeURIComponent(tabId)}`, {
+    method: "DELETE",
+  });
+  if (!res.ok) {
+    const text = await res.text().catch(() => "");
+    throw new Error(`Delete history tab failed: ${res.status} ${text}`);
+  }
+  return res.json();
+}
+
+export async function apiDeleteAllHistory(): Promise<{ message: string }> {
+  const res = await fetch(HISTORY_BASE_URL, {
+    method: "DELETE",
+  });
+  if (!res.ok) {
+    const text = await res.text().catch(() => "");
+    throw new Error(`Delete all history failed: ${res.status} ${text}`);
+  }
+  return res.json();
+}
+
+export async function apiSearchHistory(query: string, limit: number = 20): Promise<HistorySearchResponse> {
+  // HISTORY_BASE_URL already ends with /, so no need to add another slash
+  const url = new URL(`search/query`, HISTORY_BASE_URL);
+  url.searchParams.set("q", query);
+  url.searchParams.set("limit", String(Math.max(1, limit)));
+  const res = await fetch(url.toString(), {
+    method: "GET",
+    headers: { "Content-Type": "application/json" },
+  });
+  if (!res.ok) {
+    const text = await res.text().catch(() => "");
+    throw new Error(`Search history failed: ${res.status} ${text}`);
+  }
+  return res.json();
+}
+
+export async function apiGetHistoryStats(): Promise<HistoryStatsResponse> {
+  // HISTORY_BASE_URL already ends with /, so no need to add another slash
+  const res = await fetch(`${HISTORY_BASE_URL}stats/overview`, {
+    method: "GET",
+    headers: { "Content-Type": "application/json" },
+  });
+  if (!res.ok) {
+    const text = await res.text().catch(() => "");
+    throw new Error(`Get history stats failed: ${res.status} ${text}`);
+  }
+  return res.json();
+}
+
+export async function apiExportHistory(format: "json" | "csv" = "json"): Promise<Blob> {
+  // HISTORY_BASE_URL already ends with /, so no need to add another slash
+  const res = await fetch(`${HISTORY_BASE_URL}export/${format}`, {
+    method: "GET",
+  });
+  if (!res.ok) {
+    const text = await res.text().catch(() => "");
+    throw new Error(`Export history failed: ${res.status} ${text}`);
+  }
+  return res.blob();
 }
 
 

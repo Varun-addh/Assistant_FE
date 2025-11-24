@@ -11,6 +11,55 @@ interface MermaidEditorProps {
   title?: string;
 }
 
+// Add Mermaid syntax fixer for flowcharts to guarantee no edge label or node errors
+function sanitizeMermaidFlowchart(code: string): string {
+  if (!code) return code;
+  if (!/^flowchart\b/.test(code.trim())) return code;
+
+  let output = [];
+  const lines = code.split(/\r?\n/);
+  // Node names
+  const nodeId = '[A-Za-z0-9_][A-Za-z0-9_:-]*';
+  // Universal label edge: X ARROW label ARROW X
+  // (Do not define unused const arrows!)
+  const labelEdgeRe = new RegExp(`(${nodeId})\s*([-]{2,}|[=]{2,}|<-->|<--|-->|-\\.->|\\.->|<-.->|==>|<==|<==>|==|=)\s+(.+?)\s+([-]{2,}|[=]{2,}|<-->|<--|-->|-\\.->|\\.->|<-.->|==>|<==|<==>|==|=)\s*(${nodeId})`, 'g');
+  // Also cover label at start or end
+  const oneWayLabelRe = new RegExp(`(${nodeId})\s*([-]{2,}|[=]{2,}|<-->|<--|-->|-\\.->|\\.->|<-.->|==>|<==|<==>|==|=)\s+(.+?)\s*([-]{2,}|[=]{2,}|<-->|<--|-->|-\\.->|\\.->|<-.->|==>|<==|<==>|==|=)\s*(${nodeId})`, 'g');
+
+  for (let orig of lines) {
+    let line = orig;
+    // classDef/class lines untouched
+    if (/^\s*(classDef |class )/.test(line)) {
+      output.push(line);
+      continue;
+    }
+    // Main multi-directional edge: A -- label --> B -> A --|label|--> B
+    line = line.replace(/([A-Za-z0-9_][A-Za-z0-9_:-]*)\s*([-]{2,}|[=]{2,}|<-->|<--|-->|-\.->|\.->|<-.->|==>|<==|<==>|==|=)\s+(.+?)\s+([-]{2,}|[=]{2,}|<-->|<--|-->|-\.->|\.->|<-.->|==>|<==|<==>|==|=)\s*([A-Za-z0-9_][A-Za-z0-9_:-]*)/g,
+      (m, a, arrowL, label, arrowR, b) => `${a} ${arrowL}|${label.trim()}|${arrowR} ${b}`
+    );
+    // One-way edge: A -- label --> B -> A --|label|--> B
+    line = line.replace(/([A-Za-z0-9_][A-Za-z0-9_:-]*)\s*([-]{2,}|[=]{2,}|<-->|<--|-->|-\.->|\.->|<-.->|==>|<==|<==>|==|=)\s+(.+?)\s*([-]{2,}|[=]{2,}|<-->|<--|-->|-\.->|\.->|<-.->|==>|<==|<==>|==|=)\s*([A-Za-z0-9_][A-Za-z0-9_:-]*)/g,
+      (m, a, arrowL, label, arrowR, b) => `${a} ${arrowL}|${label.trim()}|${arrowR} ${b}`
+    );
+    // Fallback for classic left-to-right: A -- label --> B
+    line = line.replace(/([A-Za-z0-9_][A-Za-z0-9_:-]*)\s*([-]{2,}|[=]{2,}|<-->|<--|-->|-\.->|\.->|<-.->|==>|<==|<==>|==|=)\s+(.+?)\s+(-->|<--|<-->|-\.->|\.->|<-.->|==>|<==|<==>|==|=)\s*([A-Za-z0-9_][A-Za-z0-9_:-]*)/g,
+      (m, a, arr1, label, arr2, b) => `${a} ${arr1}|${label.trim()}|${arr2} ${b}`
+    );
+    // And right-to-left
+    line = line.replace(/([A-Za-z0-9_][A-Za-z0-9_:-]*)\s*(<--|<-->|<-.->|<==|<==>)\s+(.+?)\s*([-]{2,}|=+)\s*([A-Za-z0-9_][A-Za-z0-9_:-]*)/g,
+      (m, a, arr1, label, arr2, b) => `${a} ${arr1}|${label.trim()}|${arr2} ${b}`
+    );
+    // Fallback for parenthesis labels
+    line = line.replace(/(--+|==+|<-->|<--|-->)[ ]*([A-Za-z0-9_]+)[ ]*\(([^)]+)\)/g, (m, arrow, node, label) => {
+      return arrow + '|'+ label.trim() + '| ' + node;
+    });
+    // Merge multi-word node IDs
+    line = line.replace(/([A-Za-z0-9_]+ [A-Za-z0-9_]+)/g, s => s.replace(/ /g,'_'));
+    output.push(line);
+  }
+  return output.join('\n');
+}
+
 export function MermaidEditor({ open, onOpenChange, initialCode, title = "Mermaid Live Editor" }: MermaidEditorProps) {
   const [code, setCode] = useState<string>(initialCode || "");
   const [svg, setSvg] = useState<string>("");
@@ -42,16 +91,70 @@ export function MermaidEditor({ open, onOpenChange, initialCode, title = "Mermai
       .replace(/role="graphics-document[^"]*"/g, "");
   };
 
+  // Sanitize ER blocks and detect crow's-foot ER syntax; convert to erDiagram
+  const transformCrowFootToErDiagram = (src: string): string => {
+    const text = (src || "").trim();
+    if (!text) return text;
+    const hasCrowFoot = /\|\||\|o|o\||\{o|o\{|\{\}|\}\{|\}\}|o\{|\}o|\}\||\|\{/.test(text) && /--/.test(text);
+    const hasEntityBlocks = /\n?\s*[A-Za-z0-9_]+\s*\{[\s\S]*?\}/.test(text);
+    if (!hasCrowFoot && !hasEntityBlocks) return text;
+    // If already erDiagram, leave as is
+    const ensureErDirective = (body: string) => {
+      if (/^erDiagram\b/.test(body)) return body;
+      const lines = body.split(/\r?\n/);
+      const withoutDirective = lines.filter((l, idx) => idx !== 0 || !( /^\s*(flowchart|graph)\b/.test(l) ) ).join("\n");
+      return `erDiagram\n${withoutDirective}`.trim();
+    };
+
+    // Sanitize entity blocks: remove quoted comments, add default VARCHAR when type missing
+    const sanitizeBlocks = (body: string): string => {
+      return body.replace(/(^|\n)\s*([A-Za-z_][A-Za-z0-9_]*)\s*\{([\s\S]*?)\}/g, (_m, lead, entity, inner) => {
+        const cleanedLines: string[] = [];
+        inner.split(/\r?\n/).forEach((raw) => {
+          let line = raw.trim();
+          if (!line) return;
+          // Drop composite key or constraint lines unsupported by Mermaid ER
+          if (/^(KEY|UNIQUE|INDEX)\b/i.test(line)) return;
+          // Drop pure quoted lines
+          if (/^"[^"]*"$/.test(line)) return;
+          // Strip trailing quoted annotations
+          line = line.replace(/\s+"[^"]*"$/g, "");
+          // Remove unsupported qualifiers like unique/optional tokens at end
+          line = line.replace(/\b(unique|optional)\b/gi, '').replace(/\s{2,}/g, ' ').trim();
+          // If only a key marker present, prepend a placeholder type
+          const keyOnly = /^([A-Za-z_][\w]*)\s+(PK|FK|pk|fk)$/.exec(line);
+          if (keyOnly) {
+            line = `VARCHAR ${keyOnly[1]} ${keyOnly[2].toUpperCase()}`;
+          }
+          // If missing type (starts with identifier then maybe comment removed)
+          const parts = line.split(/\s+/);
+          if (parts.length >= 1 && parts[0] && (parts.length === 1 || ["PK","FK","pk","fk"].includes(parts[1]))) {
+            const name = parts[0];
+            const rest = parts.slice(1).map(s => s.toUpperCase()).join(' ');
+            line = `VARCHAR ${name}${rest ? ' ' + rest : ''}`;
+          }
+          cleanedLines.push(`  ${line}`);
+        });
+        return `${lead}${entity} {\n${cleanedLines.join('\n')}\n}`;
+      });
+    };
+
+    return ensureErDirective(sanitizeBlocks(text));
+  };
+
   const renderPreview = async (src: string) => {
-    const content = (src || "").trim();
+    let content = (src || "").trim();
     if (!content) {
       setSvg("");
       return;
     }
+    // Clean up for flowchart (guarantee no syntax errors)
+    content = sanitizeMermaidFlowchart(content);
     setIsRendering(true);
     setError("");
     try {
-      const response = await apiRenderMermaid({ code: content, theme: "neutral", style: "modern", size: "medium" });
+      const maybeEr = transformCrowFootToErDiagram(content);
+      const response = await apiRenderMermaid({ code: maybeEr, theme: "neutral", style: "modern", size: "medium" });
       if (response.trim().startsWith("<svg")) {
         setSvg(cleanSvg(response));
         return;
@@ -61,7 +164,7 @@ export function MermaidEditor({ open, onOpenChange, initialCode, title = "Mermai
     try {
       const mm: any = (window as any).mermaid;
       if (mm && typeof mm.render === "function") {
-        const out = await mm.render(`mmd-${Date.now()}`, content);
+        const out = await mm.render(`mmd-${Date.now()}`, transformCrowFootToErDiagram(content));
         if (out?.svg) {
           setSvg(cleanSvg(out.svg as string));
           return;
@@ -244,5 +347,6 @@ export function MermaidEditor({ open, onOpenChange, initialCode, title = "Mermai
     </Dialog>
   );
 }
+
 
 
