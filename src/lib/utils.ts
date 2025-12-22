@@ -28,8 +28,8 @@ export function formatOverlayChunkHtml(text: string): string {
 export async function downloadAnswerPdf(opts: { question: string; answerHtml: string; fileName?: string }) {
   const { question, answerHtml, fileName } = opts;
   const now = new Date();
-  const title = 'InterviewMate – Answer';
-  const safeFile = (fileName || `interviewmate-${now.toISOString().slice(0,10)}.pdf`).replace(/[^a-z0-9_.-]+/gi, '-');
+  const title = 'Stratax AI – Answer';
+  const safeFile = (fileName || `stratax-ai-${now.toISOString().slice(0, 10)}.pdf`).replace(/[^a-z0-9_.-]+/gi, '-');
 
   // 1) Try direct programmatic download using html2pdf (lazy-loaded from CDN)
   try {
@@ -85,7 +85,7 @@ export async function downloadAnswerPdf(opts: { question: string; answerHtml: st
           h1, h2, h3, h4, p, ul, ol, table, pre { widows: 3; orphans: 3; }
         </style>
         <div class="header">
-          <div class="brand">InterviewMate</div>
+          <div class="brand">Stratax AI</div>
           <div class="meta">${now.toLocaleString()}</div>
         </div>
         <div class="title">${escapeHtml(question)}</div>
@@ -100,7 +100,7 @@ export async function downloadAnswerPdf(opts: { question: string; answerHtml: st
       // Convert Mermaid SVGs to images to avoid foreignObject/html2canvas issues
       try {
         await inlineMermaidSvgs(container);
-      } catch {}
+      } catch { }
       // Remove UI-only header bars (e.g., "Copy table", language headers) before export
       try {
         // Any header bar that has rounded top and no bottom border (our pattern)
@@ -131,7 +131,7 @@ export async function downloadAnswerPdf(opts: { question: string; answerHtml: st
             node.style.marginBottom = node.style.marginBottom || '0';
           }
         });
-      } catch {}
+      } catch { }
       // Add a larger spacer at the end to force html2pdf to account for final lines
       const sentinel = document.createElement('div');
       // larger spacer gives html2canvas some breathing room for rounding/scale differences
@@ -144,13 +144,13 @@ export async function downloadAnswerPdf(opts: { question: string; answerHtml: st
         .set({
           // Increase bottom margin to avoid clipping on page boundaries
           // increase bottom margin slightly to avoid clipping at page boundaries
-          margin:       [18, 18, 40, 18],
-          filename:     safeFile,
-          image:        { type: 'jpeg', quality: 0.98 },
-          html2canvas:  { scale: 2, useCORS: true, backgroundColor: '#ffffff' },
-          jsPDF:        { unit: 'pt', format: 'a4', orientation: 'portrait' },
+          margin: [18, 18, 40, 18],
+          filename: safeFile,
+          image: { type: 'jpeg', quality: 0.98 },
+          html2canvas: { scale: 2, useCORS: true, backgroundColor: '#ffffff' },
+          jsPDF: { unit: 'pt', format: 'a4', orientation: 'portrait' },
           // Use both css and legacy algorithms for more reliable breaking
-          pagebreak:    { mode: ['css', 'legacy'] },
+          pagebreak: { mode: ['css', 'legacy'] },
         })
         .from(container)
         .save();
@@ -213,12 +213,12 @@ export async function downloadAnswerPdf(opts: { question: string; answerHtml: st
   </head>
   <body>
     <div class="header">
-      <div class="brand">InterviewMate</div>
+      <div class="brand">Stratax AI</div>
       <div class="meta">${now.toLocaleString()}</div>
     </div>
     <div class="title">${escapeHtml(question)}</div>
     <div class="section answer">${normalizeAnswerHtml(answerHtml)}</div>
-    <div class="footer"><span>InterviewMate</span><span>${now.toLocaleDateString()}</span></div>
+    <div class="footer"><span>Stratax AI</span><span>${now.toLocaleDateString()}</span></div>
     <script>
       window.onload = () => {
         document.title = ${JSON.stringify(safeFile)};
@@ -302,7 +302,7 @@ async function ensureHtml2Pdf(): Promise<any | null> {
     };
     document.head.appendChild(script);
     timer = window.setTimeout(() => {
-      try { script.remove(); } catch {}
+      try { script.remove(); } catch { }
       resolve(null);
     }, timeoutMs);
   });
@@ -324,7 +324,7 @@ async function ensureHtml2Pdf(): Promise<any | null> {
 }
 
 export async function preloadHtml2Pdf(): Promise<void> {
-  try { await ensureHtml2Pdf(); } catch {}
+  try { await ensureHtml2Pdf(); } catch { }
 }
 
 // Convert Mermaid SVGs to images to make html2canvas capture them reliably

@@ -6,6 +6,8 @@ import { BrowserRouter, Routes, Route } from "react-router-dom";
 import Index from "./pages/Index";
 import NotFound from "./pages/NotFound";
 import Runner from "./pages/Runner";
+import { InterviewAssistant } from "./components/InterviewAssistant";
+
 
 const queryClient = new QueryClient();
 
@@ -17,6 +19,7 @@ const App = () => (
       <BrowserRouter>
         <Routes>
           <Route path="/" element={<Index />} />
+          <Route path="/app" element={<InterviewAssistant />} />
           <Route path="/run" element={<Runner />} />
           {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
           <Route path="*" element={<NotFound />} />

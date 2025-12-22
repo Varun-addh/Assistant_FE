@@ -1,0 +1,21 @@
+
+> vite_react_shadcn_ts@0.0.0 build
+> vite build
+
+[36mvite v5.4.21 [32mbuilding for production...[36m[39m
+transforming...
+[32mΓ£ô[39m 3 modules transformed.
+x Build failed in 640ms
+error during build:
+[vite:css] [postcss] C:/Users/varun/Desktop/InerviewAstfe/src/index.css:130:1: Unexpected }
+file: C:/Users/varun/Desktop/InerviewAstfe/src/index.css:130:0
+    at Input.error (C:\Users\varun\Desktop\InerviewAstfe\node_modules\postcss\lib\input.js:135:16)
+    at Parser.unexpectedClose (C:\Users\varun\Desktop\InerviewAstfe\node_modules\postcss\lib\parser.js:587:22)
+    at Parser.end (C:\Users\varun\Desktop\InerviewAstfe\node_modules\postcss\lib\parser.js:330:12)
+    at Parser.parse (C:\Users\varun\Desktop\InerviewAstfe\node_modules\postcss\lib\parser.js:456:16)
+    at parse (C:\Users\varun\Desktop\InerviewAstfe\node_modules\postcss\lib\parse.js:11:12)
+    at new LazyResult (C:\Users\varun\Desktop\InerviewAstfe\node_modules\postcss\lib\lazy-result.js:165:16)
+    at Processor.process (C:\Users\varun\Desktop\InerviewAstfe\node_modules\postcss\lib\processor.js:53:14)
+    at compileCSS (file:///C:/Users/varun/Desktop/InerviewAstfe/node_modules/vite/dist/node/chunks/dep-BK3b2jBa.js:36898:59)
+    at async Object.transform (file:///C:/Users/varun/Desktop/InerviewAstfe/node_modules/vite/dist/node/chunks/dep-BK3b2jBa.js:36171:11)
+    at async transform (file:///C:/Users/varun/Desktop/InerviewAstfe/node_modules/rollup/dist/es/shared/node-entry.js:21163:16)

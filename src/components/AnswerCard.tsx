@@ -1,4 +1,8 @@
 import { useState, useEffect, useRef } from "react";
+
+// Keep a module-level cache so that answers marked as "seen" survive
+// component unmounts/remounts (history opens often unmount/mount the card).
+const seenAnswersGlobal = new Set<string>();
 import { apiRenderMermaid } from "@/lib/api";
 import { Copy, Check, MessageSquare, Edit3, ChevronLeft, ChevronRight, Send, Share, X, Play, Edit, Download, Expand } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -16,6 +20,9 @@ interface AnswerCardProps {
   question: string;
   // When false, render instantly without typewriter/streaming effect (used for history)
   streaming?: boolean;
+  // Whether evaluation (the Evaluate button) is allowed for this question.
+  evaluationAllowed?: boolean | null;
+  evaluationReason?: string | null;
   onEdit?: () => void;
   onSubmitEdit?: (newQuestion: string) => void;
   canPrev?: boolean;
@@ -28,15 +35,17 @@ interface AnswerCardProps {
   versionTotal?: number;
 }
 
-export const AnswerCard = ({ answer, question, streaming = true, onEdit, onSubmitEdit, canPrev, canNext, onPrev, onNext, versionLabel, isGenerating, versionIndex, versionTotal }: AnswerCardProps) => {
+export const AnswerCard = ({ answer, question, streaming = true, onEdit, onSubmitEdit, canPrev, canNext, onPrev, onNext, versionLabel, isGenerating, versionIndex, versionTotal, evaluationAllowed = null, evaluationReason = null }: AnswerCardProps) => {
   const [copied, setCopied] = useState(false);
   const [isDetailed] = useState(true);
   const [typedText, setTypedText] = useState("");
-  const [displayedBlocks, setDisplayedBlocks] = useState<Array<{type: string, content: string, lang?: string}>>([]);
+  const [displayedBlocks, setDisplayedBlocks] = useState<Array<{ type: string, content: string, lang?: string }>>([]);
   const { toast } = useToast();
   const typingTimerRef = useRef<any>(null);
   const lastAnswerRef = useRef<string>("");
   const lastStreamingRef = useRef<boolean>(streaming);
+  // NOTE: `seenAnswersGlobal` (module-level) is used below to persist
+  // which answers were rendered fully across component unmounts.
   const [isEditing, setIsEditing] = useState(false);
   const [editedQuestion, setEditedQuestion] = useState<string>(question);
   const [showQuickActions, setShowQuickActions] = useState(false);
@@ -123,11 +132,11 @@ export const AnswerCard = ({ answer, question, streaming = true, onEdit, onSubmi
           if (content && !element.querySelector('svg')) {
             // Use backend API to re-render instead of client-side Mermaid
             try {
-              const svg = await apiRenderMermaid({ 
-                code: content, 
-                theme: 'neutral', 
-                style: 'modern', 
-                size: 'medium' 
+              const svg = await apiRenderMermaid({
+                code: content,
+                theme: 'neutral',
+                style: 'modern',
+                size: 'medium'
               });
               if (svg && svg.trim().startsWith('<svg')) {
                 element.innerHTML = svg;
@@ -139,7 +148,7 @@ export const AnswerCard = ({ answer, question, streaming = true, onEdit, onSubmi
           }
         });
       }, 200);
-      
+
       return () => clearTimeout(timer);
     }
   }, [expandedDiagram]);
@@ -170,7 +179,7 @@ export const AnswerCard = ({ answer, question, streaming = true, onEdit, onSubmi
       try {
         const bbox = svgEl.getBBox?.();
         if (bbox && isFinite(bbox.width)) svgWidth = bbox.width;
-      } catch {}
+      } catch { }
     }
     if (!svgWidth) {
       svgWidth = svgEl.getBoundingClientRect().width || container.clientWidth || 900;
@@ -192,11 +201,11 @@ export const AnswerCard = ({ answer, question, streaming = true, onEdit, onSubmi
       .replace(/\s+/g, ' ') // Normalize whitespace
       .replace(/\s*=\s*/g, '=') // Remove spaces around equals signs
       .trim();
-    
+
     // Additional cleanup for any remaining problematic attributes
     cleaned = cleaned.replace(/aria-roledescription\s*=\s*"[^"]*"/g, '');
     cleaned = cleaned.replace(/role\s*=\s*"graphics-document[^"]*"/g, '');
-    
+
     return cleaned;
   };
 
@@ -212,7 +221,7 @@ export const AnswerCard = ({ answer, question, streaming = true, onEdit, onSubmi
     classDef component fill:#e1f5fe, stroke:#01579b, color:#000
     classDef service fill:#fff8e1, stroke:#f57f17, color:#000
     classDef database fill:#e3f2fd, stroke:#0d47a1, color:#000`,
-      
+
       workflow: `flowchart TD
     %% Workflow steps
     Start([Start]) --> Step1[Step 1]
@@ -223,7 +232,7 @@ export const AnswerCard = ({ answer, question, streaming = true, onEdit, onSubmi
     classDef start fill:#e8f5e8, stroke:#1b5e20, color:#000
     classDef step fill:#fff3e0, stroke:#e65100, color:#000
     classDef end fill:#ffebee, stroke:#c62828, color:#000`,
-      
+
       system: `flowchart TD
     %% System components
     subgraph Client[Client Layer]
@@ -250,7 +259,7 @@ export const AnswerCard = ({ answer, question, streaming = true, onEdit, onSubmi
     classDef server fill:#fff8e1, stroke:#f57f17, color:#000
     classDef data fill:#e3f2fd, stroke:#0d47a1, color:#000`
     };
-    
+
     return templates[type] || templates.architecture;
   };
 
@@ -339,7 +348,7 @@ export const AnswerCard = ({ answer, question, streaming = true, onEdit, onSubmi
       }
 
       const html = root ? root.innerHTML : (contentRef.current?.innerHTML || "");
-      await downloadAnswerPdf({ question, answerHtml: html, fileName: `InterviewMate-${new Date().toISOString().slice(0,10)}.pdf` });
+      await downloadAnswerPdf({ question, answerHtml: html, fileName: `Stratax-AI-${new Date().toISOString().slice(0, 10)}.pdf` });
     } catch (e) {
       toast({
         title: "Download failed",
@@ -358,7 +367,7 @@ export const AnswerCard = ({ answer, question, streaming = true, onEdit, onSubmi
   const addConnectionNumbers = (mermaidCode: string): string => {
     let code = mermaidCode;
     let connectionCounter = 1;
-    
+
     // First, handle bidirectional arrows (they should be processed first)
     code = code.replace(/([A-Za-z0-9_\[\]()\s&\/-]+?)\s*<-->\s*([A-Za-z0-9_\[\]()\s&\/-]+?)(?=\s*$|\s*\n|\s*classDef|\s*class\s)/gm, (match, from, to) => {
       const cleanFrom = from.trim();
@@ -370,17 +379,17 @@ export const AnswerCard = ({ answer, question, streaming = true, onEdit, onSubmi
       }
       return match;
     });
-    
+
     // Then handle simple arrows, but only if they don't already have labels
     code = code.replace(/([A-Za-z0-9_\[\]()\s&\/-]+?)\s*-->\s*([A-Za-z0-9_\[\]()\s&\/-]+?)(?=\s*$|\s*\n|\s*classDef|\s*class\s)/gm, (match, from, to) => {
       const cleanFrom = from.trim();
       const cleanTo = to.trim();
-      
+
       // Skip if this connection already has a label (contains -- text -->)
       if (match.includes('--') && match.includes('-->') && !match.includes('<-->')) {
         return match;
       }
-      
+
       if (cleanFrom && cleanTo && !cleanFrom.includes('classDef') && !cleanTo.includes('classDef')) {
         const numbered = `${cleanFrom} -- ${connectionCounter} --> ${cleanTo}`;
         connectionCounter++;
@@ -388,7 +397,7 @@ export const AnswerCard = ({ answer, question, streaming = true, onEdit, onSubmi
       }
       return match;
     });
-    
+
     return code;
   };
 
@@ -436,7 +445,7 @@ export const AnswerCard = ({ answer, question, streaming = true, onEdit, onSubmi
     const ensureErDirective = (body: string) => {
       if (/^erDiagram\b/.test(body)) return body;
       const lines = body.split(/\r?\n/);
-      const withoutDirective = lines.filter((l, idx) => idx !== 0 || !( /^\s*(flowchart|graph)\b/.test(l) ) ).join('\n');
+      const withoutDirective = lines.filter((l, idx) => idx !== 0 || !(/^\s*(flowchart|graph)\b/.test(l))).join('\n');
       return `erDiagram\n${withoutDirective}`.trim();
     };
     const sanitizeBlocks = (body: string): string => {
@@ -454,7 +463,7 @@ export const AnswerCard = ({ answer, question, streaming = true, onEdit, onSubmi
             line = `VARCHAR ${keyOnly[1]} ${keyOnly[2].toUpperCase()}`;
           }
           const parts = line.split(/\s+/);
-          if (parts.length >= 1 && parts[0] && (parts.length === 1 || ["PK","FK","pk","fk"].includes(parts[1]))) {
+          if (parts.length >= 1 && parts[0] && (parts.length === 1 || ["PK", "FK", "pk", "fk"].includes(parts[1]))) {
             const name = parts[0];
             const rest = parts.slice(1).map(s => s.toUpperCase()).join(' ');
             line = `VARCHAR ${name}${rest ? ' ' + rest : ''}`;
@@ -511,7 +520,7 @@ export const AnswerCard = ({ answer, question, streaming = true, onEdit, onSubmi
       });
       return { isValid: true, fixedCode: fixed, errors: [] };
     }
-    
+
     // Validation 1: Check for diagram type declaration
     if (!fixed.startsWith('flowchart') && !fixed.startsWith('graph') && !fixed.startsWith('sequenceDiagram') && !fixed.startsWith('classDiagram') && !fixed.startsWith('erDiagram')) {
       if (fixed.includes('-->') || fixed.includes('--') || fixed.includes('subgraph')) {
@@ -524,32 +533,32 @@ export const AnswerCard = ({ answer, question, streaming = true, onEdit, onSubmi
         }
       }
     }
-    
+
     // Validation 2: Check for incomplete arrows
     const incompleteArrows = fixed.match(/-->\s*$/gm) || [];
     if (incompleteArrows.length > 0) {
       errors.push(`Found ${incompleteArrows.length} incomplete arrows`);
       fixed = fixed.replace(/-->\s*$/gm, '');
     }
-    
+
     // Validation 3: Check for malformed arrows
     const malformedArrows = fixed.match(/-->\s*-->/g) || [];
     if (malformedArrows.length > 0) {
       errors.push(`Found ${malformedArrows.length} malformed arrows`);
       fixed = fixed.replace(/-->\s*-->/g, '-->');
     }
-    
+
     // Validation 4: Check for proper subgraph syntax
     const subgraphErrors = fixed.match(/subgraph\s+(\w+)\s*\[/g) || [];
     if (subgraphErrors.length > 0) {
       errors.push(`Found ${subgraphErrors.length} malformed subgraph declarations`);
       fixed = fixed.replace(/subgraph\s+(\w+)\s*\[/g, 'subgraph $1[');
     }
-    
+
     // Validation 5: Check for classDef placement
     const classDefLines = fixed.split('\n').filter(line => line.trim().startsWith('classDef'));
     const nonClassDefLines = fixed.split('\n').filter(line => !line.trim().startsWith('classDef'));
-    
+
     if (classDefLines.length > 0) {
       // Check if classDef is at the end
       const lastNonEmptyLine = nonClassDefLines.filter(line => line.trim()).pop();
@@ -559,11 +568,11 @@ export const AnswerCard = ({ answer, question, streaming = true, onEdit, onSubmi
         fixed = nonClassDefLines.join('\n') + '\n' + classDefLines.join('\n');
       }
     }
-    
+
     // Validation 6: Check for class applications
     const classLines = fixed.split('\n').filter(line => line.trim().includes(':::'));
     const nonClassLines = fixed.split('\n').filter(line => !line.trim().includes(':::'));
-    
+
     if (classLines.length > 0) {
       // Check if class applications are after classDef
       const classDefIndex = fixed.indexOf('classDef');
@@ -573,14 +582,14 @@ export const AnswerCard = ({ answer, question, streaming = true, onEdit, onSubmi
         fixed = nonClassLines.join('\n') + '\n' + classLines.join('\n');
       }
     }
-    
+
     // Validation 7: Check for empty lines and normalize
     const emptyLines = fixed.split('\n').filter(line => !line.trim());
     if (emptyLines.length > 0) {
       errors.push(`Found ${emptyLines.length} empty lines`);
       fixed = fixed.split('\n').filter(line => line.trim()).join('\n');
     }
-    
+
     // Validation 8: Fix inline comments (Mermaid doesn't support inline comments with %)
     const commentErrors = fixed.match(/\s+%\s+[^\n]*/g) || [];
     if (commentErrors.length > 0) {
@@ -590,7 +599,7 @@ export const AnswerCard = ({ answer, question, streaming = true, onEdit, onSubmi
         return '\n  %% ' + comment.trim();
       });
     }
-    
+
     // Validation 9: Fix classDef formatting issues
     // Check for classDef statements that might have formatting issues
     const classDefFormatLines = fixed.split('\n').filter(line => line.trim().startsWith('classDef'));
@@ -600,7 +609,7 @@ export const AnswerCard = ({ answer, question, streaming = true, onEdit, onSubmi
         errors.push(`classDef line ${index + 1} might have formatting issues`);
       }
     });
-    
+
     // Validation 10: Ensure proper line breaks between classDef statements
     const classDefSection = fixed.split('\n').filter(line => line.trim().startsWith('classDef'));
     if (classDefSection.length > 1) {
@@ -611,7 +620,7 @@ export const AnswerCard = ({ answer, question, streaming = true, onEdit, onSubmi
         fixed = fixed.replace(/classDef/g, '\nclassDef').replace(/^\n/, '');
       }
     }
-    
+
     // Validation 11: Fix semicolons in arrow connections (invalid Mermaid syntax)
     const semicolonErrors = fixed.match(/--[^>]*;[^>]*-->/g) || [];
     if (semicolonErrors.length > 0) {
@@ -619,7 +628,7 @@ export const AnswerCard = ({ answer, question, streaming = true, onEdit, onSubmi
       // Remove semicolons from arrow connections
       fixed = fixed.replace(/--([^>]*);([^>]*)-->/g, '--$1$2-->');
     }
-    
+
     // Validation 12: Fix multiple arrows on same line
     const multipleArrowErrors = fixed.match(/--[^>]*-->\s*[A-Za-z][^;]*-->/g) || [];
     if (multipleArrowErrors.length > 0) {
@@ -627,7 +636,7 @@ export const AnswerCard = ({ answer, question, streaming = true, onEdit, onSubmi
       // Split multiple arrows into separate lines
       fixed = fixed.replace(/(--[^>]*-->)\s*([A-Za-z][^;]*-->)/g, '$1\n  $2');
     }
-    
+
     // Validation 9: Check for proper indentation
     const lines = fixed.split('\n');
     let indentationErrors = 0;
@@ -652,50 +661,50 @@ export const AnswerCard = ({ answer, question, streaming = true, onEdit, onSubmi
       }
       return trimmed;
     });
-    
+
     if (indentationErrors > 0) {
       errors.push(`Found ${indentationErrors} indentation issues`);
     }
-    
+
     fixed = fixedLines.join('\n');
-    
+
     const isValid = errors.length === 0;
-    
+
     if (!isValid) {
       console.warn('Mermaid syntax validation failed:', errors);
       console.log('Fixed syntax:', fixed.substring(0, 200) + '...');
     } else {
       console.log('Mermaid syntax validation passed');
     }
-    
+
     return { isValid, fixedCode: fixed, errors };
   };
 
   // NUCLEAR OPTION: Completely bypass Mermaid library for SVG rendering
   const setSvgContentSafely = (element: HTMLElement, svgContent: string) => {
     console.log('NUCLEAR OPTION: Bypassing Mermaid library entirely');
-    
+
     // Remove mermaid class and add rendered class
     element.classList.remove('mermaid');
     element.classList.add('mermaid-rendered');
-    
+
     // Mark as processed with multiple flags to prevent re-processing
     (element as any).dataset.processed = '1';
     (element as any).dataset.mermaidProcessed = 'true';
     (element as any).dataset.mermaidRendered = 'true';
     (element as any).dataset.mermaidBypassed = 'true';
-    
+
     // COMPLETELY DISABLE MERMAID LIBRARY GLOBALLY TO PREVENT CONFLICTS
     const originalMermaid = (window as any).mermaid;
     const originalInitialize = (window as any).mermaid?.initialize;
     const originalRender = (window as any).mermaid?.render;
     const originalParse = (window as any).mermaid?.parse;
     const originalInit = (window as any).mermaid?.init;
-    
+
     // Disable ALL Mermaid functionality globally
     (window as any).mermaid = null;
     (window as any).mermaid = undefined;
-    
+
     // Override any Mermaid methods that might be called
     if (originalMermaid) {
       (window as any).mermaid = {
@@ -705,7 +714,7 @@ export const AnswerCard = ({ answer, question, streaming = true, onEdit, onSubmi
         parse: () => { throw new Error('Mermaid client-side rendering disabled'); }
       };
     }
-    
+
     // Disable any Mermaid event listeners
     const mermaidElements = document.querySelectorAll('.mermaid');
     mermaidElements.forEach(el => {
@@ -714,7 +723,7 @@ export const AnswerCard = ({ answer, question, streaming = true, onEdit, onSubmi
         el.classList.add('mermaid-disabled');
       }
     });
-    
+
     // Set the cleaned SVG content DIRECTLY without any Mermaid processing
     element.innerHTML = svgContent;
     // Ensure consistent sizing regardless of diagram complexity
@@ -725,8 +734,8 @@ export const AnswerCard = ({ answer, question, streaming = true, onEdit, onSubmi
         currentScaleRef.current = 1.0;
         adjustSvgScale(container);
       }
-    } catch {}
-    
+    } catch { }
+
     // NEVER restore Mermaid library for this element
     // This element is now completely independent of Mermaid library
     console.log('NUCLEAR OPTION: SVG set directly, Mermaid library bypassed permanently');
@@ -770,278 +779,278 @@ export const AnswerCard = ({ answer, question, streaming = true, onEdit, onSubmi
           console.log('Mermaid processing already in progress, skipping');
           return;
         }
-        
+
         const mm: any = (window as any)?.mermaid;
         const now = Date.now();
         if (now - mermaidRanRef.current < 200) return; // Increased throttle time
         mermaidRanRef.current = now;
-        
+
         // More specific selector to avoid re-processing - EXCLUDE bypassed elements
         const nodes = Array.from(document.querySelectorAll('.mermaid:not(.mermaid-rendered):not(.mermaid-disabled):not([data-mermaid-processed="true"]):not([data-mermaid-rendered="true"]):not([data-mermaid-bypassed="true"])')) as HTMLElement[];
         console.log('Mermaid processing: found', nodes.length, 'unprocessed nodes');
         if (!nodes.length) return;
-      
-      // Set processing flag
-      mermaidProcessingRef.current = true;
-      const normalizeMermaid = (src: string): string => {
-        let t = (src || '').trim();
-        
-        // For complex diagrams with subgraphs, classDef, etc., return as-is
-        if (t.includes('subgraph') || t.includes('classDef') || t.includes('class ') || t.includes(':::')) {
-          console.log('Complex diagram detected, using original syntax');
-          return t;
-        }
-        
-        const newlineCount = (t.match(/\n/g) || []).length;
-        if (newlineCount >= 3) return t;
-        
-        // Only apply normalization to simple diagrams
-        console.log('Simple diagram detected, applying normalization');
-        const lines: string[] = [];
-        let currentLine = '';
-        
-        // Split by major delimiters first
-        const parts = t.split(/(\s+subgraph\s+|\s+end\s+|\s+classDef\s+|\s+-->\s+)/);
-        
-        for (let i = 0; i < parts.length; i++) {
-          const part = parts[i].trim();
-          if (!part) continue;
-          
-          if (part.startsWith('flowchart')) {
-            lines.push(part);
-          } else if (part.startsWith('subgraph')) {
-            lines.push(`  ${part}`);
-          } else if (part === 'end') {
-            lines.push('  end');
-          } else if (part.startsWith('classDef')) {
-            lines.push(`    ${part}`);
-          } else if (part.includes('-->')) {
-            lines.push(`    ${part}`);
-          } else if (part.includes('[') && part.includes(']')) {
-            // Node definition
-            lines.push(`    ${part}`);
-          } else if (part.includes(':::')) {
-            // Node with class
-            lines.push(`    ${part}`);
-          } else {
-            // Regular content
-            if (currentLine) {
-              currentLine += ' ' + part;
+
+        // Set processing flag
+        mermaidProcessingRef.current = true;
+        const normalizeMermaid = (src: string): string => {
+          let t = (src || '').trim();
+
+          // For complex diagrams with subgraphs, classDef, etc., return as-is
+          if (t.includes('subgraph') || t.includes('classDef') || t.includes('class ') || t.includes(':::')) {
+            console.log('Complex diagram detected, using original syntax');
+            return t;
+          }
+
+          const newlineCount = (t.match(/\n/g) || []).length;
+          if (newlineCount >= 3) return t;
+
+          // Only apply normalization to simple diagrams
+          console.log('Simple diagram detected, applying normalization');
+          const lines: string[] = [];
+          let currentLine = '';
+
+          // Split by major delimiters first
+          const parts = t.split(/(\s+subgraph\s+|\s+end\s+|\s+classDef\s+|\s+-->\s+)/);
+
+          for (let i = 0; i < parts.length; i++) {
+            const part = parts[i].trim();
+            if (!part) continue;
+
+            if (part.startsWith('flowchart')) {
+              lines.push(part);
+            } else if (part.startsWith('subgraph')) {
+              lines.push(`  ${part}`);
+            } else if (part === 'end') {
+              lines.push('  end');
+            } else if (part.startsWith('classDef')) {
+              lines.push(`    ${part}`);
+            } else if (part.includes('-->')) {
+              lines.push(`    ${part}`);
+            } else if (part.includes('[') && part.includes(']')) {
+              // Node definition
+              lines.push(`    ${part}`);
+            } else if (part.includes(':::')) {
+              // Node with class
+              lines.push(`    ${part}`);
             } else {
-              currentLine = part;
-            }
-          }
-        }
-        
-        if (currentLine) {
-          lines.push(currentLine);
-        }
-        
-        return lines.join('\n');
-      };
-      const tryRender = async (el: HTMLElement, i: number) => {
-        if ((el as any).dataset.processed === '1' || (el as any).dataset.mermaidProcessed === 'true') return;
-        
-        // Mark as being processed to prevent race conditions
-        (el as any).dataset.mermaidProcessed = 'true';
-        
-        const srcRaw = el.textContent || '';
-        console.log('Processing Mermaid node', i, ':', srcRaw.substring(0, 100) + '...');
-        
-        // If the diagram contains subgraphs, send the RAW source verbatim to the backend.
-        // This avoids any normalization/validation that could collapse whitespace or
-        // move lines and accidentally convert layer subgraphs into plain nodes.
-        const containsSubgraph = /\bsubgraph\b/.test(srcRaw);
-        let fixedSrc = srcRaw;
-        if (!containsSubgraph) {
-          // For simple diagrams (no subgraphs), keep lightweight normalization/validation.
-          let src = normalizeMermaid(srcRaw);
-          // Convert ER crow's-foot to erDiagram early
-          src = crowFootToErDiagram(src);
-          const validation = validateAndFixMermaidSyntax(src);
-          fixedSrc = validation.fixedCode;
-          if (!validation.isValid) {
-            console.warn('Mermaid syntax issues detected; proceeding with normalized code without fallback. Errors:', validation.errors);
-          }
-          if (fixedSrc !== srcRaw) {
-            el.textContent = fixedSrc;
-          }
-        }
-
-        // Harmonize subgraph titles: ensure they end with " Layer" for clarity
-        if (containsSubgraph) {
-          // Case 1: subgraph ID with bracketed label: subgraph X[Label]
-          fixedSrc = fixedSrc.replace(/(^|\n)\s*subgraph\s+([A-Za-z0-9_-]+)\s*\[(.*?)\]/g, (_m, lead, id, label) => {
-            const needsLayer = !/layer$/i.test(String(label).trim());
-            const newLabel = needsLayer ? `${label} Layer` : label;
-            return `${lead}subgraph ${id}[${newLabel}]`;
-          });
-          // Case 2: subgraph with plain title: subgraph Client
-          fixedSrc = fixedSrc.replace(/(^|\n)\s*subgraph\s+([A-Za-z0-9_-]+)\s*$/gm, (_m, lead, id) => {
-            const title = id.replace(/_/g, ' ');
-            const needsLayer = !/layer$/i.test(title);
-            const label = needsLayer ? `${title} Layer` : title;
-            return `${lead}subgraph ${id}[${label}]`;
-          });
-        }
-
-        // Fix common edge syntax errors before adding init directive
-        fixedSrc = fixCommonMermaidEdgeSyntax(fixedSrc);
-        
-        // Add sequential connection numbers to show workflow steps
-        const originalSrc = fixedSrc;
-        fixedSrc = addConnectionNumbers(fixedSrc);
-        
-        // Debug logging to help troubleshoot
-        if (originalSrc !== fixedSrc) {
-          console.log('Connection numbering applied:', {
-            original: originalSrc.substring(0, 200) + '...',
-            modified: fixedSrc.substring(0, 200) + '...'
-          });
-        }
-
-        // Always enforce a modern, balanced layout via Mermaid init directive unless the source already defines one
-        const hasInitDirective = /^%%\{\s*init:/m.test(fixedSrc);
-        if (!hasInitDirective) {
-          const initDirective =
-            "%%{init: {" +
-            " 'theme': 'neutral'," +
-            " 'flowchart': { 'useMaxWidth': true, 'htmlLabels': true, 'nodeSpacing': 80, 'rankSpacing': 120, 'padding': 16, 'curve': 'basis' }," +
-            " 'themeVariables': {" +
-            "   'fontFamily': 'Inter, ui-sans-serif, system-ui, -apple-system'," +
-            "   'fontSize': '16px'," +
-            "   'primaryColor': '#eef2ff'," +
-            "   'primaryBorderColor': '#a5b4fc'," +
-            "   'lineColor': '#94a3b8'," +
-            "   'clusterBkg': '#f8fafc'," +
-            "   'clusterBorder': '#cbd5e1'" +
-            " }" +
-            "}}%%\n";
-          fixedSrc = initDirective + fixedSrc;
-        }
-        
-        // Primary: your backend renderer
-        try {
-          const responseText = await apiRenderMermaid({ code: fixedSrc, theme: 'neutral', style: 'modern', size: 'medium' });
-          console.log('Backend response:', responseText.substring(0, 200) + '...');
-          
-          // Check if response is SVG (starts with <svg) or raw Mermaid
-          if (responseText.trim().startsWith('<svg')) {
-            // Detect if the backend-rendered SVG is actually an error page
-            const looksLikeErrorSvg = /aria-roledescription\s*=\s*["']?error|Syntax error in text|Syntax error/i.test(responseText) || responseText.includes('class="error"');
-            console.log('Original SVG contains aria-roledescription:', responseText.includes('aria-roledescription'));
-            console.log('Backend SVG looks like error:', looksLikeErrorSvg);
-
-            if (looksLikeErrorSvg) {
-              // Try a quick retry with the raw, original source (srcRaw) to avoid the transformations
-              console.warn('Backend returned an error SVG; retrying render with original source');
-              try {
-                const retry = await apiRenderMermaid({ code: (el.textContent || '').trim() || fixedSrc, theme: 'neutral', style: 'modern', size: 'medium' });
-                if (retry && retry.trim().startsWith('<svg') && !/Syntax error/i.test(retry) && !/aria-roledescription\s*=\s*["']?error/i.test(retry)) {
-                  const cleanedRetry = cleanSvgContent(retry);
-                  console.log('Retry succeeded with cleaned SVG preview:', cleanedRetry.substring(0, 300) + '...');
-                  setSvgContentSafely(el, cleanedRetry);
-                  return;
-                }
-                console.warn('Retry did not produce a valid SVG, falling back to client/Kroki');
-              } catch (e) {
-                console.warn('Retry render with original source failed:', e);
+              // Regular content
+              if (currentLine) {
+                currentLine += ' ' + part;
+              } else {
+                currentLine = part;
               }
-              // fall through to client-side/Kroki fallback below
             }
-
-            // Clean the SVG to remove attributes that might cause false positive error detection
-            const cleanedSvg = cleanSvgContent(responseText);
-            console.log('Cleaned SVG contains aria-roledescription:', cleanedSvg.includes('aria-roledescription'));
-            console.log('Cleaned SVG preview:', cleanedSvg.substring(0, 300) + '...');
-
-            // If the cleaned SVG still contains an obvious error message, don't set it directly
-            if (/Syntax error in text|Syntax error|aria-roledescription\s*=\s*["']?error/i.test(cleanedSvg)) {
-              console.warn('Cleaned backend SVG still appears to be an error; skipping direct set and falling back');
-            } else {
-              // Use the safe SVG setting function
-              setSvgContentSafely(el, cleanedSvg);
-              return;
-            }
-          } else {
-            console.warn('Backend returned Mermaid code instead of SVG, using client fallback');
           }
-        } catch (error) {
-          console.warn('Backend render failed for complex diagram, using client fallback:', error);
-          // For complex diagrams, the backend might fail, so we'll try client-side rendering
-        }
-        
-        // Fallback: in-browser Mermaid
-        if (mm && typeof mm.render === 'function') {
+
+          if (currentLine) {
+            lines.push(currentLine);
+          }
+
+          return lines.join('\n');
+        };
+        const tryRender = async (el: HTMLElement, i: number) => {
+          if ((el as any).dataset.processed === '1' || (el as any).dataset.mermaidProcessed === 'true') return;
+
+          // Mark as being processed to prevent race conditions
+          (el as any).dataset.mermaidProcessed = 'true';
+
+          const srcRaw = el.textContent || '';
+          console.log('Processing Mermaid node', i, ':', srcRaw.substring(0, 100) + '...');
+
+          // If the diagram contains subgraphs, send the RAW source verbatim to the backend.
+          // This avoids any normalization/validation that could collapse whitespace or
+          // move lines and accidentally convert layer subgraphs into plain nodes.
+          const containsSubgraph = /\bsubgraph\b/.test(srcRaw);
+          let fixedSrc = srcRaw;
+          if (!containsSubgraph) {
+            // For simple diagrams (no subgraphs), keep lightweight normalization/validation.
+            let src = normalizeMermaid(srcRaw);
+            // Convert ER crow's-foot to erDiagram early
+            src = crowFootToErDiagram(src);
+            const validation = validateAndFixMermaidSyntax(src);
+            fixedSrc = validation.fixedCode;
+            if (!validation.isValid) {
+              console.warn('Mermaid syntax issues detected; proceeding with normalized code without fallback. Errors:', validation.errors);
+            }
+            if (fixedSrc !== srcRaw) {
+              el.textContent = fixedSrc;
+            }
+          }
+
+          // Harmonize subgraph titles: ensure they end with " Layer" for clarity
+          if (containsSubgraph) {
+            // Case 1: subgraph ID with bracketed label: subgraph X[Label]
+            fixedSrc = fixedSrc.replace(/(^|\n)\s*subgraph\s+([A-Za-z0-9_-]+)\s*\[(.*?)\]/g, (_m, lead, id, label) => {
+              const needsLayer = !/layer$/i.test(String(label).trim());
+              const newLabel = needsLayer ? `${label} Layer` : label;
+              return `${lead}subgraph ${id}[${newLabel}]`;
+            });
+            // Case 2: subgraph with plain title: subgraph Client
+            fixedSrc = fixedSrc.replace(/(^|\n)\s*subgraph\s+([A-Za-z0-9_-]+)\s*$/gm, (_m, lead, id) => {
+              const title = id.replace(/_/g, ' ');
+              const needsLayer = !/layer$/i.test(title);
+              const label = needsLayer ? `${title} Layer` : title;
+              return `${lead}subgraph ${id}[${label}]`;
+            });
+          }
+
+          // Fix common edge syntax errors before adding init directive
+          fixedSrc = fixCommonMermaidEdgeSyntax(fixedSrc);
+
+          // Add sequential connection numbers to show workflow steps
+          const originalSrc = fixedSrc;
+          fixedSrc = addConnectionNumbers(fixedSrc);
+
+          // Debug logging to help troubleshoot
+          if (originalSrc !== fixedSrc) {
+            console.log('Connection numbering applied:', {
+              original: originalSrc.substring(0, 200) + '...',
+              modified: fixedSrc.substring(0, 200) + '...'
+            });
+          }
+
+          // Always enforce a modern, balanced layout via Mermaid init directive unless the source already defines one
+          const hasInitDirective = /^%%\{\s*init:/m.test(fixedSrc);
+          if (!hasInitDirective) {
+            const initDirective =
+              "%%{init: {" +
+              " 'theme': 'neutral'," +
+              " 'flowchart': { 'useMaxWidth': true, 'htmlLabels': true, 'nodeSpacing': 80, 'rankSpacing': 120, 'padding': 16, 'curve': 'basis' }," +
+              " 'themeVariables': {" +
+              "   'fontFamily': 'Inter, ui-sans-serif, system-ui, -apple-system'," +
+              "   'fontSize': '16px'," +
+              "   'primaryColor': '#eef2ff'," +
+              "   'primaryBorderColor': '#a5b4fc'," +
+              "   'lineColor': '#94a3b8'," +
+              "   'clusterBkg': '#f8fafc'," +
+              "   'clusterBorder': '#cbd5e1'" +
+              " }" +
+              "}}%%\n";
+            fixedSrc = initDirective + fixedSrc;
+          }
+
+          // Primary: your backend renderer
           try {
-            const id = `mmd-${Date.now()}-${i}`;
-            console.log('Attempting client-side Mermaid render for complex diagram');
-            const out = await mm.render(id, fixedSrc);
-            if (out && out.svg) {
+            const responseText = await apiRenderMermaid({ code: fixedSrc, theme: 'neutral', style: 'modern', size: 'medium' });
+            console.log('Backend response:', responseText.substring(0, 200) + '...');
+
+            // Check if response is SVG (starts with <svg) or raw Mermaid
+            if (responseText.trim().startsWith('<svg')) {
+              // Detect if the backend-rendered SVG is actually an error page
+              const looksLikeErrorSvg = /aria-roledescription\s*=\s*["']?error|Syntax error in text|Syntax error/i.test(responseText) || responseText.includes('class="error"');
+              console.log('Original SVG contains aria-roledescription:', responseText.includes('aria-roledescription'));
+              console.log('Backend SVG looks like error:', looksLikeErrorSvg);
+
+              if (looksLikeErrorSvg) {
+                // Try a quick retry with the raw, original source (srcRaw) to avoid the transformations
+                console.warn('Backend returned an error SVG; retrying render with original source');
+                try {
+                  const retry = await apiRenderMermaid({ code: (el.textContent || '').trim() || fixedSrc, theme: 'neutral', style: 'modern', size: 'medium' });
+                  if (retry && retry.trim().startsWith('<svg') && !/Syntax error/i.test(retry) && !/aria-roledescription\s*=\s*["']?error/i.test(retry)) {
+                    const cleanedRetry = cleanSvgContent(retry);
+                    console.log('Retry succeeded with cleaned SVG preview:', cleanedRetry.substring(0, 300) + '...');
+                    setSvgContentSafely(el, cleanedRetry);
+                    return;
+                  }
+                  console.warn('Retry did not produce a valid SVG, falling back to client/Kroki');
+                } catch (e) {
+                  console.warn('Retry render with original source failed:', e);
+                }
+                // fall through to client-side/Kroki fallback below
+              }
+
               // Clean the SVG to remove attributes that might cause false positive error detection
-              const cleanedSvg = cleanSvgContent(out.svg as string);
-              console.log('Client-side Mermaid SVG cleaned, contains aria-roledescription:', cleanedSvg.includes('aria-roledescription'));
-              
-              // Use the safe SVG setting function
-              setSvgContentSafely(el, cleanedSvg);
-              
-              return;
+              const cleanedSvg = cleanSvgContent(responseText);
+              console.log('Cleaned SVG contains aria-roledescription:', cleanedSvg.includes('aria-roledescription'));
+              console.log('Cleaned SVG preview:', cleanedSvg.substring(0, 300) + '...');
+
+              // If the cleaned SVG still contains an obvious error message, don't set it directly
+              if (/Syntax error in text|Syntax error|aria-roledescription\s*=\s*["']?error/i.test(cleanedSvg)) {
+                console.warn('Cleaned backend SVG still appears to be an error; skipping direct set and falling back');
+              } else {
+                // Use the safe SVG setting function
+                setSvgContentSafely(el, cleanedSvg);
+                return;
+              }
             } else {
-              console.warn('Client-side Mermaid render returned no SVG');
+              console.warn('Backend returned Mermaid code instead of SVG, using client fallback');
             }
           } catch (error) {
-            console.warn('Client-side Mermaid render failed for complex diagram:', error);
-            // If client-side also fails, we'll try Kroki as final fallback
+            console.warn('Backend render failed for complex diagram, using client fallback:', error);
+            // For complex diagrams, the backend might fail, so we'll try client-side rendering
           }
-        }
-        
-        // Final fallback: direct Kroki
-        try {
-          console.log('Attempting Kroki fallback for complex diagram');
-          const resp = await fetch('https://kroki.io/mermaid/svg', { method: 'POST', headers: { 'Content-Type': 'text/plain' }, body: fixedSrc });
-          if (resp.ok) { 
-            const svg = await resp.text(); 
-            // Clean the SVG to remove attributes that might cause false positive error detection
-            const cleanedSvg = cleanSvgContent(svg);
-            console.log('Kroki SVG cleaned, contains aria-roledescription:', cleanedSvg.includes('aria-roledescription'));
-            
-            // Use the safe SVG setting function
-            setSvgContentSafely(el, cleanedSvg);
-          } else {
-            console.warn('Kroki fallback failed with status:', resp.status);
+
+          // Fallback: in-browser Mermaid
+          if (mm && typeof mm.render === 'function') {
+            try {
+              const id = `mmd-${Date.now()}-${i}`;
+              console.log('Attempting client-side Mermaid render for complex diagram');
+              const out = await mm.render(id, fixedSrc);
+              if (out && out.svg) {
+                // Clean the SVG to remove attributes that might cause false positive error detection
+                const cleanedSvg = cleanSvgContent(out.svg as string);
+                console.log('Client-side Mermaid SVG cleaned, contains aria-roledescription:', cleanedSvg.includes('aria-roledescription'));
+
+                // Use the safe SVG setting function
+                setSvgContentSafely(el, cleanedSvg);
+
+                return;
+              } else {
+                console.warn('Client-side Mermaid render returned no SVG');
+              }
+            } catch (error) {
+              console.warn('Client-side Mermaid render failed for complex diagram:', error);
+              // If client-side also fails, we'll try Kroki as final fallback
+            }
           }
-        } catch (error) {
-          console.warn('Kroki fallback failed:', error);
-        }
-        
-        // NUCLEAR OPTION: NEVER restore Mermaid library for processed elements
-        // This ensures that the Mermaid library cannot interfere with our cleaned SVG
-        console.log('NUCLEAR OPTION: Mermaid library permanently disabled for processed elements');
-        mermaidProcessingRef.current = false;
-      };
-      
-      // Process nodes sequentially to prevent race conditions
-      const processNodes = async () => {
-        for (let i = 0; i < nodes.length; i++) {
+
+          // Final fallback: direct Kroki
           try {
-            await tryRender(nodes[i], i);
-            // Small delay between nodes to prevent race conditions
-            await new Promise(resolve => setTimeout(resolve, 50));
+            console.log('Attempting Kroki fallback for complex diagram');
+            const resp = await fetch('https://kroki.io/mermaid/svg', { method: 'POST', headers: { 'Content-Type': 'text/plain' }, body: fixedSrc });
+            if (resp.ok) {
+              const svg = await resp.text();
+              // Clean the SVG to remove attributes that might cause false positive error detection
+              const cleanedSvg = cleanSvgContent(svg);
+              console.log('Kroki SVG cleaned, contains aria-roledescription:', cleanedSvg.includes('aria-roledescription'));
+
+              // Use the safe SVG setting function
+              setSvgContentSafely(el, cleanedSvg);
+            } else {
+              console.warn('Kroki fallback failed with status:', resp.status);
+            }
           } catch (error) {
-            console.error(`Error processing Mermaid node ${i}:`, error);
+            console.warn('Kroki fallback failed:', error);
           }
-        }
-        // Mark complete to allow future runs on changes
-        mermaidProcessingRef.current = false;
-      };
-      
-      processNodes();
+
+          // NUCLEAR OPTION: NEVER restore Mermaid library for processed elements
+          // This ensures that the Mermaid library cannot interfere with our cleaned SVG
+          console.log('NUCLEAR OPTION: Mermaid library permanently disabled for processed elements');
+          mermaidProcessingRef.current = false;
+        };
+
+        // Process nodes sequentially to prevent race conditions
+        const processNodes = async () => {
+          for (let i = 0; i < nodes.length; i++) {
+            try {
+              await tryRender(nodes[i], i);
+              // Small delay between nodes to prevent race conditions
+              await new Promise(resolve => setTimeout(resolve, 50));
+            } catch (error) {
+              console.error(`Error processing Mermaid node ${i}:`, error);
+            }
+          }
+          // Mark complete to allow future runs on changes
+          mermaidProcessingRef.current = false;
+        };
+
+        processNodes();
       } catch (error) {
         console.error('Mermaid processing error:', error);
         mermaidProcessingRef.current = false;
       }
     }, 50); // Small delay to ensure DOM is ready
-    
+
     // Cleanup timeout on unmount
     return () => clearTimeout(timeoutId);
   }, [displayedBlocks]);
@@ -1050,12 +1059,12 @@ export const AnswerCard = ({ answer, question, streaming = true, onEdit, onSubmi
   useEffect(() => {
     const answerChanged = lastAnswerRef.current !== answer;
     const streamingChanged = lastStreamingRef.current !== streaming;
-    
+
     // Check streaming prop FIRST to avoid unnecessary animation triggers
     if (!streaming) {
       // Update refs
       lastStreamingRef.current = streaming;
-      
+
       // Only update if answer content actually changed (prevent re-renders on streaming prop change)
       if (answerChanged) {
         lastAnswerRef.current = answer;
@@ -1065,8 +1074,11 @@ export const AnswerCard = ({ answer, question, streaming = true, onEdit, onSubmi
         try {
           const blocks = parseContent(answer);
           setDisplayedBlocks(blocks);
+          // Mark this answer as seen so we don't animate it later
+          try { seenAnswersGlobal.add(answer); } catch { }
         } catch {
           setDisplayedBlocks([{ type: 'p', content: answer } as any]);
+          try { seenAnswersGlobal.add(answer); } catch { }
         }
       } else if (streamingChanged && lastAnswerRef.current === answer) {
         // Streaming changed to false but answer is the same - ensure displayed
@@ -1077,8 +1089,10 @@ export const AnswerCard = ({ answer, question, streaming = true, onEdit, onSubmi
           try {
             const blocks = parseContent(answer);
             setDisplayedBlocks(blocks);
+            try { seenAnswersGlobal.add(answer); } catch { }
           } catch {
             setDisplayedBlocks([{ type: 'p', content: answer } as any]);
+            try { seenAnswersGlobal.add(answer); } catch { }
           }
         }
       }
@@ -1090,6 +1104,19 @@ export const AnswerCard = ({ answer, question, streaming = true, onEdit, onSubmi
 
     // Only trigger animation if answer actually changed AND streaming is enabled
     if (answerChanged) {
+      // If we've already rendered this exact answer before, skip animation
+      if (seenAnswersGlobal.has(answer)) {
+        lastAnswerRef.current = answer;
+        setTypedText("");
+        setIsTypingAnimation(false);
+        try {
+          const blocks = parseContent(answer);
+          setDisplayedBlocks(blocks);
+        } catch {
+          setDisplayedBlocks([{ type: 'p', content: answer } as any]);
+        }
+        return;
+      }
       lastAnswerRef.current = answer;
 
       setTypedText("");
@@ -1110,9 +1137,12 @@ export const AnswerCard = ({ answer, question, streaming = true, onEdit, onSubmi
           try {
             const blocks = parseContent(answer);
             setDisplayedBlocks(blocks);
+            // Cache this answer as rendered so future mounts don't re-type it
+            try { seenAnswersGlobal.add(answer); } catch { }
           } catch {
             // Fallback: show raw text if parsing fails
             setDisplayedBlocks([{ type: 'p', content: answer } as any]);
+            try { seenAnswersGlobal.add(answer); } catch { }
           }
           setTypedText("");
           return;
@@ -1122,7 +1152,7 @@ export const AnswerCard = ({ answer, question, streaming = true, onEdit, onSubmi
         idx++;
       }, intervalMs);
     }
-    
+
     return () => {
       if (typingTimerRef.current) clearInterval(typingTimerRef.current);
     };
@@ -1133,7 +1163,7 @@ export const AnswerCard = ({ answer, question, streaming = true, onEdit, onSubmi
     // Preserve inline emphasis tags; strip dangerous tags only
     // Remove script/style tags and their content
     let safe = raw.replace(/<script[\s\S]*?>[\s\S]*?<\/script>/gi, '')
-                  .replace(/<style[\s\S]*?>[\s\S]*?<\/style>/gi, '');
+      .replace(/<style[\s\S]*?>[\s\S]*?<\/style>/gi, '');
     // Disallow all tags except a safe allowlist (strong, b, em, i, code, pre, br, span)
     // Replace disallowed tags with their text content
     safe = safe.replace(/<\/?(?!strong\b|b\b|em\b|i\b|code\b|pre\b|br\b|span\b)[a-z0-9-]+(?:\s+[^>]*?)?>/gi, '');
@@ -1196,7 +1226,7 @@ export const AnswerCard = ({ answer, question, streaming = true, onEdit, onSubmi
     // Split by code fences to handle mixed content; sanitize only non-code parts
     const parts = text.split(/```/g);
     let result = '';
-    
+
     for (let i = 0; i < parts.length; i++) {
       if (i % 2 === 1) {
         // This is a code block section
@@ -1206,14 +1236,14 @@ export const AnswerCard = ({ answer, question, streaming = true, onEdit, onSubmi
           const lines = codeContent.split('\n');
           let lang = '';
           let actualCode = '';
-          
+
           if (lines.length > 0 && lines[0].trim().match(/^[a-zA-Z0-9+#._-]+$/)) {
             lang = lines[0].trim();
             actualCode = lines.slice(1).join('\n');
           } else {
             actualCode = codeContent;
           }
-          
+
           // Only show code block if we have actual code content
           if (actualCode.trim()) {
             result += `<div class="code-block" data-lang="${lang}">`;
@@ -1231,7 +1261,7 @@ export const AnswerCard = ({ answer, question, streaming = true, onEdit, onSubmi
         }
       }
     }
-    
+
     return result;
   };
 
@@ -1240,30 +1270,30 @@ export const AnswerCard = ({ answer, question, streaming = true, onEdit, onSubmi
     // Find the last ``` to get the incomplete code section without altering code content
     const lastCodeStart = text.lastIndexOf('```');
     if (lastCodeStart === -1) return formatTextContent(sanitizeIncoming(text));
-    
+
     const beforeCode = sanitizeIncoming(text.substring(0, lastCodeStart));
     const incompleteCodeSection = text.substring(lastCodeStart + 3);
-    
+
     let result = '';
-    
+
     // Format any text before the code block
     if (beforeCode.trim()) {
       result += formatStreamingText(beforeCode);
     }
-    
+
     // Handle the incomplete code section
     if (incompleteCodeSection.trim()) {
       const lines = incompleteCodeSection.split('\n');
       let lang = '';
       let codeContent = '';
-      
+
       if (lines.length > 0 && lines[0].trim().match(/^\w+$/)) {
         lang = lines[0].trim();
         codeContent = lines.slice(1).join('\n');
       } else {
         codeContent = incompleteCodeSection;
       }
-      
+
       // Show the incomplete code block
       result += `<div class="code-block streaming" data-lang="${lang}">`;
       result += `<div class="code-header">${lang ? lang.charAt(0).toUpperCase() + lang.slice(1) + ' Code' : 'Code'} (streaming...)</div>`;
@@ -1271,14 +1301,14 @@ export const AnswerCard = ({ answer, question, streaming = true, onEdit, onSubmi
       result += `<pre><code class="language-${lang}">${highlightCode(codeContent, lang)}</code></pre>`;
       result += `</div>`;
     }
-    
+
     return result;
   };
 
   // Format text content with real-time markdown-like formatting
   const formatTextContent = (text: string) => {
     if (!text.trim()) return '';
-    
+
     // If a PARTIAL (streaming) table exists, render it immediately so users see a
     // formatted table as it grows during streaming.
     const partialTableRegion = findPartialMarkdownTable(text);
@@ -1289,7 +1319,7 @@ export const AnswerCard = ({ answer, question, streaming = true, onEdit, onSubmi
       const tableHtml = `<div class="table-container">${renderTable({ headers: partialTableRegion.headers, rows: partialTableRegion.rows })}</div>`;
       return `${formatTextContent(before)}${tableHtml}${formatTextContent(after)}`;
     }
-    
+
     // If a strict table exists within the text, render surrounding content as well
     const strictTableRegion = findStrictMarkdownTable(text);
     if (strictTableRegion) {
@@ -1299,15 +1329,15 @@ export const AnswerCard = ({ answer, question, streaming = true, onEdit, onSubmi
       const tableHtml = `<div class="table-container">${renderTable({ headers: strictTableRegion.headers, rows: strictTableRegion.rows })}</div>`;
       return `${formatTextContent(before)}${tableHtml}${formatTextContent(after)}`;
     }
-    
+
     let formatted = text;
-    
+
     // Handle bold text (**text**) - be careful with partial matches during streaming
     // 1) Temporarily hide unmatched opening '**' on a line until the closer arrives
     formatted = formatted.replace(/^(\*\*)(?![^\n]*\*\*)/gm, '');
     // 2) Replace complete bold patterns
     formatted = formatted.replace(/\*\*([^*\n]+?)\*\*/g, '<strong>$1</strong>');
-    
+
     // Handle bullet points with dashes or asterisks (including indented ones)
     formatted = formatted.replace(/^(\s*)[-–]\s+(.+)$/gm, (match, indent, content) => {
       const indentLevel = indent.length;
@@ -1316,7 +1346,7 @@ export const AnswerCard = ({ answer, question, streaming = true, onEdit, onSubmi
       }
       return `<li class="bullet-item">${content}</li>`;
     });
-    
+
     formatted = formatted.replace(/^(\s*)\*\s+(.+)$/gm, (match, indent, content) => {
       const indentLevel = indent.length;
       if (indentLevel > 0) {
@@ -1324,30 +1354,30 @@ export const AnswerCard = ({ answer, question, streaming = true, onEdit, onSubmi
       }
       return `<li class="bullet-item">${content}</li>`;
     });
-    
+
     // Handle numbered lists (only at start of line)
     formatted = formatted.replace(/^(\d+)\.\s+(.+)$/gm, '<li class="numbered-item">$2</li>');
-    
+
     // Handle headings (only at start of line)
     formatted = formatted.replace(/^#{1,6}\s+(.+)$/gm, (match, content) => {
       const level = match.match(/^#+/)[0].length;
       return `<h${level} class="heading">${content}</h${level}>`;
     });
-    
+
     // Wrap consecutive list items in proper lists
     formatted = formatted.replace(/(<li class="bullet-item">.*?<\/li>(\s*<li class="bullet-item">.*?<\/li>)*)/gs, '<ul class="bullet-list">$1</ul>');
     formatted = formatted.replace(/(<li class="numbered-item">.*?<\/li>(\s*<li class="numbered-item">.*?<\/li>)*)/gs, '<ol class="numbered-list">$1</ol>');
-    
+
     // Handle line breaks and paragraphs - create more compact formatting
     const lines = formatted.split('\n');
     let result = '';
     let inList = false;
     let currentParagraph = '';
-    
+
     for (let i = 0; i < lines.length; i++) {
       const line = lines[i];
       const nextLine = lines[i + 1];
-      
+
       // Check if this line starts a list item
       if (line.includes('<li class="')) {
         // Close any open paragraph before starting a list
@@ -1355,7 +1385,7 @@ export const AnswerCard = ({ answer, question, streaming = true, onEdit, onSubmi
           result += `<p class="paragraph">${currentParagraph.trim()}</p>`;
           currentParagraph = '';
         }
-        
+
         if (!inList) {
           inList = true;
           // Check if the previous element was a heading to apply closer spacing
@@ -1371,7 +1401,7 @@ export const AnswerCard = ({ answer, question, streaming = true, onEdit, onSubmi
         // End of list
         inList = false;
         result += '</ul>';
-        
+
         if (line.trim()) {
           result += `<p class="paragraph">${line.trim()}</p>`;
         }
@@ -1382,7 +1412,7 @@ export const AnswerCard = ({ answer, question, streaming = true, onEdit, onSubmi
         } else {
           currentParagraph = line.trim();
         }
-        
+
         // If next line is empty or starts a list, close the paragraph
         if (!nextLine || !nextLine.trim() || nextLine.includes('<li class="')) {
           if (currentParagraph.trim()) {
@@ -1392,12 +1422,12 @@ export const AnswerCard = ({ answer, question, streaming = true, onEdit, onSubmi
         }
       }
     }
-    
+
     // Close any remaining paragraph
     if (currentParagraph.trim()) {
       result += `<p class="paragraph">${currentParagraph.trim()}</p>`;
     }
-    
+
     return result;
   };
 
@@ -1521,11 +1551,11 @@ export const AnswerCard = ({ answer, question, streaming = true, onEdit, onSubmi
   };
 
   const parseContent = (text: string) => {
-    const blocks: Array<{type: string, content: string, lang?: string}> = [];
-    
+    const blocks: Array<{ type: string, content: string, lang?: string }> = [];
+
     // First, split by code fences to separate code from text; sanitize only non-code parts
     const parts = text.split(/```/g);
-    
+
     for (let i = 0; i < parts.length; i++) {
       if (i % 2 === 1) {
         // This is a code block - extract language and code
@@ -1565,7 +1595,7 @@ export const AnswerCard = ({ answer, question, streaming = true, onEdit, onSubmi
             }
             continue;
           }
-          
+
           // Check for docstrings first - only if content starts with docstring markers
           const trimmedText = textContent.trim();
           if (trimmedText.startsWith('/**') && textContent.includes('*/')) {
@@ -1577,15 +1607,15 @@ export const AnswerCard = ({ answer, question, streaming = true, onEdit, onSubmi
             blocks.push({ type: 'code', content: textContent, lang: 'python' });
             continue;
           }
-          
+
           // Split into lines and process each
           const lines = textContent.split('\n');
-          let currentBlock: {type: string, content: string} | null = null;
-          
+          let currentBlock: { type: string, content: string } | null = null;
+
           lines.forEach((line, idx) => {
             const trimmedLine = line.trim();
             if (!trimmedLine) return;
-            
+
             // Normalize single-line pipe rows like "| a | b | c |" into a readable sentence when
             // they are not part of a multi-row table. This prevents leftover raw pipe content.
             if (/^\|.*\|$/.test(trimmedLine)) {
@@ -1613,15 +1643,15 @@ export const AnswerCard = ({ answer, question, streaming = true, onEdit, onSubmi
               const level = headingMatch[1].length;
               // Process bold text within headings
               const processedContent = headingMatch[2].trim().replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
-              blocks.push({ 
-                type: 'heading', 
+              blocks.push({
+                type: 'heading',
                 content: processedContent,
                 lang: level.toString()
               });
               currentBlock = null;
               return;
             }
-            
+
             // Check for bold-only headings (like **Complete Answer**, **Detailed Explanation**, etc.)
             const boldHeadingMatch = trimmedLine.match(/^\*\*(.*?)\*\*\s*$/);
             if (boldHeadingMatch) {
@@ -1631,13 +1661,13 @@ export const AnswerCard = ({ answer, question, streaming = true, onEdit, onSubmi
               currentBlock = null;
               return;
             }
-            
+
             // Heuristic: treat short, title-like lines as headings
             const words = trimmedLine.split(/\s+/).filter(Boolean);
             const looksLikeTitle = (
               words.length > 0 && words.length <= 8 &&
               /[A-Za-z]/.test(trimmedLine) &&
-              /[A-Za-z0-9)]$/.test(trimmedLine.replace(/[:*\-]+$/,'')) &&
+              /[A-Za-z0-9)]$/.test(trimmedLine.replace(/[:*\-]+$/, '')) &&
               /^[A-Z]/.test(trimmedLine)
             );
             // Prefer heading only if next line exists and isn't another heading marker
@@ -1655,15 +1685,15 @@ export const AnswerCard = ({ answer, question, streaming = true, onEdit, onSubmi
               if (currentBlock) blocks.push(currentBlock);
               // Process bold text within numbered sections
               const processedContent = numberedSectionMatch[2].trim().replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
-              blocks.push({ 
-                type: 'heading', 
+              blocks.push({
+                type: 'heading',
                 content: processedContent,
                 lang: '2'
               });
               currentBlock = null;
               return;
             }
-            
+
             // Check for bold sub-headings with descriptions (like **Structured Answering:** description)
             const boldSubHeadingMatch = trimmedLine.match(/^\*\*(.*?)\*\*[:\s]+(.+)/);
             if (boldSubHeadingMatch) {
@@ -1671,34 +1701,34 @@ export const AnswerCard = ({ answer, question, streaming = true, onEdit, onSubmi
               const subHeading = boldSubHeadingMatch[1].trim();
               const description = boldSubHeadingMatch[2].trim();
               // Create a heading block for the sub-heading
-              blocks.push({ 
-                type: 'heading', 
+              blocks.push({
+                type: 'heading',
                 content: `<strong>${subHeading}:</strong>`,
                 lang: '3'
               });
               // Create a paragraph block for the description
-              blocks.push({ 
-                type: 'p', 
+              blocks.push({
+                type: 'p',
                 content: description
               });
               currentBlock = null;
               return;
             }
-            
+
             // Check for bold-only sub-headings (like **Structured Answering:** with no description on same line)
             const boldOnlySubHeadingMatch = trimmedLine.match(/^\*\*(.*?)\*\*[:\s]*$/);
             if (boldOnlySubHeadingMatch) {
               if (currentBlock) blocks.push(currentBlock);
               const subHeading = boldOnlySubHeadingMatch[1].trim();
-              blocks.push({ 
-                type: 'heading', 
+              blocks.push({
+                type: 'heading',
                 content: `<strong>${subHeading}:</strong>`,
                 lang: '3'
               });
               currentBlock = null;
               return;
             }
-            
+
             // Check for bullet points with dashes
             const dashMatch = trimmedLine.match(/^[-–]\s+(.+)/);
             if (dashMatch) {
@@ -1711,7 +1741,7 @@ export const AnswerCard = ({ answer, question, streaming = true, onEdit, onSubmi
               currentBlock.content += `<li>${processedContent}</li>`;
               return;
             }
-            
+
             // Check for bullet points with asterisks
             const asteriskMatch = trimmedLine.match(/^\*\s+(.+)/);
             if (asteriskMatch) {
@@ -1724,7 +1754,7 @@ export const AnswerCard = ({ answer, question, streaming = true, onEdit, onSubmi
               currentBlock.content += `<li>${processedContent}</li>`;
               return;
             }
-            
+
             // Regular paragraph - process bold text within the line
             if (currentBlock?.type !== 'p') {
               if (currentBlock) blocks.push(currentBlock);
@@ -1734,7 +1764,7 @@ export const AnswerCard = ({ answer, question, streaming = true, onEdit, onSubmi
             const processedLine = trimmedLine.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
             currentBlock.content += (currentBlock.content ? '\n' : '') + processedLine;
           });
-          
+
           if (currentBlock) blocks.push(currentBlock);
         }
       }
@@ -1745,7 +1775,7 @@ export const AnswerCard = ({ answer, question, streaming = true, onEdit, onSubmi
   // Helper function to find comment index for different comment styles
   const findCommentIndex = (line: string, commentChars: string[]): number => {
     if (!commentChars || commentChars.length === 0) return -1;
-    
+
     for (const char of commentChars) {
       if (!char) continue;
       const index = line.indexOf(char);
@@ -1770,40 +1800,40 @@ export const AnswerCard = ({ answer, question, streaming = true, onEdit, onSubmi
   // Helper function to determine token type based on language
   const getTokenType = (token: string, config: any, lang: string): string => {
     // Check for numbers (including decimals, hex, binary, etc.)
-    if (/^\d+(\.\d+)?([eE][+-]?\d+)?$/.test(token) || 
-        /^0[xX][0-9a-fA-F]+$/.test(token) || 
-        /^0[bB][01]+$/.test(token) || 
-        /^0[0-7]+$/.test(token)) {
+    if (/^\d+(\.\d+)?([eE][+-]?\d+)?$/.test(token) ||
+      /^0[xX][0-9a-fA-F]+$/.test(token) ||
+      /^0[bB][01]+$/.test(token) ||
+      /^0[0-7]+$/.test(token)) {
       return 'number';
     }
-    
+
     // Check for strings
-    if (config.stringChars.some((char: string) => 
-        (token.startsWith(char) && token.endsWith(char)) ||
-        (char === '`' && token.startsWith('`') && token.endsWith('`')))) {
+    if (config.stringChars.some((char: string) =>
+      (token.startsWith(char) && token.endsWith(char)) ||
+      (char === '`' && token.startsWith('`') && token.endsWith('`')))) {
       return 'string';
     }
-    
+
     // Check for keywords
     if (config.keywords.includes(token)) {
       return 'keyword';
     }
-    
+
     // Check for builtins
     if (config.builtins.includes(token)) {
       return 'builtin';
     }
-    
+
     // Special cases for specific languages
     if (lang === 'python' && token === 'print') {
       return 'print';
     }
-    
+
     // Check for function calls (tokens followed by parentheses)
     if (token.match(/^[a-zA-Z_][a-zA-Z0-9_]*$/)) {
       return 'function';
     }
-    
+
     return 'text';
   };
 
@@ -1833,7 +1863,7 @@ export const AnswerCard = ({ answer, question, streaming = true, onEdit, onSubmi
 
   const highlightCode = (code: string, lang: string) => {
     // Enhanced multi-language syntax highlighting
-    
+
     // Note: keep syntax highlighting enabled even when Python triple quotes exist.
     // Normalize duplicated Python docstring delimiters that sometimes arrive as
     // '""" """' or "'''
@@ -1855,12 +1885,12 @@ export const AnswerCard = ({ answer, question, streaming = true, onEdit, onSubmi
     if (trimmedCode.startsWith('/**') && trimmedCode.endsWith('*/')) {
       // This is definitely a docstring - treat as plain text with orange color
       const escapedCode = code
-      .replace(/&/g, '&amp;')
-      .replace(/</g, '&lt;')
-      .replace(/>/g, '&gt;');
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;');
       return `<span class="code-string">${escapedCode}</span>`;
     }
-    
+
     // Check if this is a pure Python docstring block (starts with """ and ends with """)
     if (trimmedCode.startsWith('"""') && trimmedCode.endsWith('"""') && trimmedCode.split('"""').length >= 3) {
       // This is definitely a Python docstring - treat as plain text with orange color
@@ -1870,10 +1900,10 @@ export const AnswerCard = ({ answer, question, streaming = true, onEdit, onSubmi
         .replace(/>/g, '&gt;');
       return `<span class="code-string">${escapedCode}</span>`;
     }
-    
+
     const lines = code.split('\n');
     const highlightedLines: string[] = [];
-    
+
     // Language-specific configurations
     const languageConfigs = {
       python: {
@@ -1943,17 +1973,17 @@ export const AnswerCard = ({ answer, question, streaming = true, onEdit, onSubmi
 
     // Get language configuration or default to Python
     const config = languageConfigs[lang as keyof typeof languageConfigs] || languageConfigs.python;
-    
+
     // Ensure all required arrays exist
     if (!config.multilineCommentStart) config.multilineCommentStart = [];
     if (!config.multilineCommentEnd) config.multilineCommentEnd = [];
     if (!config.commentChars) config.commentChars = [];
-    
+
     // Track multi-line comment state for all languages
     let inMultilineComment = false;
     let multilineCommentEnd = '';
     let isDocstringComment = false; // Track if we're in a docstring (/** or """)
-    
+
     // Dedicated Python docstring state to avoid color bleed and simplify handling
     let pythonDocOpen = false;
     // Language-agnostic Javadoc/KDoc-style doc block guard: /** ... */ across lines
@@ -1963,7 +1993,7 @@ export const AnswerCard = ({ answer, question, streaming = true, onEdit, onSubmi
       const line = lines[lineIndex];
       let highlightedLine = '';
       let i = 0;
-      
+
       // Python-only: handle triple-quote docstrings first and bypass generic logic
       if ((lang || '').toLowerCase() === 'python') {
         const OPEN = '"""';
@@ -2070,7 +2100,7 @@ export const AnswerCard = ({ answer, question, streaming = true, onEdit, onSubmi
       // Check if this line is a comment (full line comment)
       const trimmedLine = line.trim();
       const isFullLineComment = config.commentChars.some(char => trimmedLine.startsWith(char));
-      
+
       if (isFullLineComment) {
         // For full line comments, wrap the entire line
         highlightedLine = `<span class="code-comment">${line}</span>`;
@@ -2118,14 +2148,14 @@ export const AnswerCard = ({ answer, question, streaming = true, onEdit, onSubmi
         let multilineStartFound = false;
         // Sort by length descending to prioritize longer matches like /** over /*
         const sortedStarts = config.multilineCommentStart.slice().sort((a, b) => b.length - a.length);
-        
+
         for (const startChar of sortedStarts) {
           if (trimmedLine.startsWith(startChar)) {
             multilineStartFound = true;
             // Find the corresponding end character
             const startIndex = config.multilineCommentStart.indexOf(startChar);
             const endChar = config.multilineCommentEnd[startIndex];
-            
+
             // Handle single-line multi-line comments (must start AND end on same line)
             if (trimmedLine.includes(endChar) && trimmedLine.indexOf(endChar) > trimmedLine.indexOf(startChar)) {
               // Single-line multi-line comment/docstring
@@ -2172,13 +2202,13 @@ export const AnswerCard = ({ answer, question, streaming = true, onEdit, onSubmi
               inMultilineComment = true;
               multilineCommentEnd = endChar;
               isDocstringComment = isDocstring;
-              
-              
+
+
             }
             break;
           }
         }
-        
+
         if (!multilineStartFound) {
           // Multi-language tokenization with inline comment detection
           const commentIndex = findCommentIndex(line, config.commentChars);
@@ -2186,38 +2216,38 @@ export const AnswerCard = ({ answer, question, streaming = true, onEdit, onSubmi
             // Split line into code part and comment part
             const codePart = line.substring(0, commentIndex);
             const commentPart = line.substring(commentIndex);
-            
+
             // Process the code part with tokenization
             let codeHighlighted = '';
             let codeIndex = 0;
-            
+
             while (codeIndex < codePart.length) {
               let token = '';
               let tokenType = 'text';
-              
+
               // Skip whitespace
               if (/\s/.test(codePart[codeIndex])) {
                 codeHighlighted += codePart[codeIndex];
                 codeIndex++;
                 continue;
               }
-              
+
               // Extract token
               let j = codeIndex;
               while (j < codePart.length && !/\s/.test(codePart[j])) {
                 token += codePart[j];
                 j++;
               }
-              
+
               // Determine token type based on language
               tokenType = getTokenType(token, config, lang);
-              
+
               // Apply highlighting
               codeHighlighted += applyHighlighting(token, tokenType);
-              
+
               codeIndex = j;
             }
-            
+
             // Combine code and comment parts
             highlightedLine = codeHighlighted + `<span class="code-comment">${commentPart}</span>`;
           } else {
@@ -2225,36 +2255,36 @@ export const AnswerCard = ({ answer, question, streaming = true, onEdit, onSubmi
             while (i < line.length) {
               let token = '';
               let tokenType = 'text';
-              
+
               // Skip whitespace
               if (/\s/.test(line[i])) {
                 highlightedLine += line[i];
                 i++;
                 continue;
               }
-              
+
               // Extract token
               let j = i;
               while (j < line.length && !/\s/.test(line[j])) {
                 token += line[j];
                 j++;
               }
-              
+
               // Determine token type based on language
               tokenType = getTokenType(token, config, lang);
-              
+
               // Apply highlighting
               highlightedLine += applyHighlighting(token, tokenType);
-              
+
               i = j;
             }
           }
         }
       }
-      
+
       highlightedLines.push(highlightedLine);
     }
-    
+
     let html = highlightedLines.join('\n');
     // Collapse accidental duplicated Python/Docstring delimiters that may appear
     // when tokens are split around triple quotes. This preserves highlighting
@@ -2358,7 +2388,7 @@ export const AnswerCard = ({ answer, question, streaming = true, onEdit, onSubmi
   // Debug useEffect to monitor streaming and evaluate button state
   useEffect(() => {
     // Preload html2pdf early to avoid fallback to print pipeline
-    preloadHtml2Pdf().catch(() => {});
+    preloadHtml2Pdf().catch(() => { });
     console.log('AnswerCard State Debug:', {
       streaming,
       isGenerating,
@@ -2377,11 +2407,23 @@ export const AnswerCard = ({ answer, question, streaming = true, onEdit, onSubmi
     const lang = (first?.lang || 'python');
     const code = first?.code || answer;
     const problem = question || 'Evaluate the provided response.';
-    
+
+    if (evaluationAllowed === false) {
+      try {
+        toast({ title: 'Evaluation unavailable', description: evaluationReason || 'This question cannot be evaluated.', variant: 'destructive' });
+      } catch { }
+      return;
+    }
+
     try {
       await startEvaluationOverlay({ code, problem, language: lang, title: 'Evaluating' });
-    } catch {}
+    } catch { }
   };
+
+  const evaluateDisabled = !responseComplete || evaluationAllowed === false;
+  const evaluateTitle = evaluationAllowed === false
+    ? (evaluationReason || 'Evaluation not allowed for this question')
+    : (!responseComplete ? 'Please wait for response to complete' : 'Evaluate response');
 
   const handleDownloadDiagram = async (mermaidCode: string) => {
     // Use the same pipeline as on-screen render to avoid mismatch
@@ -2413,7 +2455,7 @@ export const AnswerCard = ({ answer, question, streaming = true, onEdit, onSubmi
         a.click();
         a.remove();
         URL.revokeObjectURL(url);
-        
+
         toast({
           title: "Download started",
           description: "Architecture diagram is being downloaded as SVG.",
@@ -2435,7 +2477,7 @@ export const AnswerCard = ({ answer, question, streaming = true, onEdit, onSubmi
     try {
       // Basic syntax validation - check for common issues
       const lines = code.split('\n');
-      
+
       // Check for invalid comment syntax
       for (let i = 0; i < lines.length; i++) {
         const line = lines[i].trim();
@@ -2449,7 +2491,7 @@ export const AnswerCard = ({ answer, question, streaming = true, onEdit, onSubmi
           }
         }
       }
-      
+
       // Check for reserved keyword usage in class definitions
       const reservedKeywords = ['graph', 'class', 'flowchart', 'sequenceDiagram', 'classDiagram', 'stateDiagram', 'erDiagram'];
       for (let i = 0; i < lines.length; i++) {
@@ -2465,16 +2507,16 @@ export const AnswerCard = ({ answer, question, streaming = true, onEdit, onSubmi
           }
         }
       }
-      
+
       // Check for basic Mermaid structure
-      if (!code.includes('graph') && !code.includes('flowchart') && !code.includes('sequenceDiagram') && 
-          !code.includes('classDiagram') && !code.includes('stateDiagram') && !code.includes('erDiagram')) {
+      if (!code.includes('graph') && !code.includes('flowchart') && !code.includes('sequenceDiagram') &&
+        !code.includes('classDiagram') && !code.includes('stateDiagram') && !code.includes('erDiagram')) {
         return {
           isValid: false,
           error: 'Invalid Mermaid syntax: Missing diagram type declaration.'
         };
       }
-      
+
       return { isValid: true };
     } catch (error) {
       return {
@@ -2487,21 +2529,21 @@ export const AnswerCard = ({ answer, question, streaming = true, onEdit, onSubmi
   const autoFixMermaidSyntax = (code: string): string => {
     // Auto-fix common syntax errors
     let fixedCode = code;
-    
+
     // Fix single % comments to double %%
     fixedCode = fixedCode.replace(/^(\s*)%(\s)/gm, '$1%%$2');
-    
+
     // Fix comments in the middle of lines
     fixedCode = fixedCode.replace(/(\s)%(\s)/g, '$1%%$2');
-    
+
     // Fix reserved keyword class names
     fixedCode = fixedCode.replace(/:::graph\b/g, ':::graphdb');
     fixedCode = fixedCode.replace(/classDef graph\b/g, 'classDef graphdb');
-    
+
     // Fix other common reserved keywords
     fixedCode = fixedCode.replace(/:::class\b/g, ':::classdef');
     fixedCode = fixedCode.replace(/classDef class\b/g, 'classDef classdef');
-    
+
     return fixedCode;
   };
 
@@ -2513,7 +2555,7 @@ export const AnswerCard = ({ answer, question, streaming = true, onEdit, onSubmi
       setExpandedLoading(false);
       return;
     }
-    
+
     // Check if the normal view is already rendered successfully
     const normalMermaidElement = document.querySelector('.mermaid');
     if (normalMermaidElement && !normalMermaidElement.querySelector('svg')) {
@@ -2524,7 +2566,7 @@ export const AnswerCard = ({ answer, question, streaming = true, onEdit, onSubmi
       });
       return;
     }
-    
+
     // Match normal-view pipeline
     let fixedCode = autoFixMermaidSyntax(stripMermaidFences(mermaidCode));
     fixedCode = crowFootToErDiagram(fixedCode);
@@ -2540,20 +2582,20 @@ export const AnswerCard = ({ answer, question, streaming = true, onEdit, onSubmi
       }
       fixedCode = validation.fixedCode;
     }
-    
+
     setExpandedDiagram(mermaidCode);
     setExpandedSvgHtml(null);
     setExpandedLoading(true);
-    
+
     try {
       // Use the same parameters as the normal view for consistency
-      const svg = await apiRenderMermaid({ 
-        code: fixedCode, 
-        theme: 'neutral', 
-        style: 'modern', 
-        size: 'medium' 
+      const svg = await apiRenderMermaid({
+        code: fixedCode,
+        theme: 'neutral',
+        style: 'modern',
+        size: 'medium'
       });
-      
+
       if (svg && svg.trim().startsWith('<svg')) {
         // Use the SVG exactly as returned by backend - no modifications
         // This ensures the same rendering as the normal view
@@ -2563,7 +2605,7 @@ export const AnswerCard = ({ answer, question, streaming = true, onEdit, onSubmi
       }
     } catch (error) {
       console.error('Backend rendering failed:', error);
-      
+
       // Show user-friendly error message
       const errorMessage = error instanceof Error ? error.message : 'Unknown error';
       toast({
@@ -2571,7 +2613,7 @@ export const AnswerCard = ({ answer, question, streaming = true, onEdit, onSubmi
         description: `Unable to render the diagram: ${errorMessage}. Please try again.`,
         variant: "destructive",
       });
-      
+
       // NEVER use client-side Mermaid - it causes version conflicts
       // Only use backend API for consistent rendering
       setExpandedSvgHtml(null);
@@ -2581,7 +2623,7 @@ export const AnswerCard = ({ answer, question, streaming = true, onEdit, onSubmi
   };
 
   return (
-      <Card className="w-full border-0 bg-transparent shadow-none hover:shadow-none mx-0 md:mx-0 answer-card-mobile">
+    <Card className="w-full border-0 bg-transparent shadow-none hover:shadow-none mx-0 md:mx-0 answer-card-mobile">
       <CardHeader className="pb-1 md:pb-3 px-3 md:px-6">
         <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-2 md:gap-3">
           <div className="flex items-start space-x-2 md:space-x-3 flex-1 min-w-0">
@@ -2600,7 +2642,7 @@ export const AnswerCard = ({ answer, question, streaming = true, onEdit, onSubmi
                 {isEditing ? (
                   <div className="flex items-center gap-2 w-full">
                     <input
-                      className="flex-1 bg-transparent border border-border rounded-md px-2 py-1 text-sm outline-none focus:ring-2 focus:ring-primary/40"
+                      className="flex-1 bg-muted/80 dark:bg-muted/20 border border-border rounded-md px-2 py-1 text-sm text-foreground outline-none focus:ring-2 focus:ring-primary/40"
                       value={editedQuestion}
                       onChange={(e) => setEditedQuestion(e.target.value)}
                     />
@@ -2686,19 +2728,20 @@ export const AnswerCard = ({ answer, question, streaming = true, onEdit, onSubmi
                             <Edit3 className="h-4 w-4" />
                             <span>Edit Message</span>
                           </button>
-                          <button
-                            type="button"
-                            onClick={() => { handleEvaluate(); setShowQuickActions(false); }}
-                            disabled={!responseComplete}
-                            className={`w-full flex items-center gap-3 px-3 py-2 text-sm ${
-                              !responseComplete 
-                                ? 'opacity-50 cursor-not-allowed' 
+                          <span title={evaluateTitle} className="inline-block w-full">
+                            <button
+                              type="button"
+                              onClick={() => { handleEvaluate(); setShowQuickActions(false); }}
+                              disabled={evaluateDisabled}
+                              className={`w-full flex items-center gap-3 px-3 py-2 text-sm ${evaluateDisabled
+                                ? 'opacity-50 cursor-not-allowed'
                                 : 'hover:bg-muted/60'
-                            }`}
-                          >
-                            <Play className="h-4 w-4" />
-                            <span>{!responseComplete ? 'Evaluate (waiting...)' : 'Evaluate'}</span>
-                          </button>
+                                }`}
+                            >
+                              <Play className="h-4 w-4" />
+                              <span>{!responseComplete ? 'Evaluate (waiting...)' : 'Evaluate'}</span>
+                            </button>
+                          </span>
                         </div>
                       </div>
                     )}
@@ -2768,29 +2811,27 @@ export const AnswerCard = ({ answer, question, streaming = true, onEdit, onSubmi
             >
               <Download className="h-3.5 w-3.5 mr-1" />
             </Button>
-            <Button
-              variant="default"
-              size="sm"
-              onClick={handleEvaluate}
-              className={`h-8 px-3 text-xs ${
-                responseComplete
-                  ? 'bg-primary text-primary-foreground hover:bg-primary/90' 
-                  : 'bg-muted text-muted-foreground opacity-50 cursor-not-allowed'
-              }`}
-              title={
-                !responseComplete
-                  ? "Please wait for response to complete" 
-                  : "Evaluate response"
-              }
-              disabled={!responseComplete}
-            >
-              <Play className="h-3.5 w-3.5 mr-1" />
-              Evaluate
-            </Button>
+            <span title={evaluateTitle} className="inline-block">
+              <Button
+                variant="default"
+                size="sm"
+                onClick={handleEvaluate}
+                className={`h-8 px-3 text-xs ${evaluateDisabled
+                  ? 'bg-muted text-muted-foreground opacity-50 cursor-not-allowed'
+                  : 'bg-primary text-primary-foreground hover:bg-primary/90'
+                  }`}
+                disabled={evaluateDisabled}
+              >
+                <Play className="h-3.5 w-3.5 mr-1" />
+                Evaluate
+              </Button>
+            </span>
+            {/* When evaluation is disallowed we rely on the Evaluate button's title/tooltip
+                to show the reason on hover; avoid rendering the reason inline. */}
           </div>
         </div>
       </CardHeader>
-      
+
       <CardContent className="px-3 md:px-6 pt-2 md:pt-0">
         <div ref={contentRef} className="space-y-1 streaming-content answer-content">
           {/* Display completed blocks */}
@@ -2813,36 +2854,34 @@ export const AnswerCard = ({ answer, question, streaming = true, onEdit, onSubmi
                     </Button>
                   </div>
                   {block.lang === 'mermaid' ? (
-                    <div className={`rounded-b-lg border border-t-0 border-border bg-card relative transition-all duration-300 ${
-                      expandedDiagram === block.content ? 'p-1' : 'p-3'
-                    }`}>
-                      <div className={`diagram-container transition-all duration-300 ${
-                        expandedDiagram === block.content ? 'expanded-diagram' : ''
-                      }`} style={{
-                        ...(expandedDiagram === block.content ? {
-                          position: 'fixed',
-                          top: 0,
-                          left: 0,
-                          right: 0,
-                          bottom: 0,
-                          zIndex: 9998,
-                          background: 'rgba(0, 0, 0, 0.9)',
-                          display: 'flex',
-                          alignItems: 'center',
-                          justifyContent: 'center',
-                          padding: '2rem'
-                        } : {})
-                      }}>
+                    <div className={`rounded-b-lg border border-t-0 border-border bg-card relative transition-all duration-300 ${expandedDiagram === block.content ? 'p-1' : 'p-3'
+                      }`}>
+                      <div className={`diagram-container transition-all duration-300 ${expandedDiagram === block.content ? 'expanded-diagram' : ''
+                        }`} style={{
+                          ...(expandedDiagram === block.content ? {
+                            position: 'fixed',
+                            top: 0,
+                            left: 0,
+                            right: 0,
+                            bottom: 0,
+                            zIndex: 9998,
+                            background: 'rgba(0, 0, 0, 0.9)',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            padding: '2rem'
+                          } : {})
+                        }}>
                         <div className="absolute top-2 right-2 z-[9999] flex gap-2">
                           {expandedDiagram === block.content ? (
-                              <button
-                                type="button"
-                                className="diagram-action-btn fixed top-4 right-4 z-[10000] bg-destructive text-destructive-foreground hover:bg-destructive/90 border border-destructive shadow-lg w-10 h-10 rounded-lg flex items-center justify-center"
-                                title="Close Expanded View"
-                                onClick={() => setExpandedDiagram(null)}
-                              >
-                                <X className="h-5 w-5" />
-                              </button>
+                            <button
+                              type="button"
+                              className="diagram-action-btn fixed top-4 right-4 z-[10000] bg-destructive text-destructive-foreground hover:bg-destructive/90 border border-destructive shadow-lg w-10 h-10 rounded-lg flex items-center justify-center"
+                              title="Close Expanded View"
+                              onClick={() => setExpandedDiagram(null)}
+                            >
+                              <X className="h-5 w-5" />
+                            </button>
                           ) : (
                             <>
                               <button
@@ -2864,44 +2903,44 @@ export const AnswerCard = ({ answer, question, streaming = true, onEdit, onSubmi
                             </>
                           )}
                         </div>
-                         {expandedDiagram === block.content ? (
-                           <div className="expanded-content-wrapper">
-                             {expandedLoading ? (
-                               <div className="flex items-center justify-center p-8">
-                                 <div className="h-8 w-8 rounded-full border-2 border-white/30 border-t-white animate-spin" aria-label="Loading" />
-                               </div>
-                             ) : expandedSvgHtml ? (
-                               <div className="expanded-svg" dangerouslySetInnerHTML={{ __html: expandedSvgHtml }} />
-                             ) : (
-                               <div className="text-sm text-muted-foreground">Preparing diagram…</div>
-                             )}
-                           </div>
-                         ) : (
-                           <div
-                             className="mermaid mmd-grab"
-                             style={{ overflowX: 'auto' }}
-                             onMouseDown={(e) => {
-                               const container = (e.currentTarget.closest('.diagram-container') as HTMLElement) || undefined;
-                               if (!container) return;
-                               // mark dragging state for cursor only; pan logic handled in MermaidEditor preview
-                               container.classList.add('mmd-grabbing');
-                             }}
-                             onMouseUp={(e) => {
-                               const container = (e.currentTarget.closest('.diagram-container') as HTMLElement) || undefined;
-                               if (!container) return;
-                               container.classList.remove('mmd-grabbing');
-                             }}
-                           >
-                             {block.content}
-                           </div>
-                         )}
+                        {expandedDiagram === block.content ? (
+                          <div className="expanded-content-wrapper">
+                            {expandedLoading ? (
+                              <div className="flex items-center justify-center p-8">
+                                <div className="h-8 w-8 rounded-full border-2 border-white/30 border-t-white animate-spin" aria-label="Loading" />
+                              </div>
+                            ) : expandedSvgHtml ? (
+                              <div className="expanded-svg" dangerouslySetInnerHTML={{ __html: expandedSvgHtml }} />
+                            ) : (
+                              <div className="text-sm text-muted-foreground">Preparing diagram…</div>
+                            )}
+                          </div>
+                        ) : (
+                          <div
+                            className="mermaid mmd-grab"
+                            style={{ overflowX: 'auto' }}
+                            onMouseDown={(e) => {
+                              const container = (e.currentTarget.closest('.diagram-container') as HTMLElement) || undefined;
+                              if (!container) return;
+                              // mark dragging state for cursor only; pan logic handled in MermaidEditor preview
+                              container.classList.add('mmd-grabbing');
+                            }}
+                            onMouseUp={(e) => {
+                              const container = (e.currentTarget.closest('.diagram-container') as HTMLElement) || undefined;
+                              if (!container) return;
+                              container.classList.remove('mmd-grabbing');
+                            }}
+                          >
+                            {block.content}
+                          </div>
+                        )}
                       </div>
                     </div>
                   ) : (
                     <pre className="overflow-auto rounded-b-lg bg-[#0b1020] text-[#e6edf3] p-4 border border-t-0 border-border">
-                      <code 
-                        className="font-mono" 
-                        dangerouslySetInnerHTML={{ __html: highlightCode(block.content, block.lang || '') }} 
+                      <code
+                        className="font-mono"
+                        dangerouslySetInnerHTML={{ __html: highlightCode(block.content, block.lang || '') }}
                       />
                     </pre>
                   )}
@@ -2977,7 +3016,7 @@ export const AnswerCard = ({ answer, question, streaming = true, onEdit, onSubmi
                 <ol className="list-decimal list-inside mb-2 space-y-0.5 ml-4 text-sm leading-relaxed streaming-content" dangerouslySetInnerHTML={{ __html: block.content }} />
               ) : (
                 <div className="prose prose-neutral dark:prose-invert max-w-none">
-                  <div 
+                  <div
                     className="text-sm leading-relaxed streaming-content"
                     dangerouslySetInnerHTML={{ __html: formatTextContent(block.content) }}
                   />
@@ -2985,18 +3024,18 @@ export const AnswerCard = ({ answer, question, streaming = true, onEdit, onSubmi
               )}
             </div>
           ))}
-          
+
           {/* Current typing block with real-time formatting */}
           {typedText && (
             <div className="prose prose-neutral dark:prose-invert max-w-none streaming-content">
-              <div 
+              <div
                 className="text-sm leading-relaxed streaming-content"
-                dangerouslySetInnerHTML={{ 
+                dangerouslySetInnerHTML={{
                   __html: (() => {
                     // Check if we're in an incomplete code block
                     const codeBlockMatches = typedText.match(/```/g);
                     const isIncompleteCodeBlock = codeBlockMatches && codeBlockMatches.length % 2 === 1;
-                    
+
                     if (isIncompleteCodeBlock) {
                       return formatIncompleteCodeBlock(typedText) + '<span class="animate-pulse">|</span>';
                     } else {
@@ -3007,7 +3046,7 @@ export const AnswerCard = ({ answer, question, streaming = true, onEdit, onSubmi
               />
             </div>
           )}
-          
+
         </div>
 
         {/* Mobile action bar for Copy/Share (icon-only, no blue active state) */}
@@ -3029,8 +3068,8 @@ export const AnswerCard = ({ answer, question, streaming = true, onEdit, onSubmi
             <Share className="h-4 w-4" />
           </button>
         </div>
-        
-        
+
+
         {/* Prompt review section removed per requirement */}
 
         {/* Footer - only show when streaming is complete */}

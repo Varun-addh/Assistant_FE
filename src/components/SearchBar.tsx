@@ -46,7 +46,7 @@ export const SearchBar = ({ value, onChange, placeholder = "Type your question..
   const inUtteranceRef = useRef<boolean>(false);
   // Global flag to completely disable speech processing
   const speechProcessingEnabledRef = useRef<boolean>(false);
-  
+
   // Fixed height for consistent layout
   const { toast } = useToast();
 
@@ -105,9 +105,9 @@ export const SearchBar = ({ value, onChange, placeholder = "Type your question..
     (async () => {
       try {
         const stream = await navigator.mediaDevices.getUserMedia({
-          audio: { 
-            channelCount: 1, 
-            noiseSuppression: true, 
+          audio: {
+            channelCount: 1,
+            noiseSuppression: true,
             echoCancellation: true,
             autoGainControl: true,
             sampleRate: 44100,
@@ -135,12 +135,12 @@ export const SearchBar = ({ value, onChange, placeholder = "Type your question..
         }
       }
       // Stop Deepgram capture if active
-      try { mediaRecorderRef.current?.stop(); } catch {}
-      try { meetingStreamRef.current?.getTracks().forEach(t => t.stop()); } catch {}
-      try { deepgramSocketRef.current?.close(); } catch {}
-      try { proMicRecorderRef.current?.stop(); } catch {}
-      try { proMicStreamRef.current?.getTracks().forEach(t => t.stop()); } catch {}
-      try { proMicSocketRef.current?.close(); } catch {}
+      try { mediaRecorderRef.current?.stop(); } catch { }
+      try { meetingStreamRef.current?.getTracks().forEach(t => t.stop()); } catch { }
+      try { deepgramSocketRef.current?.close(); } catch { }
+      try { proMicRecorderRef.current?.stop(); } catch { }
+      try { proMicStreamRef.current?.getTracks().forEach(t => t.stop()); } catch { }
+      try { proMicSocketRef.current?.close(); } catch { }
       if (proMicReconnectTimerRef.current) {
         window.clearTimeout(proMicReconnectTimerRef.current);
         proMicReconnectTimerRef.current = null;
@@ -171,7 +171,7 @@ export const SearchBar = ({ value, onChange, placeholder = "Type your question..
     };
 
     let correctedText = text.toLowerCase();
-    
+
     // Apply corrections
     Object.entries(corrections).forEach(([incorrect, correct]) => {
       correctedText = correctedText.replace(new RegExp(incorrect, 'gi'), correct);
@@ -188,10 +188,10 @@ export const SearchBar = ({ value, onChange, placeholder = "Type your question..
   // Real-time confidence scoring
   const calculateConfidence = (transcript: string, isFinal: boolean): number => {
     if (!transcript.trim()) return 0;
-    
+
     // Base confidence on transcript length and finality
     let confidence = isFinal ? 0.9 : 0.6;
-    
+
     // Boost confidence for common interview phrases
     const interviewPhrases = [
       'tell me about yourself',
@@ -202,21 +202,21 @@ export const SearchBar = ({ value, onChange, placeholder = "Type your question..
       'what is your greatest',
       'do you have any questions'
     ];
-    
+
     const lowerTranscript = transcript.toLowerCase();
-    const hasInterviewPhrase = interviewPhrases.some(phrase => 
+    const hasInterviewPhrase = interviewPhrases.some(phrase =>
       lowerTranscript.includes(phrase)
     );
-    
+
     if (hasInterviewPhrase) {
       confidence += 0.2;
     }
-    
+
     // Boost confidence for longer, more complete sentences
     if (transcript.length > 20) {
       confidence += 0.1;
     }
-    
+
     return Math.min(confidence, 1.0);
   };
 
@@ -224,14 +224,14 @@ export const SearchBar = ({ value, onChange, placeholder = "Type your question..
     if (!isSupported) return;
     if (isStartingRef.current) return;
     isStartingRef.current = true;
-    
+
     // Set listening flag before creating recognition instance
     isListeningRef.current = true;
-    
+
     // Set mic button state immediately when clicked for instant feedback
     setIsListening(true);
     setIsProcessing(true); // Show processing state immediately
-    
+
     // Set base text to current value when starting
     baseTextRef.current = value;
     lastRenderedTextRef.current = value;
@@ -241,18 +241,18 @@ export const SearchBar = ({ value, onChange, placeholder = "Type your question..
     // Always create a new recognition instance to ensure clean state
     const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
     recognitionRef.current = new SpeechRecognition();
-    
+
     // Enhanced recognition settings for maximum accuracy
     recognitionRef.current.continuous = true;
     recognitionRef.current.interimResults = true;
     recognitionRef.current.lang = 'en-US';
     recognitionRef.current.maxAlternatives = 3; // Get multiple alternatives for better accuracy
-    
+
     // Advanced settings for better performance
     try {
       (recognitionRef.current as any).serviceURI = 'wss://www.google.com/speech-api/v2/recognize';
       (recognitionRef.current as any).grammars = [];
-    } catch {}
+    } catch { }
 
     recognitionRef.current.onstart = () => {
       // Only update states if we're still supposed to be listening
@@ -268,12 +268,12 @@ export const SearchBar = ({ value, onChange, placeholder = "Type your question..
         console.log('Speech processing globally disabled - ignoring');
         return;
       }
-      
+
       if (!isFocusedRef.current || !isListeningRef.current || !recognitionRef.current) {
         console.log('Speech detected but conditions not met - ignoring completely');
         return;
       }
-      
+
       // Additional safety check
       if (document.activeElement !== textareaRef.current) {
         console.log('Search bar not actually focused - ignoring speech');
@@ -283,7 +283,7 @@ export const SearchBar = ({ value, onChange, placeholder = "Type your question..
       let interimTranscript = '';
       let finalTranscript = '';
       let bestConfidence = 0;
-      
+
       // Start of an utterance: remember base text to avoid duplication
       if (!inUtteranceRef.current) {
         inUtteranceRef.current = true;
@@ -293,7 +293,7 @@ export const SearchBar = ({ value, onChange, placeholder = "Type your question..
       for (let i = event.resultIndex; i < event.results.length; i++) {
         const result = event.results[i];
         const isFinal = result.isFinal;
-        
+
         // Get the best alternative with highest confidence
         let bestAlternative = result[0];
         for (let j = 1; j < result.length; j++) {
@@ -301,10 +301,10 @@ export const SearchBar = ({ value, onChange, placeholder = "Type your question..
             bestAlternative = result[j];
           }
         }
-        
+
         const transcript = bestAlternative.transcript;
         const transcriptConfidence = bestAlternative.confidence || 0.8;
-        
+
         if (isFinal) {
           // Apply intelligent corrections to final transcript
           const correctedTranscript = correctTranscription(transcript);
@@ -315,14 +315,14 @@ export const SearchBar = ({ value, onChange, placeholder = "Type your question..
           bestConfidence = Math.max(bestConfidence, transcriptConfidence);
         }
       }
-      
+
       // Update confidence score
       const currentConfidence = calculateConfidence(
-        finalTranscript + interimTranscript, 
+        finalTranscript + interimTranscript,
         finalTranscript.length > 0
       );
       setConfidence(currentConfidence);
-      
+
       // Update base text with final results
       if (finalTranscript.trim()) {
         const correctedFinal = correctTranscription(finalTranscript.trim());
@@ -336,7 +336,7 @@ export const SearchBar = ({ value, onChange, placeholder = "Type your question..
         // Utterance finalized
         inUtteranceRef.current = false;
       }
-      
+
       // Show real-time text with intelligent corrections
       const interimCorrected = interimTranscript ? correctTranscription(interimTranscript) : '';
       const candidateText = (inUtteranceRef.current ? utteranceBaseRef.current : baseTextRef.current) + (interimCorrected ? ((inUtteranceRef.current ? utteranceBaseRef.current : baseTextRef.current) ? ' ' : '') + interimCorrected : '');
@@ -350,26 +350,26 @@ export const SearchBar = ({ value, onChange, placeholder = "Type your question..
         lastRenderedTextRef.current = stableText;
         onChange(stableText);
       }
-      
+
       // Update transcription buffer for continuous processing
       setTranscriptionBuffer(stableText);
     };
 
     recognitionRef.current.onerror = (event: any) => {
       console.log('Speech recognition error:', event.error);
-      
+
       // Enhanced error handling for better reliability
       const benign = ['no-speech', 'aborted', 'audio-capture', 'service-not-allowed'];
       if (benign.includes(event?.error)) {
         // Keep mic ON for benign errors; attempt a gentle restart after a short delay
         if (isListeningRef.current && isFocusedRef.current) {
           setTimeout(() => {
-            try { recognitionRef.current?.start?.(); } catch {}
+            try { recognitionRef.current?.start?.(); } catch { }
           }, 100);
         }
         return;
       }
-      
+
       // Handle network errors with retry logic
       if (event.error === 'network') {
         setIsProcessing(true);
@@ -385,7 +385,7 @@ export const SearchBar = ({ value, onChange, placeholder = "Type your question..
         }, 200);
         return;
       }
-      
+
       // Stop only on critical permission errors
       if (event.error === 'not-allowed' || event.error === 'service-not-allowed') {
         setIsListening(false);
@@ -445,15 +445,15 @@ export const SearchBar = ({ value, onChange, placeholder = "Type your question..
         // Safari/WebKit may throw if already started; try stopping then starting
         try {
           recognitionRef.current.stop();
-        } catch {}
+        } catch { }
         try {
           recognitionRef.current.start();
-        } catch {}
+        } catch { }
       }
     } else {
       console.log('Speech recognition NOT started - not focused or disabled');
     }
-    
+
     // give a short window to avoid rapid double-starts
     setTimeout(() => { isStartingRef.current = false; }, 50);
   };
@@ -472,9 +472,9 @@ export const SearchBar = ({ value, onChange, placeholder = "Type your question..
 
   // ===== Deepgram meeting audio capture =====
   const stopMeetingCapture = () => {
-    try { mediaRecorderRef.current?.stop(); } catch {}
-    try { meetingStreamRef.current?.getTracks().forEach(t => t.stop()); } catch {}
-    try { deepgramSocketRef.current?.close(); } catch {}
+    try { mediaRecorderRef.current?.stop(); } catch { }
+    try { meetingStreamRef.current?.getTracks().forEach(t => t.stop()); } catch { }
+    try { deepgramSocketRef.current?.close(); } catch { }
     mediaRecorderRef.current = null;
     meetingStreamRef.current = null;
     deepgramSocketRef.current = null;
@@ -495,7 +495,7 @@ export const SearchBar = ({ value, onChange, placeholder = "Type your question..
         stream = await navigator.mediaDevices.getDisplayMedia({ audio: true, video: true } as any);
       }
       if (!stream || !stream.getAudioTracks().length) {
-        try { stream?.getTracks().forEach(t => t.stop()); } catch {}
+        try { stream?.getTracks().forEach(t => t.stop()); } catch { }
         toast({ title: 'No audio', description: 'The selected surface has no audio track.', variant: 'destructive' });
         return;
       }
@@ -504,7 +504,7 @@ export const SearchBar = ({ value, onChange, placeholder = "Type your question..
       const key = (import.meta as any).env?.VITE_DEEPGRAM_API_KEY;
       if (!key) {
         toast({ title: 'Missing API key', description: 'Set VITE_DEEPGRAM_API_KEY in your env.', variant: 'destructive' });
-        try { stream.getTracks().forEach(t => t.stop()); } catch {}
+        try { stream.getTracks().forEach(t => t.stop()); } catch { }
         return;
       }
 
@@ -531,8 +531,8 @@ export const SearchBar = ({ value, onChange, placeholder = "Type your question..
           setIsCapturingMeetingAudio(true);
         } catch {
           toast({ title: 'Recorder unsupported', description: 'MediaRecorder not supported in this browser.', variant: 'destructive' });
-          try { ws.close(); } catch {}
-          try { stream.getTracks().forEach(t => t.stop()); } catch {}
+          try { ws.close(); } catch { }
+          try { stream.getTracks().forEach(t => t.stop()); } catch { }
         }
       };
 
@@ -566,13 +566,13 @@ export const SearchBar = ({ value, onChange, placeholder = "Type your question..
               onChange(stable);
             }
           }
-        } catch {}
+        } catch { }
       };
 
       const stopAll = () => {
-        try { mediaRecorderRef.current?.stop(); } catch {}
-        try { meetingStreamRef.current?.getTracks().forEach(t => t.stop()); } catch {}
-        try { deepgramSocketRef.current?.close(); } catch {}
+        try { mediaRecorderRef.current?.stop(); } catch { }
+        try { meetingStreamRef.current?.getTracks().forEach(t => t.stop()); } catch { }
+        try { deepgramSocketRef.current?.close(); } catch { }
         mediaRecorderRef.current = null;
         meetingStreamRef.current = null;
         deepgramSocketRef.current = null;
@@ -588,9 +588,9 @@ export const SearchBar = ({ value, onChange, placeholder = "Type your question..
 
   // ===== Deepgram direct microphone capture (no screen share) =====
   const stopProMicCapture = () => {
-    try { proMicRecorderRef.current?.stop(); } catch {}
-    try { proMicStreamRef.current?.getTracks().forEach(t => t.stop()); } catch {}
-    try { proMicSocketRef.current?.close(); } catch {}
+    try { proMicRecorderRef.current?.stop(); } catch { }
+    try { proMicStreamRef.current?.getTracks().forEach(t => t.stop()); } catch { }
+    try { proMicSocketRef.current?.close(); } catch { }
     proMicRecorderRef.current = null;
     proMicStreamRef.current = null;
     proMicSocketRef.current = null;
@@ -630,7 +630,7 @@ export const SearchBar = ({ value, onChange, placeholder = "Type your question..
       const idleMs = Date.now() - proMicLastMessageAtRef.current;
       if (isCapturingProMic && idleMs > 30000) {
         console.log('[mic] No transcripts for 30s, reconnecting');
-        try { proMicSocketRef.current?.close(); } catch {}
+        try { proMicSocketRef.current?.close(); } catch { }
         scheduleProMicReconnect('idle-timeout');
       }
     }, 5000);
@@ -658,7 +658,7 @@ export const SearchBar = ({ value, onChange, placeholder = "Type your question..
       const key = (import.meta as any).env?.VITE_DEEPGRAM_API_KEY;
       if (!key) {
         toast({ title: 'Missing API key', description: 'Set VITE_DEEPGRAM_API_KEY in your env.', variant: 'destructive' });
-        try { stream.getTracks().forEach(t => t.stop()); } catch {}
+        try { stream.getTracks().forEach(t => t.stop()); } catch { }
         return;
       }
 
@@ -687,8 +687,8 @@ export const SearchBar = ({ value, onChange, placeholder = "Type your question..
           startProMicHeartbeat();
         } catch {
           toast({ title: 'Recorder unsupported', description: 'MediaRecorder not supported in this browser.', variant: 'destructive' });
-          try { ws.close(); } catch {}
-          try { stream.getTracks().forEach(t => t.stop()); } catch {}
+          try { ws.close(); } catch { }
+          try { stream.getTracks().forEach(t => t.stop()); } catch { }
         }
       };
 
@@ -723,13 +723,13 @@ export const SearchBar = ({ value, onChange, placeholder = "Type your question..
               onChange(stable);
             }
           }
-        } catch {}
+        } catch { }
       };
 
       const stopAll = () => {
-        try { proMicRecorderRef.current?.stop(); } catch {}
-        try { proMicStreamRef.current?.getTracks().forEach(t => t.stop()); } catch {}
-        try { proMicSocketRef.current?.close(); } catch {}
+        try { proMicRecorderRef.current?.stop(); } catch { }
+        try { proMicStreamRef.current?.getTracks().forEach(t => t.stop()); } catch { }
+        try { proMicSocketRef.current?.close(); } catch { }
         proMicRecorderRef.current = null;
         proMicStreamRef.current = null;
         proMicSocketRef.current = null;
@@ -797,7 +797,7 @@ export const SearchBar = ({ value, onChange, placeholder = "Type your question..
         const msg = String(err?.message || "");
         const looksLikeMissing = msg.includes("Session not found");
         if (looksLikeMissing) {
-          try { window.localStorage.removeItem("ia_session_id"); } catch {}
+          try { window.localStorage.removeItem("ia_session_id"); } catch { }
           sid = await ensureSession?.({ forceNew: true });
           const res = await apiUploadProfile({ session_id: sid as string, file });
           setLastUploaded({ name: file.name, characters: res.characters });
@@ -821,7 +821,7 @@ export const SearchBar = ({ value, onChange, placeholder = "Type your question..
     if (e.key === 'Backspace' && isListening) {
       baseTextRef.current = '';
     }
-    
+
     // Handle Enter key for auto-generation
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
@@ -829,7 +829,7 @@ export const SearchBar = ({ value, onChange, placeholder = "Type your question..
         onGenerate();
       }
     }
-    
+
     // Adjust height after key press
     setTimeout(() => {
       if (textareaRef.current) {
@@ -844,20 +844,20 @@ export const SearchBar = ({ value, onChange, placeholder = "Type your question..
 
   const restartRecognition = () => {
     if (!isSupported || !isListeningRef.current) return;
-    
+
     // Create new recognition instance
     const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
     recognitionRef.current = new SpeechRecognition();
-    
+
     // Ensure mic button is shown as active
     setIsListening(true);
-    
+
     // Enhanced recognition settings for maximum accuracy
     recognitionRef.current.continuous = true;
     recognitionRef.current.interimResults = true;
     recognitionRef.current.lang = 'en-US';
     recognitionRef.current.maxAlternatives = 3;
-    
+
     // Set up event handlers (reuse the same logic)
     recognitionRef.current.onstart = () => {
       if (isListeningRef.current) {
@@ -875,11 +875,11 @@ export const SearchBar = ({ value, onChange, placeholder = "Type your question..
       let interimTranscript = '';
       let finalTranscript = '';
       let bestConfidence = 0;
-      
+
       for (let i = event.resultIndex; i < event.results.length; i++) {
         const result = event.results[i];
         const isFinal = result.isFinal;
-        
+
         // Get the best alternative with highest confidence
         let bestAlternative = result[0];
         for (let j = 1; j < result.length; j++) {
@@ -887,10 +887,10 @@ export const SearchBar = ({ value, onChange, placeholder = "Type your question..
             bestAlternative = result[j];
           }
         }
-        
+
         const transcript = bestAlternative.transcript;
         const transcriptConfidence = bestAlternative.confidence || 0.8;
-        
+
         if (isFinal) {
           // Apply intelligent corrections to final transcript
           const correctedTranscript = correctTranscription(transcript);
@@ -901,33 +901,33 @@ export const SearchBar = ({ value, onChange, placeholder = "Type your question..
           bestConfidence = Math.max(bestConfidence, transcriptConfidence);
         }
       }
-      
+
       // Update confidence score
       const currentConfidence = calculateConfidence(
-        finalTranscript + interimTranscript, 
+        finalTranscript + interimTranscript,
         finalTranscript.length > 0
       );
       setConfidence(currentConfidence);
-      
+
       // Update base text with final results
       if (finalTranscript.trim()) {
         const correctedFinal = correctTranscription(finalTranscript.trim());
         baseTextRef.current += (baseTextRef.current ? ' ' : '') + correctedFinal;
         setLastTranscriptionTime(Date.now());
       }
-      
+
       // Show real-time text with intelligent corrections
       const interimCorrected = interimTranscript ? correctTranscription(interimTranscript) : '';
       const displayText = baseTextRef.current + (interimCorrected ? (baseTextRef.current ? ' ' : '') + interimCorrected : '');
       onChange(displayText);
-      
+
       // Update transcription buffer for continuous processing
       setTranscriptionBuffer(displayText);
     };
 
     recognitionRef.current.onerror = (event: any) => {
       console.log('Speech recognition error:', event.error);
-      
+
       // Enhanced error handling for better reliability
       const benign = ['no-speech', 'aborted', 'audio-capture', 'service-not-allowed'];
       if (benign.includes(event?.error)) {
@@ -938,17 +938,17 @@ export const SearchBar = ({ value, onChange, placeholder = "Type your question..
             baseTextRef.current = buffered;
             onChange(buffered);
           }
-        } catch {}
+        } catch { }
 
         // Don't restart for benign errors, just stop
         if (event.error === 'aborted') {
           // Aborted usually means user stopped or focus changed, don't restart
           return;
         }
-        try { recognitionRef.current?.stop(); recognitionRef.current = null; } catch {}
+        try { recognitionRef.current?.stop(); recognitionRef.current = null; } catch { }
         return;
       }
-      
+
       // Handle network errors with retry logic
       if (event.error === 'network') {
         setIsProcessing(true);
@@ -964,7 +964,7 @@ export const SearchBar = ({ value, onChange, placeholder = "Type your question..
         }, 200);
         return;
       }
-      
+
       // Stop only on critical errors
       if (event.error === 'not-allowed' || event.error === 'service-not-allowed') {
         setIsListening(false);
@@ -985,7 +985,7 @@ export const SearchBar = ({ value, onChange, placeholder = "Type your question..
           baseTextRef.current = buffered;
           onChange(buffered);
         }
-      } catch {}
+      } catch { }
 
       // Only restart if we're still supposed to be listening and focused
       if (isListeningRef.current && isFocusedRef.current && recognitionRef.current) {
@@ -994,10 +994,10 @@ export const SearchBar = ({ value, onChange, placeholder = "Type your question..
           if (isListeningRef.current && isFocusedRef.current) {
             try {
               recognitionRef.current.start();
-              } catch (error) {
-                console.log('Failed to restart recognition:', error);
-                // Keep mic state on; will restart on focus/user action
-              }
+            } catch (error) {
+              console.log('Failed to restart recognition:', error);
+              // Keep mic state on; will restart on focus/user action
+            }
           }
         }, retryDelay);
       }
@@ -1012,7 +1012,7 @@ export const SearchBar = ({ value, onChange, placeholder = "Type your question..
           baseTextRef.current = buffered;
           onChange(buffered);
         }
-      } catch {}
+      } catch { }
 
       if (isListeningRef.current && isFocusedRef.current && recognitionRef.current) {
         const retryDelay = 500;
@@ -1020,10 +1020,10 @@ export const SearchBar = ({ value, onChange, placeholder = "Type your question..
           if (isListeningRef.current && isFocusedRef.current) {
             try {
               recognitionRef.current.start();
-              } catch (error) {
-                console.log('Failed to restart recognition on audio end:', error);
-                // Keep mic state on; will restart on focus/user action
-              }
+            } catch (error) {
+              console.log('Failed to restart recognition on audio end:', error);
+              // Keep mic state on; will restart on focus/user action
+            }
           }
         }, retryDelay);
       }
@@ -1041,7 +1041,7 @@ export const SearchBar = ({ value, onChange, placeholder = "Type your question..
     setIsFocused(true);
     isFocusedRef.current = true;
     speechProcessingEnabledRef.current = true; // Enable speech processing
-    
+
     // If microphone is on, start recognition
     if (isListening && isSupported) {
       // Always recreate recognition instance for clean state
@@ -1058,7 +1058,7 @@ export const SearchBar = ({ value, onChange, placeholder = "Type your question..
     setIsFocused(false);
     isFocusedRef.current = false;
     speechProcessingEnabledRef.current = false; // DISABLE speech processing
-    
+
     // AGGRESSIVELY stop and destroy speech recognition
     if (recognitionRef.current) {
       try {
@@ -1069,14 +1069,14 @@ export const SearchBar = ({ value, onChange, placeholder = "Type your question..
       }
       recognitionRef.current = null; // Completely destroy
     }
-    
+
     // Clear all state
     setIsProcessing(false);
     setConfidence(0);
     setTranscriptionBuffer('');
     inUtteranceRef.current = false;
     utteranceBaseRef.current = '';
-    
+
     console.log('Speech recognition completely stopped on blur');
   };
 
@@ -1112,7 +1112,7 @@ export const SearchBar = ({ value, onChange, placeholder = "Type your question..
                 placeholder={placeholder}
                 className="w-full py-2 px-0 pr-20 text-sm bg-transparent border-none outline-none resize-none placeholder:text-muted-foreground/70 leading-relaxed overflow-y-auto scrollbar-thin"
                 rows={1}
-                style={{ 
+                style={{
                   fontSize: '16px', // Prevents zoom on iOS
                   lineHeight: '1.5',
                   minHeight: '32px',
@@ -1121,7 +1121,7 @@ export const SearchBar = ({ value, onChange, placeholder = "Type your question..
                   textAlign: 'left'
                 }}
               />
-              
+
               {/* Fixed + icon positioned at bottom left */}
               <div className="absolute left-0 bottom-1 flex-shrink-0">
                 <Button
@@ -1139,7 +1139,7 @@ export const SearchBar = ({ value, onChange, placeholder = "Type your question..
                   )}
                 </Button>
               </div>
-              
+
               {/* Fixed action buttons positioned at bottom right */}
               <div className="absolute right-0 bottom-1 flex items-center gap-1 flex-shrink-0">
                 {/* Microphone button */}
@@ -1148,17 +1148,16 @@ export const SearchBar = ({ value, onChange, placeholder = "Type your question..
                     onClick={handleProMicToggle}
                     variant="ghost"
                     size="sm"
-                    className={`rounded-full h-6 w-6 p-0 touch-manipulation ${
-                      isCapturingProMic
-                        ? "text-destructive hover:bg-destructive/10"
-                        : "text-muted-foreground hover:text-foreground hover:bg-muted/50"
-                    }`}
+                    className={`rounded-full h-6 w-6 p-0 touch-manipulation ${isCapturingProMic
+                      ? "text-destructive hover:bg-destructive/10"
+                      : "text-muted-foreground hover:text-foreground hover:bg-muted/50"
+                      }`}
                     title={isCapturingProMic ? 'Stop microphone' : 'Start microphone'}
                   >
                     <Mic className="h-3 w-3" />
                   </Button>
                 )}
-                
+
                 {/* Send button */}
                 <Button
                   onClick={() => canGenerate && value.trim() && onGenerate && !isGenerating ? onGenerate() : null}
@@ -1188,7 +1187,7 @@ export const SearchBar = ({ value, onChange, placeholder = "Type your question..
         className="hidden"
         onChange={handleFileChange}
       />
-      
+
       {/* Upload status indicator - mobile optimized */}
       {lastUploaded && (
         <div className="mt-2 flex items-center justify-center px-2">
@@ -1200,7 +1199,7 @@ export const SearchBar = ({ value, onChange, placeholder = "Type your question..
           </span>
         </div>
       )}
-      
+
     </div>
   );
 };

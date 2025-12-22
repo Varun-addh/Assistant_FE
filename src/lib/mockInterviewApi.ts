@@ -1,12 +1,20 @@
 // Mock Interview API Client
 // Follows the same patterns as api.ts for consistency
 
-const BASE_URL = (import.meta as any).env?.VITE_API_BASE_URL || "https://chat-assistant-xeij.onrender.com";
+const BASE_URL = (import.meta as any).env?.VITE_API_BASE_URL || "https://intvmate-interview-assistant.hf.space";
 
 function buildHeaders(): HeadersInit {
-  return {
+  const headers: Record<string, string> = {
     "Content-Type": "application/json",
   };
+
+  // User-provided API key (Bring Your Own Key)
+  const userKey = typeof window !== 'undefined' ? localStorage.getItem("user_api_key") : null;
+  if (userKey) {
+    headers["X-API-Key"] = userKey;
+  }
+
+  return headers;
 }
 
 // Request/Response Types
@@ -144,7 +152,7 @@ export async function apiStartMockInterview(
 ): Promise<StartSessionResponse> {
   console.log("[MockInterviewAPI] Starting interview, request:", request);
   console.log("[MockInterviewAPI] URL:", `${BASE_URL}/api/mock-interview/sessions/start`);
-  
+
   const res = await fetch(`${BASE_URL}/api/mock-interview/sessions/start`, {
     method: "POST",
     headers: buildHeaders(),
@@ -168,7 +176,7 @@ export async function apiSubmitMockAnswer(
   request: SubmitAnswerRequest
 ): Promise<SubmitAnswerResponse> {
   console.log("[MockInterviewAPI] Submitting answer, request:", request);
-  
+
   const res = await fetch(`${BASE_URL}/api/mock-interview/sessions/submit-answer`, {
     method: "POST",
     headers: buildHeaders(),
@@ -245,7 +253,7 @@ export async function apiGetHint(
   hintLevel: 1 | 2 | 3
 ): Promise<HintResponse> {
   console.log("[MockInterviewAPI] Requesting hint, level:", hintLevel);
-  
+
   const res = await fetch(
     `${BASE_URL}/api/mock-interview/sessions/${encodeURIComponent(sessionId)}/hint?hint_level=${hintLevel}`,
     {
@@ -284,4 +292,113 @@ export async function apiGetProgress(
   }
 
   return res.json();
+}
+
+export interface MockInterviewHistorySession {
+  session_id: string;
+  user_id: string;
+  interview_type: InterviewType;
+  difficulty: Difficulty;
+  status: "completed" | "active" | "abandoned";
+  started_at: string;
+  completed_at?: string;
+  average_score: number;
+  questions_answered: number;
+  total_questions: number;
+  evaluations?: Array<{
+    question: string;
+    user_answer: string;
+    model_answer?: string;
+    score: number;
+    rating: string;
+    feedback: string;
+  }>;
+}
+
+export async function apiGetMockInterviewHistory(
+  userId: string
+): Promise<{ sessions: MockInterviewHistorySession[] }> {
+  console.log("[MockInterviewAPI] Fetching history for userId:", userId);
+  console.log("[MockInterviewAPI] URL:", `${BASE_URL}/api/mock-interview/history/${encodeURIComponent(userId)}`);
+
+  const res = await fetch(
+    `${BASE_URL}/api/mock-interview/history/${encodeURIComponent(userId)}?include_evaluations=true`,
+    {
+      method: "GET",
+      headers: buildHeaders(),
+    }
+  );
+
+  console.log("[MockInterviewAPI] History response status:", res.status, res.statusText);
+
+  if (!res.ok) {
+    const text = await res.text().catch(() => "");
+    console.error("[MockInterviewAPI] History error response:", text);
+    // Return empty array if endpoint doesn't exist yet
+    if (res.status === 404) {
+      console.log("[MockInterviewAPI] 404 - returning empty sessions");
+      return { sessions: [] };
+    }
+    throw new Error(`Failed to get mock interview history: ${res.status} ${text}`);
+  }
+
+  const data = await res.json();
+  console.log("[MockInterviewAPI] History response data:", data);
+  return data;
+}
+
+export async function apiDeleteMockInterviewSession(
+  userId: string,
+  sessionId: string
+): Promise<{ message: string }> {
+  console.log("[MockInterviewAPI] Deleting session:", sessionId, "for user:", userId);
+
+  const res = await fetch(
+    `${BASE_URL}/api/mock-interview/history/${encodeURIComponent(userId)}/sessions/${encodeURIComponent(sessionId)}`,
+    {
+      method: "DELETE",
+      headers: buildHeaders(),
+    }
+  );
+
+  console.log("[MockInterviewAPI] Delete response status:", res.status, res.statusText);
+
+  if (!res.ok) {
+    const text = await res.text().catch(() => "");
+    console.error("[MockInterviewAPI] Delete error response:", text);
+    if (res.status === 403) {
+      throw new Error("You don't have permission to delete this session");
+    }
+    throw new Error(`Failed to delete session: ${res.status} ${text}`);
+  }
+
+  const data = await res.json();
+  console.log("[MockInterviewAPI] Delete response data:", data);
+  return data;
+}
+
+export async function apiDeleteAllMockInterviewSessions(
+  userId: string
+): Promise<{ message: string; deleted_count: number }> {
+  console.log("[MockInterviewAPI] Deleting all sessions for user:", userId);
+
+  const res = await fetch(
+    `${BASE_URL}/api/mock-interview/history/${encodeURIComponent(userId)}`,
+    {
+      method: "DELETE",
+      headers: buildHeaders(),
+    }
+  );
+
+  console.log("[MockInterviewAPI] Delete all response status:", res.status, res.statusText);
+
+  if (!res.ok) {
+    const text = await res.text().catch(() => "");
+    console.error("[MockInterviewAPI] Delete all error response:", text);
+    throw new Error(`Failed to delete all sessions: ${res.status} ${text}`);
+  }
+
+  const data = await res.json();
+  console.log("[MockInterviewAPI] Delete all response data:", data);
+  return data;
 }

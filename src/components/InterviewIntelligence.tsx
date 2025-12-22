@@ -4,7 +4,7 @@ import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { Search, RefreshCw, BookOpen, Loader2, AlertCircle, History as HistoryIcon, Trash2, X } from "lucide-react";
+import { Search, RefreshCw, BookOpen, Loader2, AlertCircle, History as HistoryIcon, Trash2, X, Maximize2 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import {
   apiGetTopics,
@@ -17,15 +17,18 @@ import {
   apiDeleteHistoryTab,
   apiDeleteAllHistory,
   apiSaveHistoryTab,
-  type InterviewQuestion,
-  type TopicsResponse,
-  type EnhancedQuestion,
-  type CompanyInfo,
-  type HistoryTabSummary,
+} from "@/lib/api";
+import type {
+  InterviewQuestion,
+  TopicsResponse,
+  EnhancedQuestion,
+  CompanyInfo,
+  HistoryTabSummary,
 } from "@/lib/api";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
 import { Slider } from "@/components/ui/slider";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import {
   intelligenceFeatureDefaults,
   intelligenceFeatureGates,
@@ -52,49 +55,49 @@ const applyHighlighting = (token: string, tokenType: string): string => {
         .replace(/</g, '&lt;')
         .replace(/>/g, '&gt;');
   }
-};
+}
 
 const getTokenType = (token: string, config: any, lang: string): string => {
   // Check for numbers
-  if (/^\d+(\.\d+)?([eE][+-]?\d+)?$/.test(token) || 
-      /^0[xX][0-9a-fA-F]+$/.test(token) || 
-      /^0[bB][01]+$/.test(token) || 
-      /^0[0-7]+$/.test(token)) {
+  if (/^\d+(\.\d+)?([eE][+-]?\d+)?$/.test(token) ||
+    /^0[xX][0-9a-fA-F]+$/.test(token) ||
+    /^0[bB][01]+$/.test(token) ||
+    /^0[0-7]+$/.test(token)) {
     return 'number';
   }
-  
+
   // Check for strings
-  if (config.stringChars?.some((char: string) => 
-      (token.startsWith(char) && token.endsWith(char)) ||
-      (char === '`' && token.startsWith('`') && token.endsWith('`')))) {
+  if (config.stringChars?.some((char: string) =>
+    (token.startsWith(char) && token.endsWith(char)) ||
+    (char === '`' && token.startsWith('`') && token.endsWith('`')))) {
     return 'string';
   }
-  
+
   // Check for keywords
   if (config.keywords?.includes(token)) {
     return 'keyword';
   }
-  
+
   // Check for builtins
   if (config.builtins?.includes(token)) {
     return 'builtin';
   }
-  
+
   // Special cases
   if (lang === 'python' && token === 'print') {
     return 'print';
   }
-  
+
   if (token.match(/^[a-zA-Z_][a-zA-Z0-9_]*$/)) {
     return 'function';
   }
-  
+
   return 'text';
 };
 
 const findCommentIndex = (line: string, commentChars: string[]): number => {
   if (!commentChars || commentChars.length === 0) return -1;
-  
+
   for (const char of commentChars) {
     if (!char) continue;
     const index = line.indexOf(char);
@@ -116,7 +119,7 @@ const findCommentIndex = (line: string, commentChars: string[]): number => {
 
 const highlightCode = (code: string, lang: string): string => {
   if (!code) return '';
-  
+
   const languageConfigs: Record<string, any> = {
     python: {
       keywords: ['def', 'class', 'if', 'else', 'elif', 'for', 'while', 'return', 'import', 'from', 'try', 'except', 'finally', 'with', 'as', 'pass', 'break', 'continue', 'in', 'is', 'not', 'and', 'or', 'True', 'False', 'None', 'lambda', 'yield', 'raise', 'assert', 'del', 'global', 'nonlocal', 'async', 'await', 'match', 'case'],
@@ -158,11 +161,11 @@ const highlightCode = (code: string, lang: string): string => {
 
   for (const line of lines) {
     let highlightedLine = '';
-    
+
     // Check for full line comments
     const trimmedLine = line.trim();
     const isFullLineComment = config.commentChars?.some((char: string) => trimmedLine.startsWith(char));
-    
+
     if (isFullLineComment) {
       const escaped = line.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
       highlightedLine = `<span class="code-comment">${escaped}</span>`;
@@ -236,7 +239,7 @@ const highlightCode = (code: string, lang: string): string => {
         if (commentIndex !== -1) {
           const codePart = line.substring(0, commentIndex);
           const commentPart = line.substring(commentIndex);
-          
+
           let i = 0;
           while (i < codePart.length) {
             if (/\s/.test(codePart[i])) {
@@ -254,7 +257,7 @@ const highlightCode = (code: string, lang: string): string => {
             highlightedLine += applyHighlighting(token, ttype);
             i = j;
           }
-          
+
           const escComment = commentPart.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
           highlightedLine += `<span class="code-comment">${escComment}</span>`;
         } else {
@@ -277,28 +280,33 @@ const highlightCode = (code: string, lang: string): string => {
           }
         }
       }
+
     }
-    
+
     highlightedLines.push(highlightedLine);
   }
-  
+
   return highlightedLines.join('\n');
-};
+}
 
 // Enhanced markdown formatter for answer display with syntax highlighting
 const formatAnswerMarkdown = (text: string): string => {
   if (!text) return "";
 
-  // Extract code blocks first and replace them with placeholders so they
-  // don't get mangled by later HTML escaping and inline processing.
+  // Backend now handles code block detection and formatting
+  // Frontend only needs to render the properly formatted markdown
+
+  // Extract code blocks first and replace them with placeholders
   const codeBlockPlaceholders: string[] = [];
-  let processedText = text.replace(/```(\w+)?\s*\n?([\s\S]*?)```/g, (match, lang, code) => {
+  let processedText = text;
+
+  // Handle triple-backtick code blocks (already formatted by backend)
+  processedText = processedText.replace(/```(\w+)?\s*\n?([\s\S]*?)```/g, (match, lang, code) => {
     const placeholder = `__CODE_BLOCK_${codeBlockPlaceholders.length}__`;
     const cleanedCode = (code || '').replace(/^\n+/, '').replace(/\n+$/, '');
     const highlightedCode = highlightCode(cleanedCode, (lang || '').toString());
-    // Slightly tighter vertical spacing for code blocks
     codeBlockPlaceholders.push(
-      `<div class="code-block-wrapper my-2"><pre class="bg-[#0b1020] border border-[#30363d] rounded-lg overflow-x-auto p-4" style="background-color: #0b1020; border: 1px solid #30363d; border-radius: 0.5rem; overflow-x: auto; padding: 1rem; margin: 0.5rem 0;"><code class="language-${lang || 'text'}" style="font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace; font-size: 0.875rem; line-height: 1.5; color: #d4d4d4; display: block; white-space: pre;">${highlightedCode}</code></pre></div>`
+      `<div class="code-block-wrapper my-3"><pre class="bg-[#0b1020] border border-[#30363d] rounded-lg overflow-x-auto p-4" style="background-color: #0b1020; border: 1px solid #30363d; border-radius: 0.5rem; overflow-x: auto; padding: 1rem; margin: 0.75rem 0;"><code class="language-${lang || 'text'}" style="font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace; font-size: 0.875rem; line-height: 1.5; color: #d4d4d4; display: block; white-space: pre;">${highlightedCode}</code></pre></div>`
     );
     return placeholder;
   });
@@ -309,7 +317,7 @@ const formatAnswerMarkdown = (text: string): string => {
     .replace(/</g, '&lt;')
     .replace(/>/g, '&gt;');
 
-  // We'll parse the escaped text line-by-line, keeping placeholders intact.
+  // Parse the escaped text line-by-line, keeping placeholders intact
   const linesRaw = processedText.split('\n');
   const linesEscaped = escaped.split('\n');
 
@@ -339,11 +347,12 @@ const formatAnswerMarkdown = (text: string): string => {
   };
 
   const processInline = (s: string) => {
-    // Inline code: decode entities inside code fragments
+    // Inline code with backticks (backend should handle most code formatting)
     s = s.replace(/`([^`]+)`/g, (_m, code) => {
       const decoded = (code || '').replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>');
       return `<code class="bg-muted px-1 py-0.5 rounded text-xs font-mono">${decoded}</code>`;
     });
+
     // Bold
     s = s.replace(/\*\*([^*]+)\*\*/g, '<strong class="font-semibold">$1</strong>');
     // Italic
@@ -440,15 +449,18 @@ const defaultQueryExpansionEnabled = featureGates.queryExpansion
 
 interface InterviewIntelligenceProps {
   onHistoryRefresh?: () => void;
-  externalHistorySelection?: { tab: HistoryTabSummary; ts: number } | null;
+  historyTabs?: HistoryTabSummary[];
+  // Enhanced to support 'clear' action or 'select' (default)
+  externalHistorySelection?: { tab?: HistoryTabSummary; type?: 'select' | 'clear'; ts: number } | null;
   onExternalHistorySelectionConsumed?: () => void;
 }
 
 export const InterviewIntelligence = ({
   onHistoryRefresh,
+  historyTabs: externalHistoryTabs = [],
   externalHistorySelection,
   onExternalHistorySelectionConsumed,
-}: InterviewIntelligenceProps = {}) => {
+}: InterviewIntelligenceProps) => {
   const [topics, setTopics] = useState<string[]>([]);
   const [selectedTopic, setSelectedTopic] = useState<string | null>(null);
   const [questions, setQuestions] = useState<InterviewQuestion[]>([]);
@@ -478,19 +490,21 @@ export const InterviewIntelligence = ({
   // Advanced controls hidden by default to reduce UI clutter
   const [showAdvancedControls, setShowAdvancedControls] = useState<boolean>(false);
   const [companies, setCompanies] = useState<CompanyInfo[]>([]);
-  const [historyTabs, setHistoryTabs] = useState<HistoryTabSummary[]>([]);
   const [historyLoading, setHistoryLoading] = useState<boolean>(false);
   const [historyRefreshing, setHistoryRefreshing] = useState<boolean>(false);
   const [historyError, setHistoryError] = useState<string | null>(null);
   const [selectedHistoryTabId, setSelectedHistoryTabId] = useState<string | null>(null);
+  const [isAnswerExpanded, setIsAnswerExpanded] = useState<boolean>(false);
+  const historyInitialLoadRef = useRef<boolean>(false);
 
-  // Load topics on mount
+  // Consolidate history tabs from prop
+  const historyTabs = externalHistoryTabs;
+
   useEffect(() => {
+    // Only load topics once on mount
     loadTopics();
-  }, []);
 
-  // Load companies (enhanced filter)
-  useEffect(() => {
+    // Load companies (enhanced filter)
     (async () => {
       try {
         const list = await apiGetCompanies();
@@ -502,46 +516,9 @@ export const InterviewIntelligence = ({
   }, []);
 
   const loadHistoryTabs = useCallback(async (opts?: { silent?: boolean }) => {
-    setHistoryError(null);
-    if (opts?.silent) {
-      setHistoryRefreshing(true);
-    } else {
-      setHistoryLoading(true);
-    }
-    try {
-      const data = await apiGetHistoryTabs({
-        limit: 50,
-        sort_by: "created_at",
-        ascending: false,
-      });
-      if (Array.isArray(data?.tabs)) {
-        setHistoryTabs(data.tabs);
-      } else {
-        setHistoryTabs([]);
-      }
-    } catch (err: any) {
-      const message = err?.message || "Failed to load search history.";
-      // Only show error if it's not a 404 (404s are handled gracefully)
-      if (!message.includes("404") && !opts?.silent) {
-        setHistoryError(message);
-        toast({
-          title: "History unavailable",
-          description: message,
-          variant: "destructive",
-        });
-      } else {
-        // For 404s or silent errors, just set empty state
-        setHistoryTabs([]);
-      }
-    } finally {
-      setHistoryLoading(false);
-      setHistoryRefreshing(false);
-    }
-  }, [toast]);
-
-  useEffect(() => {
-    loadHistoryTabs();
-  }, [loadHistoryTabs]);
+    // This now just triggers the parent's refresh
+    onHistoryRefresh?.();
+  }, [onHistoryRefresh]);
 
   const [historyDeletingTabId, setHistoryDeletingTabId] = useState<string | null>(null);
   const [historyClearingAll, setHistoryClearingAll] = useState<boolean>(false);
@@ -553,6 +530,7 @@ export const InterviewIntelligence = ({
     setActiveView("search");
     setSelectedHistoryTabId(tab.tab_id);
     setSelectedQuestion((tab.questions?.[0] as InterviewQuestion) || null);
+    // Don't trigger a new search when loading from history - just display the saved results
   }, []);
 
   const handleDeleteHistoryTab = useCallback(async (tabId: string) => {
@@ -561,7 +539,8 @@ export const InterviewIntelligence = ({
     setHistoryDeletingTabId(tabId);
     try {
       await apiDeleteHistoryTab(tabId);
-      setHistoryTabs((prev) => prev.filter((tab) => tab.tab_id !== tabId));
+      // Parent should handle state update
+      onHistoryRefresh?.();
       if (selectedHistoryTabId === tabId) {
         setSelectedHistoryTabId(null);
       }
@@ -588,7 +567,8 @@ export const InterviewIntelligence = ({
     setHistoryClearingAll(true);
     try {
       const result = await apiDeleteAllHistory();
-      setHistoryTabs([]);
+      // Parent should handle state update
+      onHistoryRefresh?.();
       setSelectedHistoryTabId(null);
       toast({
         title: "History cleared",
@@ -641,23 +621,23 @@ export const InterviewIntelligence = ({
     }
   };
 
-  const handleSearch = useCallback(async (query: string, forceRefresh: boolean = true) => {
+  const handleSearch = useCallback(async (query: string, forceRefresh: boolean = true, saveToHistory: boolean = true) => {
     if (!query.trim()) {
       setSearchResults([]);
       return;
     }
-    
+
     // Use WebSocket streaming for enhanced mode, fallback to HTTP
     const useStreaming = enhanced && typeof WebSocket !== 'undefined';
-    
+
     if (useStreaming) {
-      handleSearchWithWebSocket(query, forceRefresh);
+      handleSearchWithWebSocket(query, forceRefresh, saveToHistory);
     } else {
-      handleSearchWithHTTP(query, forceRefresh);
+      handleSearchWithHTTP(query, forceRefresh, saveToHistory);
     }
   }, [enhanced, limit, verifiedOnly, minCred, company, refreshEnhanced, enableReranking, enableQueryExpansion]);
 
-  const handleSearchWithWebSocket = useCallback((query: string, forceRefresh: boolean) => {
+  const handleSearchWithWebSocket = useCallback((query: string, forceRefresh: boolean, saveToHistory: boolean = true) => {
     try {
       setSearchLoading(true);
       setSearchStatus('analyzing');
@@ -665,13 +645,13 @@ export const InterviewIntelligence = ({
       setActiveView("search");
       setLastSubmittedQuery(query);
       setSearchResults([]); // Clear previous results
-      
+
       // Determine WebSocket URL based on current API URL
-      const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:8000';
+      const apiUrl = import.meta.env.VITE_API_URL || 'https://intvmate-interview-assistant.hf.space';
       const wsUrl = apiUrl.replace(/^http/, 'ws') + '/api/intelligence/ws/search';
-      
+
       const ws = new WebSocket(wsUrl);
-      
+
       ws.onopen = () => {
         console.log('[Intelligence] WebSocket connected');
         setSearchStatus('searching');
@@ -682,16 +662,18 @@ export const InterviewIntelligence = ({
           min_credibility: minCred,
           company: company || undefined,
           refresh: refreshEnhanced || forceRefresh,
+          enhanced: enhanced,
           enable_reranking: featureGates.reranking ? enableReranking : undefined,
           enable_query_expansion: featureGates.queryExpansion ? enableQueryExpansion : undefined,
+          save_to_history: saveToHistory, // Pass through to backend
         }));
       };
-      
+
       ws.onmessage = (event) => {
         try {
           const msg = JSON.parse(event.data);
           console.log('[Intelligence] WebSocket message:', msg.type, msg);
-          
+
           if (msg.type === 'status') {
             // Update search status
             setSearchStatus(msg.status || 'searching');
@@ -702,8 +684,8 @@ export const InterviewIntelligence = ({
               const existingIndex = prev.findIndex(s => s.name === msg.source);
               if (existingIndex >= 0) {
                 // Update existing source
-                const updated = prev.map((source, idx) => 
-                  idx === existingIndex 
+                const updated = prev.map((source, idx) =>
+                  idx === existingIndex
                     ? { ...source, status: msg.status, count: msg.count }
                     : source
                 );
@@ -720,15 +702,15 @@ export const InterviewIntelligence = ({
             // Add result immediately to UI (streaming!)
             setSearchResults(prev => [...prev, msg.data]);
             setSearchStatus('generating');
-            
+
             // Extract source from result and update source status
             if (msg.data?.source) {
               setStatusSources(prev => {
                 const existingIndex = prev.findIndex(s => s.name === msg.data.source);
                 if (existingIndex >= 0) {
                   // Update count for existing source
-                  return prev.map((source, idx) => 
-                    idx === existingIndex 
+                  return prev.map((source, idx) =>
+                    idx === existingIndex
                       ? { ...source, count: (source.count || 0) + 1, status: 'searching' as const }
                       : source
                   );
@@ -739,26 +721,38 @@ export const InterviewIntelligence = ({
               });
             }
           } else if (msg.type === 'search_complete') {
-            console.log('[Intelligence] Search complete:', msg.total_results);
+            console.log('[Intelligence] Search complete:', msg.total_results, 'tab_id:', msg.tab_id);
             setSearchStatus('complete');
             setStatusSources(prev => prev.map(s => ({ ...s, status: 'complete' })));
-            
-            // Handle history saving
+
+            // Handle history saving - give backend time to save before refreshing
             if (msg.tab_id) {
               setSelectedHistoryTabId(msg.tab_id);
+              console.log('[Intelligence] Refreshing history with tab_id:', msg.tab_id);
+              // Wait longer to ensure backend has saved
               setTimeout(() => {
                 loadHistoryTabs({ silent: true });
                 onHistoryRefresh?.();
-              }, 500);
+                // Retry after another delay to catch any late saves
+                setTimeout(() => {
+                  loadHistoryTabs({ silent: true });
+                  onHistoryRefresh?.();
+                }, 1000);
+              }, 800);
             } else {
               // Backend didn't send tab_id, manually save the search to history
-              console.log('[Intelligence] No tab_id from backend, manually saving to history');
+              console.warn('[Intelligence] No tab_id from backend, refreshing history anyway');
               setTimeout(() => {
                 loadHistoryTabs({ silent: true });
                 onHistoryRefresh?.();
-              }, 500);
+                // Retry after another delay
+                setTimeout(() => {
+                  loadHistoryTabs({ silent: true });
+                  onHistoryRefresh?.();
+                }, 1000);
+              }, 800);
             }
-            
+
             ws.close();
             setSearchLoading(false);
           } else if (msg.type === 'error') {
@@ -777,7 +771,7 @@ export const InterviewIntelligence = ({
           console.error('[Intelligence] Error parsing WebSocket message:', err);
         }
       };
-      
+
       ws.onerror = (error) => {
         console.error('[Intelligence] WebSocket error:', error);
         toast({
@@ -790,19 +784,19 @@ export const InterviewIntelligence = ({
         // Fallback to HTTP
         handleSearchWithHTTP(query, forceRefresh);
       };
-      
+
       ws.onclose = () => {
         console.log('[Intelligence] WebSocket closed');
       };
-      
+
     } catch (err: any) {
       console.error('[Intelligence] WebSocket setup failed:', err);
       // Fallback to HTTP
       handleSearchWithHTTP(query, forceRefresh);
     }
-  }, [limit, verifiedOnly, minCred, company, refreshEnhanced, enableReranking, enableQueryExpansion, toast, loadHistoryTabs, onHistoryRefresh]);
+  }, [enhanced, limit, verifiedOnly, minCred, company, refreshEnhanced, enableReranking, enableQueryExpansion, toast, loadHistoryTabs, onHistoryRefresh]);
 
-  const handleSearchWithHTTP = useCallback(async (query: string, forceRefresh: boolean) => {
+  const handleSearchWithHTTP = useCallback(async (query: string, forceRefresh: boolean, saveToHistory: boolean = true) => {
     try {
       setSearchLoading(true);
       // If enhanced mode, kick off a simulated realtime status lifecycle for better UX
@@ -830,19 +824,20 @@ export const InterviewIntelligence = ({
           refresh: refreshEnhanced || !!forceRefresh,
           enable_reranking: featureGates.reranking ? enableReranking : undefined,
           enable_query_expansion: featureGates.queryExpansion ? enableQueryExpansion : undefined,
+          save_to_history: saveToHistory, // Pass through to API
         });
         setSearchResults((searchData.questions as unknown as InterviewQuestion[]) || []);
       } else {
-        searchData = await apiSearchQuestions(query, limit, !!forceRefresh);
+        searchData = await apiSearchQuestions(query, limit, !!forceRefresh, saveToHistory); // Pass through to API
         setSearchResults(searchData.questions || []);
       }
-      
-      console.log("[Intelligence] Search response:", { 
-        tab_id: searchData?.tab_id, 
+
+      console.log("[Intelligence] Search response:", {
+        tab_id: searchData?.tab_id,
         questionCount: searchData?.questions?.length,
-        query: searchData?.query 
+        query: searchData?.query
       });
-      
+
       // Handle history saving
       if (searchData?.tab_id) {
         setSelectedHistoryTabId(searchData.tab_id);
@@ -860,6 +855,7 @@ export const InterviewIntelligence = ({
             metadata: {
               limit,
               refresh: refreshEnhanced || !!forceRefresh,
+              enhanced,
             },
           });
           console.log("[Intelligence] Manually saved to history:", saved.tab_id);
@@ -932,9 +928,20 @@ export const InterviewIntelligence = ({
   const currentQuestions = activeView === "search" ? searchResults : questions;
 
   useEffect(() => {
-    if (externalHistorySelection?.tab) {
-      handleLoadHistoryTab(externalHistorySelection.tab);
-      onExternalHistorySelectionConsumed?.();
+    if (externalHistorySelection) {
+      if (externalHistorySelection.type === 'clear') {
+        // Reset state to initial view (topics) and clear search artifacts
+        setSearchQuery("");
+        setSearchResults([]);
+        setActiveView("topics");
+        setSelectedQuestion(null);
+        setSelectedHistoryTabId(null);
+        setLastSubmittedQuery("");
+        onExternalHistorySelectionConsumed?.();
+      } else if (externalHistorySelection.tab) {
+        handleLoadHistoryTab(externalHistorySelection.tab);
+        onExternalHistorySelectionConsumed?.();
+      }
     }
   }, [externalHistorySelection, handleLoadHistoryTab, onExternalHistorySelectionConsumed]);
 
@@ -975,7 +982,7 @@ export const InterviewIntelligence = ({
               </Button>
             )}
           </div>
-          
+
           <Button
             variant="default"
             size="sm"
@@ -993,7 +1000,7 @@ export const InterviewIntelligence = ({
               </>
             )}
           </Button>
-          
+
           <Button
             variant="outline"
             size="icon"
@@ -1010,24 +1017,54 @@ export const InterviewIntelligence = ({
           {/* Enhanced mode toggle */}
           <div className="flex items-center gap-2">
             <span className="text-xs text-muted-foreground">Enhanced</span>
-            <Switch checked={enhanced} onCheckedChange={setEnhanced} disabled={searchLoading} />
+            <Switch
+              checked={enhanced}
+              onCheckedChange={(checked) => {
+                if (checked !== enhanced) {
+                  const confirmed = window.confirm(
+                    'Enhanced Search uses verified sources and advanced filters to improve result quality. Continue?'
+                  );
+                  if (!confirmed) return;
+                }
+                setEnhanced(checked);
+              }}
+              disabled={searchLoading}
+            />
           </div>
-          
+
           {/* Limit selector */}
-          <Select
-            value={String(limit)}
-            onValueChange={(v) => setLimit(parseInt(v, 10))}
-          >
-            <SelectTrigger className="h-9 w-[100px]">
-              <SelectValue placeholder="Limit" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="10">10</SelectItem>
-              <SelectItem value="20">20</SelectItem>
-              <SelectItem value="30">30</SelectItem>
-              <SelectItem value="50">50</SelectItem>
-            </SelectContent>
-          </Select>
+          <div className="flex items-center gap-2">
+            <span className="text-xs text-muted-foreground">Limit</span>
+            <Input
+              type="number"
+              min="1"
+              max="100"
+              value={limit}
+              onChange={(e) => {
+                const value = e.target.value;
+                // Allow empty string for manual typing
+                if (value === '') {
+                  setLimit(1);
+                  return;
+                }
+                const num = parseInt(value, 10);
+                if (!isNaN(num) && num >= 1 && num <= 100) {
+                  setLimit(num);
+                }
+              }}
+              onBlur={(e) => {
+                // Ensure valid value on blur
+                const value = e.target.value;
+                if (value === '' || parseInt(value, 10) < 1) {
+                  setLimit(1);
+                } else if (parseInt(value, 10) > 100) {
+                  setLimit(100);
+                }
+              }}
+              className="h-9 w-[80px] text-center [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+              placeholder="1-100"
+            />
+          </div>
 
           {/* Enhanced filters - show when enhanced mode is on */}
           {enhanced && (
@@ -1037,7 +1074,7 @@ export const InterviewIntelligence = ({
                 <Switch checked={verifiedOnly} onCheckedChange={setVerifiedOnly} />
                 <span className="text-xs">Verified only</span>
               </div>
-              
+
               {/* Min credibility slider */}
               <div className="flex items-center gap-2">
                 <span className="text-xs text-muted-foreground">Min credibility</span>
@@ -1052,7 +1089,7 @@ export const InterviewIntelligence = ({
                 </div>
                 <span className="text-xs tabular-nums w-8">{minCred.toFixed(1)}</span>
               </div>
-              
+
               {/* Company select */}
               <Select
                 value={company ?? "_any"}
@@ -1070,7 +1107,7 @@ export const InterviewIntelligence = ({
                   ))}
                 </SelectContent>
               </Select>
-              
+
               {/* Show advanced toggle */}
               <button
                 type="button"
@@ -1146,69 +1183,68 @@ export const InterviewIntelligence = ({
         <div className="flex-1 min-w-0 flex flex-col gap-4 overflow-hidden">
           {/* Questions List */}
           <Card className="flex-1 min-w-0 flex flex-col overflow-hidden">
-          <CardHeader className="pb-3 flex-shrink-0">
-            <CardTitle className="text-sm font-semibold flex items-center gap-2">
-              <BookOpen className="h-4 w-4" />
-              {activeView === "search" ? (
-                <>Search Results {searchLoading && <Loader2 className="h-3 w-3 animate-spin" />}</>
-              ) : selectedTopic ? (
-                <>{selectedTopic} Questions {loading && <Loader2 className="h-3 w-3 animate-spin" />}</>
-              ) : (
-                <>Select a topic to view questions</>
-              )}
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="flex-1 min-h-0 p-0 overflow-hidden">
-            <ScrollArea className="h-full">
-              {/* Trust warning for non-enhanced mode when verified ratio is low */}
-              {!enhanced && activeView === "search" && Array.isArray(currentQuestions) && currentQuestions.length > 0 && (
-                (() => {
-                  const results = currentQuestions as unknown as EnhancedQuestion[];
-                  const total = results.length;
-                  const verifiedCount = results.filter(r => (r.verification_status === "verified") || r.source_type === "verified").length;
-                  const ratio = total > 0 ? verifiedCount / total : 0;
-                  if (ratio < 0.5) {
-                    return (
-                      <div className="mx-3 my-2 p-2 rounded border border-amber-300 bg-amber-50 text-amber-900 text-xs">
-                        Verified results are below 50%. Consider enabling Enhanced mode, Verified only, selecting a company, or raising the credibility threshold.
-                      </div>
-                    );
-                  }
-                  return null;
-                })()
-              )}
-              {loading && !currentQuestions.length ? (
-                <div className="flex items-center justify-center py-12">
-                  <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
-                </div>
-              ) : currentQuestions.length === 0 ? (
-                <div className="flex flex-col items-center justify-center py-12 px-4 text-center">
-                  <AlertCircle className="h-8 w-8 text-muted-foreground mb-2" />
-                  <p className="text-sm text-muted-foreground">
-                    {activeView === "search"
-                      ? "No questions found. Try a different search."
-                      : "Select a topic to view interview questions."}
-                  </p>
-                </div>
-              ) : (
-                <div className="space-y-2 p-3">
-                  {currentQuestions.map((q, idx) => (
-                    <Card
-                      key={idx}
-                      className={`cursor-pointer transition-all hover:border-primary/50 ${
-                        selectedQuestion?.question === q.question ? "border-primary bg-primary/5" : ""
-                      }`}
-                      onClick={() => setSelectedQuestion(q)}
-                    >
-                      <CardContent className="p-4">
-                        <div className="space-y-2">
-                          <p className="text-sm font-medium line-clamp-2">{q.question}</p>
-                          <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                            {q.topic && (
-                              <Badge variant="secondary" className="text-[10px]">
-                                {q.topic}
-                              </Badge>
-                            )}
+            <CardHeader className="pb-3 flex-shrink-0">
+              <CardTitle className="text-sm font-semibold flex items-center gap-2">
+                <BookOpen className="h-4 w-4" />
+                {activeView === "search" ? (
+                  <>Search Results {searchLoading && <Loader2 className="h-3 w-3 animate-spin" />}</>
+                ) : selectedTopic ? (
+                  <>{selectedTopic} Questions {loading && <Loader2 className="h-3 w-3 animate-spin" />}</>
+                ) : (
+                  <>Select a topic to view questions</>
+                )}
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="flex-1 min-h-0 p-0 overflow-hidden">
+              <ScrollArea className="h-full">
+                {/* Trust warning for non-enhanced mode when verified ratio is low */}
+                {!enhanced && activeView === "search" && Array.isArray(currentQuestions) && currentQuestions.length > 0 && (
+                  (() => {
+                    const results = currentQuestions as unknown as EnhancedQuestion[];
+                    const total = results.length;
+                    const verifiedCount = results.filter(r => (r.verification_status === "verified") || r.source_type === "verified").length;
+                    const ratio = total > 0 ? verifiedCount / total : 0;
+                    if (ratio < 0.5) {
+                      return (
+                        <div className="mx-3 my-2 p-2 rounded border border-amber-300 bg-amber-50 text-amber-900 text-xs">
+                          Verified results are below 50%. Consider enabling Enhanced mode, Verified only, selecting a company, or raising the credibility threshold.
+                        </div>
+                      );
+                    }
+                    return null;
+                  })()
+                )}
+                {loading && !currentQuestions.length ? (
+                  <div className="flex items-center justify-center py-12">
+                    <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+                  </div>
+                ) : currentQuestions.length === 0 ? (
+                  <div className="flex flex-col items-center justify-center py-12 px-4 text-center">
+                    <AlertCircle className="h-8 w-8 text-muted-foreground mb-2" />
+                    <p className="text-sm text-muted-foreground">
+                      {activeView === "search"
+                        ? "No questions found. Try a different search."
+                        : "Select a topic to view interview questions."}
+                    </p>
+                  </div>
+                ) : (
+                  <div className="space-y-2 p-3">
+                    {currentQuestions.map((q, idx) => (
+                      <Card
+                        key={idx}
+                        className={`cursor-pointer transition-all hover:border-primary/50 ${selectedQuestion?.question === q.question ? "border-primary bg-primary/5" : ""
+                          }`}
+                        onClick={() => setSelectedQuestion(q)}
+                      >
+                        <CardContent className="p-4">
+                          <div className="space-y-2">
+                            <p className="text-sm font-medium line-clamp-2">{q.question}</p>
+                            <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                              {q.topic && (
+                                <Badge variant="secondary" className="text-[10px]">
+                                  {q.topic}
+                                </Badge>
+                              )}
                               <span>{formatDate((q as any).updated_at)}</span>
                               {/* Enhanced badges */}
                               {enhanced && (
@@ -1228,66 +1264,131 @@ export const InterviewIntelligence = ({
                                   )}
                                 </>
                               )}
+                            </div>
                           </div>
-                        </div>
-                      </CardContent>
-                    </Card>
-                  ))}
-                </div>
-              )}
-            </ScrollArea>
-          </CardContent>
-        </Card>
+                        </CardContent>
+                      </Card>
+                    ))}
+                  </div>
+                )}
+              </ScrollArea>
+            </CardContent>
+          </Card>
         </div>
 
         {/* Selected Question Answer */}
         {selectedQuestion && (
-          <Card className="w-[50%] min-w-[400px] flex flex-col overflow-hidden">
-            <CardHeader className="pb-3 flex-shrink-0">
-              <CardTitle className="text-sm font-semibold">Answer</CardTitle>
-            </CardHeader>
-            <CardContent className="flex-1 min-h-0 p-0 overflow-hidden">
-              <ScrollArea className="h-full">
-                <div className="p-4 space-y-4">
-                  <div>
-                    <h3 className="text-sm font-semibold mb-2">Question</h3>
-                    <p className="text-sm text-foreground">{selectedQuestion.question}</p>
-                  </div>
-                  <div className="border-t pt-4">
-                    <h3 className="text-sm font-semibold mb-2">Answer</h3>
-                    <div 
-                      className="text-sm text-foreground leading-relaxed prose prose-sm max-w-none dark:prose-invert"
-                      dangerouslySetInnerHTML={{ 
-                        __html: formatAnswerMarkdown(selectedQuestion.answer || '') 
-                      }}
-                    />
-                  </div>
-                  {/* Display code_solution if available */}
-                  {(selectedQuestion as any).code_solution && (
+          <>
+            <Card className="w-[50%] min-w-[400px] flex flex-col overflow-hidden">
+              <CardHeader className="pb-3 flex-shrink-0">
+                <div className="flex items-center justify-between">
+                  <CardTitle className="text-sm font-semibold">Answer</CardTitle>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-7 w-7"
+                    onClick={() => setIsAnswerExpanded(true)}
+                    title="Expand answer"
+                  >
+                    <Maximize2 className="h-4 w-4" />
+                  </Button>
+                </div>
+              </CardHeader>
+              <CardContent className="flex-1 min-h-0 p-0 overflow-hidden">
+                <ScrollArea className="h-full">
+                  <div className="p-4 space-y-4">
+                    <div>
+                      <h3 className="text-sm font-semibold mb-2">Question</h3>
+                      <p className="text-sm text-foreground">{selectedQuestion.question}</p>
+                    </div>
                     <div className="border-t pt-4">
-                      <h3 className="text-sm font-semibold mb-2">Code Solution</h3>
-                      <div 
+                      <h3 className="text-sm font-semibold mb-2">Answer</h3>
+                      <div
                         className="text-sm text-foreground leading-relaxed prose prose-sm max-w-none dark:prose-invert"
-                        dangerouslySetInnerHTML={{ 
-                          __html: formatAnswerMarkdown((selectedQuestion as any).code_solution) 
+                        dangerouslySetInnerHTML={{
+                          __html: formatAnswerMarkdown(selectedQuestion.answer || '')
                         }}
                       />
                     </div>
-                  )}
-                  {selectedQuestion.source && (
-                    <div className="border-t pt-4">
-                      <p className="text-xs text-muted-foreground">
-                        Source: <span className="font-mono">{selectedQuestion.source}</span>
-                      </p>
+                    {/* Display code_solution if available */}
+                    {(selectedQuestion as any).code_solution && (
+                      <div className="border-t pt-4">
+                        <h3 className="text-sm font-semibold mb-2">Code Solution</h3>
+                        <div
+                          className="text-sm text-foreground leading-relaxed prose prose-sm max-w-none dark:prose-invert"
+                          dangerouslySetInnerHTML={{
+                            __html: formatAnswerMarkdown((selectedQuestion as any).code_solution)
+                          }}
+                        />
+                      </div>
+                    )}
+                    {selectedQuestion.source && (
+                      <div className="border-t pt-4">
+                        <p className="text-xs text-muted-foreground">
+                          Source: <span className="font-mono">{selectedQuestion.source}</span>
+                        </p>
+                      </div>
+                    )}
+                  </div>
+                </ScrollArea>
+              </CardContent>
+            </Card>
+
+            {/* Expanded Answer Dialog */}
+            <Dialog open={isAnswerExpanded} onOpenChange={setIsAnswerExpanded}>
+              <DialogContent className="max-w-4xl max-h-[90vh] flex flex-col p-0">
+                <DialogHeader className="px-6 pt-6 pb-4">
+                  <DialogTitle className="text-lg font-semibold pr-8">Question & Answer</DialogTitle>
+                </DialogHeader>
+                <div className="flex-1 overflow-y-auto px-6 pb-6 scrollbar-hide">
+                  <div className="space-y-6">
+                    <div>
+                      <h3 className="text-base font-semibold mb-3 text-primary">Question</h3>
+                      <p className="text-base text-foreground leading-relaxed">{selectedQuestion.question}</p>
+                      {selectedQuestion.topic && (
+                        <Badge variant="secondary" className="mt-2">
+                          {selectedQuestion.topic}
+                        </Badge>
+                      )}
                     </div>
-                  )}
+
+                    <div className="border-t pt-6">
+                      <h3 className="text-base font-semibold mb-3 text-primary">Answer</h3>
+                      <div
+                        className="text-base text-foreground leading-relaxed prose prose-base max-w-none dark:prose-invert"
+                        dangerouslySetInnerHTML={{
+                          __html: formatAnswerMarkdown(selectedQuestion.answer || '')
+                        }}
+                      />
+                    </div>
+
+                    {/* Display code_solution if available */}
+                    {(selectedQuestion as any).code_solution && (
+                      <div className="border-t pt-6">
+                        <h3 className="text-base font-semibold mb-3 text-primary">Code Solution</h3>
+                        <div
+                          className="text-base text-foreground leading-relaxed prose prose-base max-w-none dark:prose-invert"
+                          dangerouslySetInnerHTML={{
+                            __html: formatAnswerMarkdown((selectedQuestion as any).code_solution)
+                          }}
+                        />
+                      </div>
+                    )}
+
+                    {selectedQuestion.source && (
+                      <div className="border-t pt-6">
+                        <p className="text-sm text-muted-foreground">
+                          Source: <span className="font-mono">{selectedQuestion.source}</span>
+                        </p>
+                      </div>
+                    )}
+                  </div>
                 </div>
-              </ScrollArea>
-            </CardContent>
-          </Card>
+              </DialogContent>
+            </Dialog>
+          </>
         )}
       </div>
     </div>
   );
 };
-

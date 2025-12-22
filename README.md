@@ -1,4 +1,4 @@
-# InterviewPrep – AI Interview Assistant
+# Stratax AI – AI Interview Assistant
 
 A mobile‑first React + Vite application that helps users prepare and perform in interviews. It generates polished, ready‑to‑speak answers with examples and best practices. The app is installable as a PWA and supports voice input, resume uploads, versioned edits, and quick mobile actions.
 
@@ -64,9 +64,9 @@ Environment:
 ## PWA Setup
 - Manifest: `public/manifest.webmanifest` contains name, colors, scope, `display: standalone`, and icons.
 - Icons: place exact filenames in `public/icons/`:
-  - `interviewmate-192.png` (192×192)
-  - `interviewmate-512.png` (512×512)
-  - `interviewmate-maskable-512.png` (512×512, mask‑safe)
+  - `stratax-ai-192.png` (192×192)
+  - `stratax-ai-512.png` (512×512)
+  - `stratax-ai-maskable-512.png` (512×512, mask‑safe)
 - Service worker: `public/sw.js` provides simple cache‑first for core assets.
 - Registration: handled in `src/main.tsx`.
 

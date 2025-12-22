@@ -1,0 +1,518 @@
+
+> vite_react_shadcn_ts@0.0.0 lint
+> eslint .
+
+
+C:\Users\varun\Desktop\InerviewAstfe\src\components\AnswerCard.tsx
+    44:33  error    Unexpected any. Specify a different type                                                                                                                    @typescript-eslint/no-explicit-any
+   160:37  error    Unexpected any. Specify a different type                                                                                                                    @typescript-eslint/no-explicit-any
+   164:49  error    Unexpected any. Specify a different type                                                                                                                    @typescript-eslint/no-explicit-any
+   182:15  error    Empty block statement                                                                                                                                       no-empty
+   192:15  error    Unexpected any. Specify a different type                                                                                                                    @typescript-eslint/no-explicit-any
+   192:45  error    Unexpected any. Specify a different type                                                                                                                    @typescript-eslint/no-explicit-any
+   298:63  error    Unexpected any. Specify a different type                                                                                                                    @typescript-eslint/no-explicit-any
+   298:96  error    Unexpected any. Specify a different type                                                                                                                    @typescript-eslint/no-explicit-any
+   372:38  error    Unnecessary escape character: \[                                                                                                                            no-useless-escape
+   372:47  error    Unnecessary escape character: \/                                                                                                                            no-useless-escape
+   372:76  error    Unnecessary escape character: \[                                                                                                                            no-useless-escape
+   372:85  error    Unnecessary escape character: \/                                                                                                                            no-useless-escape
+   384:38  error    Unnecessary escape character: \[                                                                                                                            no-useless-escape
+   384:47  error    Unnecessary escape character: \/                                                                                                                            no-useless-escape
+   384:75  error    Unnecessary escape character: \[                                                                                                                            no-useless-escape
+   384:84  error    Unnecessary escape character: \/                                                                                                                            no-useless-escape
+   692:17  error    Unexpected any. Specify a different type                                                                                                                    @typescript-eslint/no-explicit-any
+   693:17  error    Unexpected any. Specify a different type                                                                                                                    @typescript-eslint/no-explicit-any
+   694:17  error    Unexpected any. Specify a different type                                                                                                                    @typescript-eslint/no-explicit-any
+   695:17  error    Unexpected any. Specify a different type                                                                                                                    @typescript-eslint/no-explicit-any
+   698:40  error    Unexpected any. Specify a different type                                                                                                                    @typescript-eslint/no-explicit-any
+   699:43  error    Unexpected any. Specify a different type                                                                                                                    @typescript-eslint/no-explicit-any
+   700:39  error    Unexpected any. Specify a different type                                                                                                                    @typescript-eslint/no-explicit-any
+   701:38  error    Unexpected any. Specify a different type                                                                                                                    @typescript-eslint/no-explicit-any
+   702:37  error    Unexpected any. Specify a different type                                                                                                                    @typescript-eslint/no-explicit-any
+   705:16  error    Unexpected any. Specify a different type                                                                                                                    @typescript-eslint/no-explicit-any
+   706:16  error    Unexpected any. Specify a different type                                                                                                                    @typescript-eslint/no-explicit-any
+   710:18  error    Unexpected any. Specify a different type                                                                                                                    @typescript-eslint/no-explicit-any
+   737:13  error    Empty block statement                                                                                                                                       no-empty
+   769:89  error    Unexpected any. Specify a different type                                                                                                                    @typescript-eslint/no-explicit-any
+   783:19  error    Unexpected any. Specify a different type                                                                                                                    @typescript-eslint/no-explicit-any
+   783:36  error    Unexpected any. Specify a different type                                                                                                                    @typescript-eslint/no-explicit-any
+   796:13  error    't' is never reassigned. Use 'const' instead                                                                                                                prefer-const
+   852:20  error    Unexpected any. Specify a different type                                                                                                                    @typescript-eslint/no-explicit-any
+   852:61  error    Unexpected any. Specify a different type                                                                                                                    @typescript-eslint/no-explicit-any
+   855:16  error    Unexpected any. Specify a different type                                                                                                                    @typescript-eslint/no-explicit-any
+  1056:6   warning  React Hook useEffect has missing dependencies: 'setSvgContentSafely' and 'validateAndFixMermaidSyntax'. Either include them or remove the dependency array  react-hooks/exhaustive-deps
+  1078:56  error    Empty block statement                                                                                                                                       no-empty
+  1080:65  error    Unexpected any. Specify a different type                                                                                                                    @typescript-eslint/no-explicit-any
+  1081:56  error    Empty block statement                                                                                                                                       no-empty
+  1092:58  error    Empty block statement                                                                                                                                       no-empty
+  1094:67  error    Unexpected any. Specify a different type                                                                                                                    @typescript-eslint/no-explicit-any
+  1095:58  error    Empty block statement                                                                                                                                       no-empty
+  1116:65  error    Unexpected any. Specify a different type                                                                                                                    @typescript-eslint/no-explicit-any
+  1141:58  error    Empty block statement                                                                                                                                       no-empty
+  1144:67  error    Unexpected any. Specify a different type                                                                                                                    @typescript-eslint/no-explicit-any
+  1145:58  error    Empty block statement                                                                                                                                       no-empty
+  1159:6   warning  React Hook useEffect has missing dependencies: 'displayedBlocks.length' and 'parseContent'. Either include them or remove the dependency array              react-hooks/exhaustive-deps
+  1670:60  error    Unnecessary escape character: \-                                                                                                                            no-useless-escape
+  1801:48  error    Unexpected any. Specify a different type                                                                                                                    @typescript-eslint/no-explicit-any
+  2414:15  error    Empty block statement                                                                                                                                       no-empty
+  2420:13  error    Empty block statement                                                                                                                                       no-empty
+  2665:25  error    Expected an assignment or function call and instead saw an expression                                                                                       @typescript-eslint/no-unused-expressions
+  2685:27  error    Expected an assignment or function call and instead saw an expression                                                                                       @typescript-eslint/no-unused-expressions
+  2706:44  error    Unexpected any. Specify a different type                                                                                                                    @typescript-eslint/no-explicit-any
+  2723:31  error    Expected an assignment or function call and instead saw an expression                                                                                       @typescript-eslint/no-unused-expressions
+
+C:\Users\varun\Desktop\InerviewAstfe\src\components\CodeRunner.tsx
+   71:50  error    Unexpected any. Specify a different type                                                                         @typescript-eslint/no-explicit-any
+   98:28  error    Unexpected any. Specify a different type                                                                         @typescript-eslint/no-explicit-any
+  108:13  error    Empty block statement                                                                                            no-empty
+  143:90  error    Empty block statement                                                                                            no-empty
+  168:6   warning  React Hook useEffect has a missing dependency: 'timerSeconds'. Either include it or remove the dependency array  react-hooks/exhaustive-deps
+  172:67  error    Empty block statement                                                                                            no-empty
+  177:75  error    Empty block statement                                                                                            no-empty
+  182:73  error    Empty block statement                                                                                            no-empty
+  188:93  error    Empty block statement                                                                                            no-empty
+  195:87  error    Empty block statement                                                                                            no-empty
+  204:13  error    Empty block statement                                                                                            no-empty
+  210:91  error    Empty block statement                                                                                            no-empty
+  236:75  error    Empty block statement                                                                                            no-empty
+  257:14  error    Unexpected any. Specify a different type                                                                         @typescript-eslint/no-explicit-any
+  282:17  error    Unexpected any. Specify a different type                                                                         @typescript-eslint/no-explicit-any
+  302:17  error    Unexpected any. Specify a different type                                                                         @typescript-eslint/no-explicit-any
+  322:13  error    Empty block statement                                                                                            no-empty
+  457:87  error    Empty block statement                                                                                            no-empty
+  513:53  error    Unexpected any. Specify a different type                                                                         @typescript-eslint/no-explicit-any
+  572:44  error    Unexpected any. Specify a different type                                                                         @typescript-eslint/no-explicit-any
+  586:44  error    Unexpected any. Specify a different type                                                                         @typescript-eslint/no-explicit-any
+
+C:\Users\varun\Desktop\InerviewAstfe\src\components\DesktopOverlay.tsx
+  68:9  error  'formatted' is never reassigned. Use 'const' instead  prefer-const
+
+C:\Users\varun\Desktop\InerviewAstfe\src\components\EvaluationOverlay.tsx
+  86:35   error  Unnecessary escape character: \"  no-useless-escape
+  86:48   error  Unnecessary escape character: \"  no-useless-escape
+  86:88   error  Unnecessary escape character: \"  no-useless-escape
+  86:101  error  Unnecessary escape character: \"  no-useless-escape
+  87:35   error  Unnecessary escape character: \"  no-useless-escape
+  87:50   error  Unnecessary escape character: \"  no-useless-escape
+  87:90   error  Unnecessary escape character: \"  no-useless-escape
+  87:105  error  Unnecessary escape character: \"  no-useless-escape
+
+C:\Users\varun\Desktop\InerviewAstfe\src\components\ExecutionVisualizer.tsx
+   12:26   error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+   17:11   error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+   62:12   error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+   79:13   error  Empty block statement                     no-empty
+   85:119  error  Empty block statement                     no-empty
+  197:58   error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  202:39   error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  207:70   error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  222:27   error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+
+C:\Users\varun\Desktop\InerviewAstfe\src\components\InterviewAssistant.tsx
+    43:56   error  Unexpected any. Specify a different type                               @typescript-eslint/no-explicit-any
+    57:70   error  Unexpected any. Specify a different type                               @typescript-eslint/no-explicit-any
+    60:66   error  Unexpected any. Specify a different type                               @typescript-eslint/no-explicit-any
+    98:62   error  Unexpected any. Specify a different type                               @typescript-eslint/no-explicit-any
+   111:15   error  Empty block statement                                                  no-empty
+   123:17   error  Empty block statement                                                  no-empty
+   153:79   error  Empty block statement                                                  no-empty
+   181:19   error  Unexpected any. Specify a different type                               @typescript-eslint/no-explicit-any
+   220:19   error  Unexpected any. Specify a different type                               @typescript-eslint/no-explicit-any
+   245:19   error  Unexpected any. Specify a different type                               @typescript-eslint/no-explicit-any
+   275:27   error  Unexpected any. Specify a different type                               @typescript-eslint/no-explicit-any
+   286:15   error  Empty block statement                                                  no-empty
+   299:63   error  Unexpected any. Specify a different type                               @typescript-eslint/no-explicit-any
+   326:17   error  Empty block statement                                                  no-empty
+   335:19   error  Unexpected any. Specify a different type                               @typescript-eslint/no-explicit-any
+   366:15   error  Empty block statement                                                  no-empty
+   371:19   error  Unexpected any. Specify a different type                               @typescript-eslint/no-explicit-any
+   399:15   error  Empty block statement                                                  no-empty
+   404:19   error  Unexpected any. Specify a different type                               @typescript-eslint/no-explicit-any
+   482:120  error  Unexpected any. Specify a different type                               @typescript-eslint/no-explicit-any
+   482:180  error  Unexpected any. Specify a different type                               @typescript-eslint/no-explicit-any
+   498:21   error  Empty block statement                                                  no-empty
+   503:13   error  Empty block statement                                                  no-empty
+   517:17   error  Empty block statement                                                  no-empty
+   521:92   error  Empty block statement                                                  no-empty
+   530:25   error  Unexpected any. Specify a different type                               @typescript-eslint/no-explicit-any
+   538:15   error  Empty block statement                                                  no-empty
+   559:101  error  Unexpected any. Specify a different type                               @typescript-eslint/no-explicit-any
+   560:64   error  Unexpected any. Specify a different type                               @typescript-eslint/no-explicit-any
+   568:17   error  Empty block statement                                                  no-empty
+   577:17   error  Empty block statement                                                  no-empty
+   601:124  error  Unexpected any. Specify a different type                               @typescript-eslint/no-explicit-any
+   605:17   error  Empty block statement                                                  no-empty
+   609:112  error  Empty block statement                                                  no-empty
+   619:17   error  Empty block statement                                                  no-empty
+   631:13   error  Empty block statement                                                  no-empty
+   731:70   error  Empty block statement                                                  no-empty
+   750:52   error  Unexpected any. Specify a different type                               @typescript-eslint/no-explicit-any
+   763:15   error  Empty block statement                                                  no-empty
+   772:23   error  Unexpected any. Specify a different type                               @typescript-eslint/no-explicit-any
+   776:76   error  Empty block statement                                                  no-empty
+   783:15   error  Expected an assignment or function call and instead saw an expression  @typescript-eslint/no-unused-expressions
+   783:25   error  Unexpected any. Specify a different type                               @typescript-eslint/no-explicit-any
+   784:21   error  Empty block statement                                                  no-empty
+   829:21   error  Unexpected any. Specify a different type                               @typescript-eslint/no-explicit-any
+   831:160  error  Unexpected any. Specify a different type                               @typescript-eslint/no-explicit-any
+   833:130  error  Unexpected any. Specify a different type                               @typescript-eslint/no-explicit-any
+   843:55   error  Unexpected any. Specify a different type                               @typescript-eslint/no-explicit-any
+   855:17   error  Empty block statement                                                  no-empty
+   864:58   error  Unexpected any. Specify a different type                               @typescript-eslint/no-explicit-any
+   875:17   error  Empty block statement                                                  no-empty
+   891:13   error  Empty block statement                                                  no-empty
+  1105:29   error  Empty block statement                                                  no-empty
+  1182:96   error  Empty block statement                                                  no-empty
+  1313:68   error  Unexpected any. Specify a different type                               @typescript-eslint/no-explicit-any
+  1518:94   error  Empty block statement                                                  no-empty
+
+C:\Users\varun\Desktop\InerviewAstfe\src\components\InterviewIntelligence.tsx
+    60:46  error    Unexpected any. Specify a different type                                                                                                                     @typescript-eslint/no-explicit-any
+   123:41  error    Unexpected any. Specify a different type                                                                                                                     @typescript-eslint/no-explicit-any
+   502:6   warning  React Hook useEffect has a missing dependency: 'loadTopics'. Either include it or remove the dependency array                                                react-hooks/exhaustive-deps
+   540:19  error    Unexpected any. Specify a different type                                                                                                                     @typescript-eslint/no-explicit-any
+   597:19  error    Unexpected any. Specify a different type                                                                                                                     @typescript-eslint/no-explicit-any
+   622:19  error    Unexpected any. Specify a different type                                                                                                                     @typescript-eslint/no-explicit-any
+   638:19  error    Unexpected any. Specify a different type                                                                                                                     @typescript-eslint/no-explicit-any
+   657:19  error    Unexpected any. Specify a different type                                                                                                                     @typescript-eslint/no-explicit-any
+   683:6   warning  React Hook useCallback has missing dependencies: 'handleSearchWithHTTP' and 'handleSearchWithWebSocket'. Either include them or remove the dependency array  react-hooks/exhaustive-deps
+   836:19  error    Unexpected any. Specify a different type                                                                                                                     @typescript-eslint/no-explicit-any
+   841:6   warning  React Hook useCallback has a missing dependency: 'handleSearchWithHTTP'. Either include it or remove the dependency array                                    react-hooks/exhaustive-deps
+   860:23  error    Unexpected any. Specify a different type                                                                                                                     @typescript-eslint/no-explicit-any
+   923:19  error    Unexpected any. Specify a different type                                                                                                                     @typescript-eslint/no-explicit-any
+   949:19  error    Unexpected any. Specify a different type                                                                                                                     @typescript-eslint/no-explicit-any
+  1291:55  error    Unexpected any. Specify a different type                                                                                                                     @typescript-eslint/no-explicit-any
+  1295:42  error    Unexpected any. Specify a different type                                                                                                                     @typescript-eslint/no-explicit-any
+  1297:46  error    Unexpected any. Specify a different type                                                                                                                     @typescript-eslint/no-explicit-any
+  1300:42  error    Unexpected any. Specify a different type                                                                                                                     @typescript-eslint/no-explicit-any
+  1301:59  error    Unexpected any. Specify a different type                                                                                                                     @typescript-eslint/no-explicit-any
+  1302:46  error    Unexpected any. Specify a different type                                                                                                                     @typescript-eslint/no-explicit-any
+  1305:49  error    Unexpected any. Specify a different type                                                                                                                     @typescript-eslint/no-explicit-any
+  1306:79  error    Unexpected any. Specify a different type                                                                                                                     @typescript-eslint/no-explicit-any
+  1357:43  error    Unexpected any. Specify a different type                                                                                                                     @typescript-eslint/no-explicit-any
+  1363:79  error    Unexpected any. Specify a different type                                                                                                                     @typescript-eslint/no-explicit-any
+  1409:43  error    Unexpected any. Specify a different type                                                                                                                     @typescript-eslint/no-explicit-any
+  1415:79  error    Unexpected any. Specify a different type                                                                                                                     @typescript-eslint/no-explicit-any
+
+C:\Users\varun\Desktop\InerviewAstfe\src\components\InterviewSearchDemo.tsx
+    5:77  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+   72:75  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  108:42  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  109:42  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+
+C:\Users\varun\Desktop\InerviewAstfe\src\components\MemoryStackView.tsx
+    7:29  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+   12:30  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+   18:81  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+   19:30  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+   89:35  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+   90:36  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  103:84  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+
+C:\Users\varun\Desktop\InerviewAstfe\src\components\MermaidEditor.tsx
+   19:7    error  'output' is never reassigned. Use 'const' instead  prefer-const
+   25:46   error  Unnecessary escape character: \s                   no-useless-escape
+   25:116  error  Unnecessary escape character: \s                   no-useless-escape
+   25:124  error  Unnecessary escape character: \s                   no-useless-escape
+   25:194  error  Unnecessary escape character: \s                   no-useless-escape
+   27:48   error  Unnecessary escape character: \s                   no-useless-escape
+   27:118  error  Unnecessary escape character: \s                   no-useless-escape
+   27:126  error  Unnecessary escape character: \s                   no-useless-escape
+   27:196  error  Unnecessary escape character: \s                   no-useless-escape
+   29:12   error  'orig' is never reassigned. Use 'const' instead    prefer-const
+  162:13   error  Empty block statement                              no-empty
+  165:17   error  Unexpected any. Specify a different type           @typescript-eslint/no-explicit-any
+  165:34   error  Unexpected any. Specify a different type           @typescript-eslint/no-explicit-any
+  173:17   error  Unexpected any. Specify a different type           @typescript-eslint/no-explicit-any
+  193:62   error  Empty block statement                              no-empty
+  198:61   error  Empty block statement                              no-empty
+  231:46   error  Unexpected any. Specify a different type           @typescript-eslint/no-explicit-any
+
+C:\Users\varun\Desktop\InerviewAstfe\src\components\MockInterviewMode.tsx
+   56:28  error    Unexpected any. Specify a different type                                                                                                                                                                                                        @typescript-eslint/no-explicit-any
+  160:6   warning  React Hook useEffect has missing dependencies: 'difficulty', 'followUpQuestions', 'hintsUsed', 'interviewType', 'numQuestions', 'progressData', 'startTime', 'topic', and 'totalQuestions'. Either include them or remove the dependency array  react-hooks/exhaustive-deps
+  198:6   warning  React Hook useEffect has a missing dependency: 'toast'. Either include it or remove the dependency array                                                                                                                                        react-hooks/exhaustive-deps
+  222:6   warning  React Hook useEffect has missing dependencies: 'phase' and 'toast'. Either include them or remove the dependency array                                                                                                                          react-hooks/exhaustive-deps
+  244:6   warning  React Hook useEffect has missing dependencies: 'loadProgress' and 'sessionId'. Either include them or remove the dependency array                                                                                                               react-hooks/exhaustive-deps
+  311:21  error    Unexpected any. Specify a different type                                                                                                                                                                                                        @typescript-eslint/no-explicit-any
+  410:67  error    Unexpected any. Specify a different type                                                                                                                                                                                                        @typescript-eslint/no-explicit-any
+  453:21  error    Unexpected any. Specify a different type                                                                                                                                                                                                        @typescript-eslint/no-explicit-any
+  518:21  error    Unexpected any. Specify a different type                                                                                                                                                                                                        @typescript-eslint/no-explicit-any
+  536:21  error    Unexpected any. Specify a different type                                                                                                                                                                                                        @typescript-eslint/no-explicit-any
+  628:21  error    Unexpected any. Specify a different type                                                                                                                                                                                                        @typescript-eslint/no-explicit-any
+
+C:\Users\varun\Desktop\InerviewAstfe\src\components\MonacoEditor.tsx
+    4:19  error    Unexpected any. Specify a different type                                                                                                                                                                                                                                          @typescript-eslint/no-explicit-any
+   12:28  error    Unexpected any. Specify a different type                                                                                                                                                                                                                                          @typescript-eslint/no-explicit-any
+   18:28  error    Unexpected any. Specify a different type                                                                                                                                                                                                                                          @typescript-eslint/no-explicit-any
+   26:13  error    Empty block statement                                                                                                                                                                                                                                                             no-empty
+   30:13  error    Empty block statement                                                                                                                                                                                                                                                             no-empty
+   60:22  error    Unexpected any. Specify a different type                                                                                                                                                                                                                                          @typescript-eslint/no-explicit-any
+   60:48  error    Unexpected any. Specify a different type                                                                                                                                                                                                                                          @typescript-eslint/no-explicit-any
+   61:35  error    Unexpected any. Specify a different type                                                                                                                                                                                                                                          @typescript-eslint/no-explicit-any
+   66:35  error    Unexpected any. Specify a different type                                                                                                                                                                                                                                          @typescript-eslint/no-explicit-any
+  205:53  error    Empty block statement                                                                                                                                                                                                                                                             no-empty
+  207:6   warning  React Hook useEffect has missing dependencies: 'language', 'onChange', 'onEditorReady', and 'value'. Either include them or remove the dependency array. If 'onEditorReady' changes too often, find the parent component that defines it and wrap that definition in useCallback  react-hooks/exhaustive-deps
+
+C:\Users\varun\Desktop\InerviewAstfe\src\components\OutputExplanation.tsx
+   32:9   error  'currentIndex' is never reassigned. Use 'const' instead  prefer-const
+  291:21  error  Unexpected any. Specify a different type                 @typescript-eslint/no-explicit-any
+  306:21  error  Unexpected any. Specify a different type                 @typescript-eslint/no-explicit-any
+
+C:\Users\varun\Desktop\InerviewAstfe\src\components\PracticeMode.tsx
+  182:6   warning  React Hook useEffect has a missing dependency: 'toast'. Either include it or remove the dependency array  react-hooks/exhaustive-deps
+  279:21  error    Unexpected any. Specify a different type                                                                  @typescript-eslint/no-explicit-any
+  370:21  error    Unexpected any. Specify a different type                                                                  @typescript-eslint/no-explicit-any
+  435:21  error    Unexpected any. Specify a different type                                                                  @typescript-eslint/no-explicit-any
+  518:21  error    Unexpected any. Specify a different type                                                                  @typescript-eslint/no-explicit-any
+  619:21  error    Unexpected any. Specify a different type                                                                  @typescript-eslint/no-explicit-any
+  646:39  error    Unexpected any. Specify a different type                                                                  @typescript-eslint/no-explicit-any
+  815:21  error    Unexpected any. Specify a different type                                                                  @typescript-eslint/no-explicit-any
+  830:89  error    Unexpected any. Specify a different type                                                                  @typescript-eslint/no-explicit-any
+
+C:\Users\varun\Desktop\InerviewAstfe\src\components\RoundInfoGuide.tsx
+  25:9  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+
+C:\Users\varun\Desktop\InerviewAstfe\src\components\RoundSelection.tsx
+   48:78  error    Unexpected any. Specify a different type                                                                       @typescript-eslint/no-explicit-any
+   53:43  error    Unexpected any. Specify a different type                                                                       @typescript-eslint/no-explicit-any
+  233:6   warning  React Hook useEffect has a missing dependency: 'loadRounds'. Either include it or remove the dependency array  react-hooks/exhaustive-deps
+  240:6   warning  React Hook useEffect has a missing dependency: 'loadRounds'. Either include it or remove the dependency array  react-hooks/exhaustive-deps
+  298:21  error    Unexpected any. Specify a different type                                                                       @typescript-eslint/no-explicit-any
+  364:21  error    Unexpected any. Specify a different type                                                                       @typescript-eslint/no-explicit-any
+  375:52  error    Unexpected any. Specify a different type                                                                       @typescript-eslint/no-explicit-any
+
+C:\Users\varun\Desktop\InerviewAstfe\src\components\SearchBar.tsx
+    28:33  error    Unexpected any. Specify a different type                                                                                                                                                                                         @typescript-eslint/no-explicit-any
+   100:6   warning  React Hook useEffect has a missing dependency: 'onChange'. Either include it or remove the dependency array. If 'onChange' changes too often, find the parent component that defines it and wrap that definition in useCallback  react-hooks/exhaustive-deps
+   138:55  error    Empty block statement                                                                                                                                                                                                            no-empty
+   139:83  error    Empty block statement                                                                                                                                                                                                            no-empty
+   140:57  error    Empty block statement                                                                                                                                                                                                            no-empty
+   141:56  error    Empty block statement                                                                                                                                                                                                            no-empty
+   142:82  error    Empty block statement                                                                                                                                                                                                            no-empty
+   143:55  error    Empty block statement                                                                                                                                                                                                            no-empty
+   253:34  error    Unexpected any. Specify a different type                                                                                                                                                                                         @typescript-eslint/no-explicit-any
+   254:34  error    Unexpected any. Specify a different type                                                                                                                                                                                         @typescript-eslint/no-explicit-any
+   255:13  error    Empty block statement                                                                                                                                                                                                            no-empty
+   265:47  error    Unexpected any. Specify a different type                                                                                                                                                                                         @typescript-eslint/no-explicit-any
+   358:46  error    Unexpected any. Specify a different type                                                                                                                                                                                         @typescript-eslint/no-explicit-any
+   367:62  error    Empty block statement                                                                                                                                                                                                            no-empty
+   448:17  error    Empty block statement                                                                                                                                                                                                            no-empty
+   451:17  error    Empty block statement                                                                                                                                                                                                            no-empty
+   475:53  error    Empty block statement                                                                                                                                                                                                            no-empty
+   476:81  error    Empty block statement                                                                                                                                                                                                            no-empty
+   477:55  error    Empty block statement                                                                                                                                                                                                            no-empty
+   493:96  error    Unexpected any. Specify a different type                                                                                                                                                                                         @typescript-eslint/no-explicit-any
+   495:95  error    Unexpected any. Specify a different type                                                                                                                                                                                         @typescript-eslint/no-explicit-any
+   498:67  error    Empty block statement                                                                                                                                                                                                            no-empty
+   504:35  error    Unexpected any. Specify a different type                                                                                                                                                                                         @typescript-eslint/no-explicit-any
+   507:66  error    Empty block statement                                                                                                                                                                                                            no-empty
+   521:56  error    Unexpected any. Specify a different type                                                                                                                                                                                         @typescript-eslint/no-explicit-any
+   523:93  error    Unexpected any. Specify a different type                                                                                                                                                                                         @typescript-eslint/no-explicit-any
+   534:37  error    Empty block statement                                                                                                                                                                                                            no-empty
+   535:68  error    Empty block statement                                                                                                                                                                                                            no-empty
+   569:17  error    Empty block statement                                                                                                                                                                                                            no-empty
+   573:57  error    Empty block statement                                                                                                                                                                                                            no-empty
+   574:85  error    Empty block statement                                                                                                                                                                                                            no-empty
+   575:59  error    Empty block statement                                                                                                                                                                                                            no-empty
+   583:19  error    Unexpected any. Specify a different type                                                                                                                                                                                         @typescript-eslint/no-explicit-any
+   591:54  error    Empty block statement                                                                                                                                                                                                            no-empty
+   592:80  error    Empty block statement                                                                                                                                                                                                            no-empty
+   593:53  error    Empty block statement                                                                                                                                                                                                            no-empty
+   633:57  error    Empty block statement                                                                                                                                                                                                            no-empty
+   658:35  error    Unexpected any. Specify a different type                                                                                                                                                                                         @typescript-eslint/no-explicit-any
+   661:66  error    Empty block statement                                                                                                                                                                                                            no-empty
+   675:56  error    Unexpected any. Specify a different type                                                                                                                                                                                         @typescript-eslint/no-explicit-any
+   677:93  error    Unexpected any. Specify a different type                                                                                                                                                                                         @typescript-eslint/no-explicit-any
+   690:37  error    Empty block statement                                                                                                                                                                                                            no-empty
+   691:68  error    Empty block statement                                                                                                                                                                                                            no-empty
+   726:17  error    Empty block statement                                                                                                                                                                                                            no-empty
+   730:58  error    Empty block statement                                                                                                                                                                                                            no-empty
+   731:84  error    Empty block statement                                                                                                                                                                                                            no-empty
+   732:57  error    Empty block statement                                                                                                                                                                                                            no-empty
+   746:19  error    Unexpected any. Specify a different type                                                                                                                                                                                         @typescript-eslint/no-explicit-any
+   796:21  error    Unexpected any. Specify a different type                                                                                                                                                                                         @typescript-eslint/no-explicit-any
+   800:74  error    Empty block statement                                                                                                                                                                                                            no-empty
+   810:19  error    Unexpected any. Specify a different type                                                                                                                                                                                         @typescript-eslint/no-explicit-any
+   869:47  error    Unexpected any. Specify a different type                                                                                                                                                                                         @typescript-eslint/no-explicit-any
+   928:46  error    Unexpected any. Specify a different type                                                                                                                                                                                         @typescript-eslint/no-explicit-any
+   941:17  error    Empty block statement                                                                                                                                                                                                            no-empty
+   948:86  error    Empty block statement                                                                                                                                                                                                            no-empty
+   988:15  error    Empty block statement                                                                                                                                                                                                            no-empty
+  1015:15  error    Empty block statement                                                                                                                                                                                                            no-empty
+  1066:9   error    Expected an assignment or function call and instead saw an expression                                                                                                                                                            @typescript-eslint/no-unused-expressions
+  1094:6   warning  React Hook useEffect has a missing dependency: 'scheduleProMicReconnect'. Either include it or remove the dependency array                                                                                                       react-hooks/exhaustive-deps
+  1211:24  error    Unexpected any. Specify a different type                                                                                                                                                                                         @typescript-eslint/no-explicit-any
+  1212:30  error    Unexpected any. Specify a different type                                                                                                                                                                                         @typescript-eslint/no-explicit-any
+
+C:\Users\varun\Desktop\InerviewAstfe\src\components\Teleprompter.tsx
+  64:9  error  'formatted' is never reassigned. Use 'const' instead  prefer-const
+
+C:\Users\varun\Desktop\InerviewAstfe\src\components\ui\badge.tsx
+  29:17  warning  Fast refresh only works when a file only exports components. Use a new file to share constants or functions between components  react-refresh/only-export-components
+
+C:\Users\varun\Desktop\InerviewAstfe\src\components\ui\button.tsx
+  48:18  warning  Fast refresh only works when a file only exports components. Use a new file to share constants or functions between components  react-refresh/only-export-components
+
+C:\Users\varun\Desktop\InerviewAstfe\src\components\ui\command.tsx
+  24:11  error  An interface declaring no members is equivalent to its supertype  @typescript-eslint/no-empty-object-type
+
+C:\Users\varun\Desktop\InerviewAstfe\src\components\ui\form.tsx
+  129:10  warning  Fast refresh only works when a file only exports components. Use a new file to share constants or functions between components  react-refresh/only-export-components
+
+C:\Users\varun\Desktop\InerviewAstfe\src\components\ui\navigation-menu.tsx
+  111:3  warning  Fast refresh only works when a file only exports components. Use a new file to share constants or functions between components  react-refresh/only-export-components
+
+C:\Users\varun\Desktop\InerviewAstfe\src\components\ui\sidebar.tsx
+  636:3  warning  Fast refresh only works when a file only exports components. Use a new file to share constants or functions between components  react-refresh/only-export-components
+
+C:\Users\varun\Desktop\InerviewAstfe\src\components\ui\sonner.tsx
+  27:19  warning  Fast refresh only works when a file only exports components. Use a new file to share constants or functions between components  react-refresh/only-export-components
+
+C:\Users\varun\Desktop\InerviewAstfe\src\components\ui\textarea.tsx
+  5:18  error  An interface declaring no members is equivalent to its supertype  @typescript-eslint/no-empty-object-type
+
+C:\Users\varun\Desktop\InerviewAstfe\src\components\ui\toggle.tsx
+  37:18  warning  Fast refresh only works when a file only exports components. Use a new file to share constants or functions between components  react-refresh/only-export-components
+
+C:\Users\varun\Desktop\InerviewAstfe\src\hooks\useSpeechRecognition.ts
+   7:33  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  12:18  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  12:55  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  26:47  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  41:46  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+
+C:\Users\varun\Desktop\InerviewAstfe\src\lib\api.ts
+    5:34  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+    6:33  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+   27:44  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  237:47  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  242:23  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  243:33  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  306:18  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  317:18  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  339:16  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  527:55  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+
+C:\Users\varun\Desktop\InerviewAstfe\src\lib\intelligenceConfig.ts
+  3:44  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+
+C:\Users\varun\Desktop\InerviewAstfe\src\lib\mockInterviewApi.ts
+  4:34  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+
+C:\Users\varun\Desktop\InerviewAstfe\src\lib\practiceModeApi.ts
+  362:66  error  Unexpected any. Specify a different type                                                                             @typescript-eslint/no-explicit-any
+  379:24  error  Promise executor functions should not be async                                                                       no-async-promise-executor
+  415:5   error  Use "@ts-expect-error" instead of "@ts-ignore", as "@ts-ignore" will do nothing if the following line is error-free  @typescript-eslint/ban-ts-comment
+  431:70  error  Unexpected any. Specify a different type                                                                             @typescript-eslint/no-explicit-any
+  526:22  error  Unexpected any. Specify a different type                                                                             @typescript-eslint/no-explicit-any
+  619:53  error  Unexpected any. Specify a different type                                                                             @typescript-eslint/no-explicit-any
+  679:53  error  Unexpected any. Specify a different type                                                                             @typescript-eslint/no-explicit-any
+  712:69  error  Unexpected any. Specify a different type                                                                             @typescript-eslint/no-explicit-any
+  723:72  error  Unexpected any. Specify a different type                                                                             @typescript-eslint/no-explicit-any
+  747:22  error  Unexpected any. Specify a different type                                                                             @typescript-eslint/no-explicit-any
+
+C:\Users\varun\Desktop\InerviewAstfe\src\lib\pyodideRunner.ts
+    7:12  error  Unexpected any. Specify a different type                                                                             @typescript-eslint/no-explicit-any
+   10:30  error  Unexpected any. Specify a different type                                                                             @typescript-eslint/no-explicit-any
+   18:26  error  Unexpected any. Specify a different type                                                                             @typescript-eslint/no-explicit-any
+   31:22  error  Unexpected any. Specify a different type                                                                             @typescript-eslint/no-explicit-any
+   32:29  error  Unexpected any. Specify a different type                                                                             @typescript-eslint/no-explicit-any
+   34:47  error  Unexpected any. Specify a different type                                                                             @typescript-eslint/no-explicit-any
+   39:5   error  Use "@ts-expect-error" instead of "@ts-ignore", as "@ts-ignore" will do nothing if the following line is error-free  @typescript-eslint/ban-ts-comment
+   40:31  error  Unexpected any. Specify a different type                                                                             @typescript-eslint/no-explicit-any
+   53:41  error  Unexpected any. Specify a different type                                                                             @typescript-eslint/no-explicit-any
+   54:18  error  Unexpected any. Specify a different type                                                                             @typescript-eslint/no-explicit-any
+   63:7   error  Use "@ts-expect-error" instead of "@ts-ignore", as "@ts-ignore" will do nothing if the following line is error-free  @typescript-eslint/ban-ts-comment
+   64:22  error  Unexpected any. Specify a different type                                                                             @typescript-eslint/no-explicit-any
+  107:11  error  'stdinIndex' is never reassigned. Use 'const' instead                                                                prefer-const
+  129:35  error  Unexpected any. Specify a different type                                                                             @typescript-eslint/no-explicit-any
+  157:19  error  Empty block statement                                                                                                no-empty
+  162:21  error  Unexpected any. Specify a different type                                                                             @typescript-eslint/no-explicit-any
+  174:19  error  Unexpected any. Specify a different type                                                                             @typescript-eslint/no-explicit-any
+  301:19  error  Unexpected any. Specify a different type                                                                             @typescript-eslint/no-explicit-any
+
+C:\Users\varun\Desktop\InerviewAstfe\src\lib\runner.ts
+  30:34  error    Unexpected any. Specify a different type                                   @typescript-eslint/no-explicit-any
+  31:35  error    Unexpected any. Specify a different type                                   @typescript-eslint/no-explicit-any
+  31:82  error    Unexpected any. Specify a different type                                   @typescript-eslint/no-explicit-any
+  40:13  error    Unexpected any. Specify a different type                                   @typescript-eslint/no-explicit-any
+  41:13  error    Unexpected any. Specify a different type                                   @typescript-eslint/no-explicit-any
+  42:13  error    Empty block statement                                                      no-empty
+  67:3   warning  Unused eslint-disable directive (no problems were reported from 'no-new')
+  75:27  error    Unexpected any. Specify a different type                                   @typescript-eslint/no-explicit-any
+  76:31  error    Unexpected any. Specify a different type                                   @typescript-eslint/no-explicit-any
+
+C:\Users\varun\Desktop\InerviewAstfe\src\lib\utils.ts
+   43:27   error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  103:15   error  Empty block statement                     no-empty
+  134:15   error  Empty block statement                     no-empty
+  254:21   error  Unnecessary escape character: \"          no-useless-escape
+  254:25   error  Unnecessary escape character: \"          no-useless-escape
+  254:41   error  Unnecessary escape character: \"          no-useless-escape
+  254:45   error  Unnecessary escape character: \"          no-useless-escape
+  257:21   error  Unnecessary escape character: \"          no-useless-escape
+  257:25   error  Unnecessary escape character: \"          no-useless-escape
+  257:36   error  Unnecessary escape character: \"          no-useless-escape
+  257:40   error  Unnecessary escape character: \"          no-useless-escape
+  259:39   error  Unnecessary escape character: \"          no-useless-escape
+  259:43   error  Unnecessary escape character: \"          no-useless-escape
+  259:61   error  Unnecessary escape character: \"          no-useless-escape
+  259:77   error  Unnecessary escape character: \"          no-useless-escape
+  259:81   error  Unnecessary escape character: \"          no-useless-escape
+  263:30   error  Unnecessary escape character: \"          no-useless-escape
+  263:34   error  Unnecessary escape character: \"          no-useless-escape
+  263:63   error  Unnecessary escape character: \"          no-useless-escape
+  263:67   error  Unnecessary escape character: \"          no-useless-escape
+  264:30   error  Unnecessary escape character: \"          no-useless-escape
+  264:34   error  Unnecessary escape character: \"          no-useless-escape
+  264:59   error  Unnecessary escape character: \)          no-useless-escape
+  264:67   error  Unnecessary escape character: \"          no-useless-escape
+  264:71   error  Unnecessary escape character: \"          no-useless-escape
+  264:117  error  Unnecessary escape character: \)          no-useless-escape
+  265:30   error  Unnecessary escape character: \"          no-useless-escape
+  265:34   error  Unnecessary escape character: \"          no-useless-escape
+  265:69   error  Unnecessary escape character: \"          no-useless-escape
+  265:73   error  Unnecessary escape character: \"          no-useless-escape
+  267:30   error  Unnecessary escape character: \"          no-useless-escape
+  267:34   error  Unnecessary escape character: \"          no-useless-escape
+  267:57   error  Unnecessary escape character: \)          no-useless-escape
+  267:65   error  Unnecessary escape character: \"          no-useless-escape
+  267:69   error  Unnecessary escape character: \"          no-useless-escape
+  267:113  error  Unnecessary escape character: \)          no-useless-escape
+  268:30   error  Unnecessary escape character: \"          no-useless-escape
+  268:34   error  Unnecessary escape character: \"          no-useless-escape
+  268:57   error  Unnecessary escape character: \)          no-useless-escape
+  268:65   error  Unnecessary escape character: \"          no-useless-escape
+  268:69   error  Unnecessary escape character: \"          no-useless-escape
+  268:113  error  Unnecessary escape character: \)          no-useless-escape
+  277:30   error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  278:42   error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  279:18   error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  279:51   error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  289:74   error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  297:26   error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  305:38   error  Empty block statement                     no-empty
+  327:41   error  Empty block statement                     no-empty
+  349:31   error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+
+C:\Users\varun\Desktop\InerviewAstfe\src\overlayHost.tsx
+   12:17  warning  Fast refresh only works when a file only exports components. Use a new file to share constants or functions between components  react-refresh/only-export-components
+   18:23  warning  Fast refresh only works when a file only exports components. Use a new file to share constants or functions between components  react-refresh/only-export-components
+   23:17  warning  Fast refresh only works when a file only exports components. Use a new file to share constants or functions between components  react-refresh/only-export-components
+   47:96  error    Empty block statement                                                                                                           no-empty
+   74:66  error    Empty block statement                                                                                                           no-empty
+   77:21  error    Unexpected any. Specify a different type                                                                                        @typescript-eslint/no-explicit-any
+   83:75  error    Empty block statement                                                                                                           no-empty
+   88:19  error    Empty block statement                                                                                                           no-empty
+  127:85  error    Empty block statement                                                                                                           no-empty
+  195:11  error    Empty block statement                                                                                                           no-empty
+  211:75  error    Unnecessary escape character: \"                                                                                                no-useless-escape
+  211:83  error    Unnecessary escape character: \"                                                                                                no-useless-escape
+
+C:\Users\varun\Desktop\InerviewAstfe\tailwind.config.ts
+  101:13  error  A `require()` style import is forbidden  @typescript-eslint/no-require-imports
+
+✖ 436 problems (409 errors, 27 warnings)
+  7 errors and 1 warning potentially fixable with the `--fix` option.
+

@@ -4,51 +4,55 @@
 
 /* Custom scrollbar styles for professional look */
 @layer utilities {
+
   /* Hide scrollbar utility */
   .scrollbar-hide {
-    -ms-overflow-style: none;  /* IE and Edge */
-    scrollbar-width: none;  /* Firefox */
+    -ms-overflow-style: none;
+    /* IE and Edge */
+    scrollbar-width: none;
+    /* Firefox */
   }
-  
+
   .scrollbar-hide::-webkit-scrollbar {
-    display: none;  /* Chrome, Safari and Opera */
+    display: none;
+    /* Chrome, Safari and Opera */
   }
-  
+
   /* Global scrollbar hiding for all elements */
   * {
     scrollbar-width: none;
     -ms-overflow-style: none;
   }
-  
+
   *::-webkit-scrollbar {
     display: none;
     width: 0;
     height: 0;
   }
-  
+
   /* Hide Monaco editor scrollbars */
   .monaco-editor .overflow-guard {
     scrollbar-width: none;
     -ms-overflow-style: none;
   }
-  
+
   .monaco-editor .overflow-guard::-webkit-scrollbar {
     display: none;
     width: 0;
   }
-  
+
   .monaco-editor .decorationsOverviewRuler {
     display: none !important;
   }
-  
-  .monaco-scrollable-element > .scrollbar {
+
+  .monaco-scrollable-element>.scrollbar {
     display: none !important;
   }
-  
-  .monaco-scrollable-element > .scrollbar > .slider {
+
+  .monaco-scrollable-element>.scrollbar>.slider {
     display: none !important;
   }
-  
+
   /* Hide all scrollbars in cards */
   .card ::-webkit-scrollbar,
   [class*="Card"] ::-webkit-scrollbar {
@@ -56,22 +60,22 @@
     width: 0 !important;
     height: 0 !important;
   }
-  
+
   .scrollbar-thin {
     scrollbar-width: thin;
     scrollbar-color: rgba(148, 163, 184, 0.3) transparent;
   }
-  
+
   .scrollbar-thin::-webkit-scrollbar {
     width: 8px;
     height: 8px;
   }
-  
+
   .scrollbar-thin::-webkit-scrollbar-track {
     background: transparent;
     border-radius: 4px;
   }
-  
+
   .scrollbar-thin::-webkit-scrollbar-thumb {
     background: rgba(148, 163, 184, 0.3);
     border-radius: 4px;
@@ -79,57 +83,57 @@
     background-clip: padding-box;
     transition: background 0.2s ease;
   }
-  
+
   .scrollbar-thin::-webkit-scrollbar-thumb:hover {
     background: rgba(148, 163, 184, 0.5);
     background-clip: padding-box;
   }
-  
+
   .scrollbar-thin::-webkit-scrollbar-thumb:active {
     background: rgba(148, 163, 184, 0.7);
     background-clip: padding-box;
   }
-  
+
   .scrollbar-thin::-webkit-scrollbar-corner {
     background: transparent;
   }
-  
+
   /* Dark theme scrollbar */
   .dark .scrollbar-thin {
     scrollbar-color: rgba(148, 163, 184, 0.25) transparent;
   }
-  
+
   .dark .scrollbar-thin::-webkit-scrollbar-thumb {
     background: rgba(148, 163, 184, 0.25);
     background-clip: padding-box;
   }
-  
+
   .dark .scrollbar-thin::-webkit-scrollbar-thumb:hover {
     background: rgba(148, 163, 184, 0.4);
     background-clip: padding-box;
   }
-  
+
   .dark .scrollbar-thin::-webkit-scrollbar-thumb:active {
     background: rgba(148, 163, 184, 0.6);
     background-clip: padding-box;
   }
-  
+
   /* Professional scrollbar for code editor */
   .scrollbar-professional {
     scrollbar-width: thin;
     scrollbar-color: hsl(var(--muted-foreground) / 0.2) transparent;
   }
-  
+
   .scrollbar-professional::-webkit-scrollbar {
     width: 8px;
     height: 8px;
   }
-  
+
   .scrollbar-professional::-webkit-scrollbar-track {
     background: transparent;
     border-radius: 4px;
   }
-  
+
   .scrollbar-professional::-webkit-scrollbar-thumb {
     background: hsl(var(--muted-foreground) / 0.2);
     border-radius: 4px;
@@ -137,17 +141,17 @@
     background-clip: padding-box;
     transition: background 0.2s ease;
   }
-  
+
   .scrollbar-professional::-webkit-scrollbar-thumb:hover {
     background: hsl(var(--muted-foreground) / 0.35);
     background-clip: padding-box;
   }
-  
+
   .scrollbar-professional::-webkit-scrollbar-thumb:active {
     background: hsl(var(--muted-foreground) / 0.5);
     background-clip: padding-box;
   }
-  
+
   .scrollbar-professional::-webkit-scrollbar-corner {
     background: transparent;
   }
@@ -297,11 +301,11 @@
     height: auto;
     transform: none;
   }
-  
+
   .expanded-diagram {
     padding: 1rem;
   }
-  
+
   .expanded-diagram .mermaid {
     max-width: 95vw;
     max-height: 95vh;
@@ -376,7 +380,8 @@
 .mermaid svg .node rect {
   rx: 12px;
   ry: 12px;
-  fill: rgba(99, 102, 241, 0.06); /* subtle indigo wash */
+  fill: rgba(99, 102, 241, 0.06);
+  /* subtle indigo wash */
   stroke: rgba(99, 102, 241, 0.35);
   stroke-width: 1.2px;
 }
@@ -392,7 +397,7 @@
 
 .mermaid-rendered svg .node,
 .mermaid svg .node {
-  filter: drop-shadow(0 4px 10px rgba(0,0,0,0.10));
+  filter: drop-shadow(0 4px 10px rgba(0, 0, 0, 0.10));
 }
 
 .mermaid-rendered svg .edgePath path,
@@ -407,11 +412,12 @@
 }
 
 /* Node label typography and containment */
-.mermaid-rendered .nodeLabel > div,
-.mermaid .nodeLabel > div,
-.mermaid-rendered .label > div,
-.mermaid .label > div {
-  padding: 10px 14px; /* pseudo-padding inside the rect */
+.mermaid-rendered .nodeLabel>div,
+.mermaid .nodeLabel>div,
+.mermaid-rendered .label>div,
+.mermaid .label>div {
+  padding: 10px 14px;
+  /* pseudo-padding inside the rect */
   font-size: 15px !important;
   line-height: 1.4 !important;
   word-break: break-word;
@@ -475,7 +481,7 @@ All colors MUST be HSL.
 
     /* Smooth transitions */
     --transition-smooth: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
-    
+
     --radius: 0.75rem;
 
     /* Typography scale - sophisticated hierarchy */
@@ -519,7 +525,7 @@ All colors MUST be HSL.
   }
 
   .dark {
-    /* Dark professional theme */  
+    /* Dark professional theme */
     --background: 220 13% 9%;
     --foreground: 220 13% 95%;
 
@@ -600,6 +606,7 @@ All colors MUST be HSL.
 }
 
 @layer components {
+
   /* Sophisticated Typography System */
   .typography-h1 {
     font-size: var(--font-size-4xl);
@@ -716,11 +723,11 @@ All colors MUST be HSL.
   }
 
   /* Enhanced spacing and layout improvements */
-  .space-y-3 > * + * {
+  .space-y-3>*+* {
     margin-top: 0.75rem;
   }
 
-  .space-y-2 > * + * {
+  .space-y-2>*+* {
     margin-top: 0.5rem;
   }
 
@@ -752,7 +759,7 @@ All colors MUST be HSL.
     font-size: var(--font-size-sm) !important;
     line-height: 1.4 !important;
   }
-  
+
   /* Ensure all text content uses consistent sizing */
   .streaming-content p,
   .streaming-content div,
@@ -762,9 +769,10 @@ All colors MUST be HSL.
   .streaming-content ul {
     font-size: var(--font-size-sm) !important;
     line-height: 1.4 !important;
-    font-weight: 400 !important; /* Prevent accidental bold inheritance */
+    font-weight: 400 !important;
+    /* Prevent accidental bold inheritance */
   }
-  
+
   /* Preserve bold formatting for headings */
   .streaming-content .heading,
   .streaming-content .section-heading,
@@ -776,7 +784,7 @@ All colors MUST be HSL.
   .streaming-content h6 {
     font-weight: 600 !important;
   }
-  
+
   /* Override prose classes to maintain consistent sizing */
   .prose .streaming-content,
   .prose .streaming-content p,
@@ -787,9 +795,10 @@ All colors MUST be HSL.
   .prose .streaming-content ol {
     font-size: var(--font-size-sm) !important;
     line-height: 1.4 !important;
-    font-weight: 400 !important; /* Reset weight inside prose as well */
+    font-weight: 400 !important;
+    /* Reset weight inside prose as well */
   }
-  
+
   /* Preserve bold formatting for headings in prose */
   .prose .streaming-content .heading,
   .prose .streaming-content .section-heading,
@@ -801,7 +810,7 @@ All colors MUST be HSL.
   .prose .streaming-content h6 {
     font-weight: 600 !important;
   }
-  
+
   /* Force all prose content to use consistent sizing */
   .prose p,
   .prose div,
@@ -813,7 +822,7 @@ All colors MUST be HSL.
     line-height: 1.4 !important;
     font-weight: 400 !important;
   }
-  
+
   /* Preserve bold formatting for headings in general prose */
   .prose .heading,
   .prose .section-heading,
@@ -825,7 +834,7 @@ All colors MUST be HSL.
   .prose h6 {
     font-weight: 600 !important;
   }
-  
+
   /* Override ALL possible prose typography classes */
   .prose-neutral p,
   .prose-neutral div,
@@ -846,7 +855,7 @@ All colors MUST be HSL.
     font-size: var(--font-size-sm) !important;
     line-height: 1.4 !important;
   }
-  
+
   /* Preserve bold formatting for headings in prose-neutral and prose-invert */
   .prose-neutral .heading,
   .prose-neutral .section-heading,
@@ -866,7 +875,7 @@ All colors MUST be HSL.
   .prose-invert h6 {
     font-weight: 600 !important;
   }
-  
+
   /* Override max-w-none and other prose modifiers */
   .max-w-none p,
   .max-w-none div,
@@ -878,7 +887,7 @@ All colors MUST be HSL.
     line-height: 1.4 !important;
     font-weight: 400 !important;
   }
-  
+
   /* Preserve bold formatting for headings in max-w-none */
   .max-w-none .heading,
   .max-w-none .section-heading,
@@ -890,7 +899,7 @@ All colors MUST be HSL.
   .max-w-none h6 {
     font-weight: 600 !important;
   }
-  
+
   .streaming-content .code-block {
     margin: 0.5rem 0;
     background: #0b1020;
@@ -898,7 +907,7 @@ All colors MUST be HSL.
     border-radius: 8px;
     overflow: hidden;
   }
-  
+
   .streaming-content .code-block .code-header {
     display: block;
     background: #161b22;
@@ -908,13 +917,13 @@ All colors MUST be HSL.
     font-weight: 500;
     border-bottom: 1px solid #30363d;
   }
-  
+
   .streaming-content .code-block.streaming .code-header {
     background: #1c2128;
     color: #f85149;
     position: relative;
   }
-  
+
   .streaming-content .code-block.streaming .code-header::after {
     content: "●";
     position: absolute;
@@ -923,13 +932,13 @@ All colors MUST be HSL.
     transform: translateY(-50%);
     animation: pulse 1.5s ease-in-out infinite;
   }
-  
+
   .streaming-content .code-block pre {
     margin: 0;
     padding: 0;
     background: transparent;
   }
-  
+
   .streaming-content .code-block code {
     display: block;
     padding: 12px;
@@ -940,15 +949,16 @@ All colors MUST be HSL.
     color: #d4d4d4;
     overflow-x: auto;
     background: transparent;
-    white-space: pre; /* preserve spacing */
+    white-space: pre;
+    /* preserve spacing */
   }
-  
+
   .streaming-content .bullet-list {
     list-style: none;
     padding-left: 0;
     margin: 0.25rem 0;
   }
-  
+
   .streaming-content .bullet-item {
     position: relative;
     padding-left: 0;
@@ -956,7 +966,7 @@ All colors MUST be HSL.
     line-height: 1.4;
     font-size: var(--font-size-sm) !important;
   }
-  
+
   .streaming-content .bullet-item::before {
     content: "• ";
     position: static;
@@ -964,18 +974,18 @@ All colors MUST be HSL.
     font-weight: bold;
     margin-right: 0.25rem;
   }
-  
+
   .streaming-content .numbered-list {
     padding-left: 1.5rem;
     margin: 0.5rem 0;
   }
-  
+
   .streaming-content .numbered-item {
     margin: 0.25rem 0;
     line-height: 1.4;
     font-size: var(--font-size-sm) !important;
   }
-  
+
   .streaming-content .heading {
     font-weight: 600;
     margin: 0.125rem 0 0.125rem 0;
@@ -983,26 +993,26 @@ All colors MUST be HSL.
     line-height: 1.3;
     font-size: var(--font-size-sm);
   }
-  
+
   .streaming-content .paragraph {
     margin: 0.125rem 0;
     line-height: 1.4;
     font-size: var(--font-size-sm) !important;
   }
-  
+
   /* Make bullet lists stick closer to their headings */
-  .streaming-content .heading + .bullet-list {
+  .streaming-content .heading+.bullet-list {
     margin-top: 0.125rem;
     margin-bottom: 0.125rem;
   }
-  
+
   /* Ensure bullet items within a list are tightly grouped */
   .streaming-content .bullet-list {
     padding-top: 0.125rem;
     padding-bottom: 0.125rem;
     margin: 0.125rem 0;
   }
-  
+
   /* Make the last bullet item in a list closer to the next section */
   .streaming-content .bullet-list:last-child {
     margin-bottom: 0.125rem;
@@ -1021,37 +1031,44 @@ All colors MUST be HSL.
     color: hsl(var(--foreground));
     line-height: 1.3;
   }
-  
+
   /* Better spacing for nested content */
   .streaming-content .bullet-item .bullet-item {
     margin: 0.125rem 0;
     padding-left: 0.5rem;
   }
-  
+
   .streaming-content .bullet-item .bullet-item::before {
     position: static;
     margin-right: 0.25rem;
   }
-  
+
   /* Fix sub-heading alignment */
   .streaming-content .bullet-item strong {
     display: inline;
     font-weight: 600;
   }
-  
+
   .streaming-content strong {
-    font-weight: 600 !important; /* Only keywords/titles bold */
+    font-weight: 600 !important;
+    /* Only keywords/titles bold */
     color: hsl(var(--foreground));
   }
+
   .prose .streaming-content strong,
   .prose strong {
     font-weight: 600 !important;
   }
 
   /* Final rendered blocks wrapper: ensure bold persists post-stream */
-  .answer-content strong { font-weight: 600 !important; }
+  .answer-content strong {
+    font-weight: 600 !important;
+  }
+
   .answer-content .heading,
-  .answer-content .section-heading { font-weight: 600 !important; }
+  .answer-content .section-heading {
+    font-weight: 600 !important;
+  }
 
   /* Ensure section headings remain bold even with resets above */
   .section-heading,
@@ -1060,11 +1077,12 @@ All colors MUST be HSL.
   .prose .section-heading * {
     font-weight: 600 !important;
   }
+
   .streaming-content .heading,
   .prose .heading {
     font-weight: 600 !important;
   }
-  
+
   /* Comprehensive bold preservation for all heading types */
   .answer-content .heading,
   .answer-content .section-heading,
@@ -1084,7 +1102,7 @@ All colors MUST be HSL.
   .streaming-content h6 {
     font-weight: 600 !important;
   }
-  
+
   /* Code highlighting classes - ChatGPT-style colors */
   .streaming-content .code-comment,
   .code-comment,
@@ -1093,69 +1111,97 @@ All colors MUST be HSL.
     color: #6a9955 !important;
     font-style: italic;
   }
-  
+
   .streaming-content .code-string,
   .code-string,
   pre .code-string,
-  code .code-string { color: #ce9178 !important; }
+  code .code-string {
+    color: #ce9178 !important;
+  }
+
   .streaming-content .code-number,
   .code-number,
   pre .code-number,
-  code .code-number { color: #b5cea8 !important; }
+  code .code-number {
+    color: #b5cea8 !important;
+  }
+
   .streaming-content .code-keyword,
   .code-keyword,
   pre .code-keyword,
-  code .code-keyword { color: #569cd6 !important; font-weight: 700; }
+  code .code-keyword {
+    color: #569cd6 !important;
+    font-weight: 700;
+  }
+
   .streaming-content .code-builtin,
   .code-builtin,
   pre .code-builtin,
-  code .code-builtin { color: #4fc3f7 !important; }
+  code .code-builtin {
+    color: #4fc3f7 !important;
+  }
+
   .streaming-content .code-function,
   .code-function,
   pre .code-function,
-  code .code-function { color: #dcdcaa !important; }
+  code .code-function {
+    color: #dcdcaa !important;
+  }
+
   .streaming-content .code-class,
   .code-class,
   pre .code-class,
-  code .code-class { color: #4ec9b0 !important; }
+  code .code-class {
+    color: #4ec9b0 !important;
+  }
+
   .streaming-content .code-print,
   .code-print,
   pre .code-print,
-  code .code-print { color: #ffd700 !important; font-weight: 600; }
+  code .code-print {
+    color: #ffd700 !important;
+    font-weight: 600;
+  }
+
   .streaming-content .code-variable,
-  .code-variable { color: #9cdcfe; }
+  .code-variable {
+    color: #9cdcfe;
+  }
+
   .streaming-content .code-operator,
-  .code-operator { color: #d4d4d4; }
-  
+  .code-operator {
+    color: #d4d4d4;
+  }
+
   .streaming-content .code-number {
     color: #b5cea8;
   }
-  
+
   .streaming-content .code-keyword {
     color: #569cd6;
     font-weight: bold;
   }
-  
+
   .streaming-content .code-builtin {
     color: #4fc3f7 !important;
   }
-  
+
   .streaming-content .code-function {
     color: #dcdcaa !important;
   }
-  
+
   .streaming-content .code-class {
     color: #4ec9b0;
   }
-  
+
   .streaming-content .code-variable {
     color: #9cdcfe;
   }
-  
+
   .streaming-content .code-operator {
     color: #d4d4d4;
   }
-  
+
   /* Professional Table formatting styles */
   .streaming-content .table-container {
     margin: 1.5rem 0;
@@ -1164,12 +1210,12 @@ All colors MUST be HSL.
     border: 1px solid hsl(var(--border));
     box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1);
   }
-  
+
   .streaming-content .table-wrapper {
     overflow-x: auto;
     background: hsl(var(--card));
   }
-  
+
   .streaming-content .data-table {
     width: 100%;
     border-collapse: separate;
@@ -1177,7 +1223,7 @@ All colors MUST be HSL.
     font-size: var(--font-size-sm);
     background: hsl(var(--card));
   }
-  
+
   .streaming-content .data-table th {
     background: linear-gradient(135deg, hsl(var(--muted)) 0%, hsl(var(--muted) / 0.8) 100%);
     color: hsl(var(--muted-foreground));
@@ -1198,7 +1244,7 @@ All colors MUST be HSL.
   .streaming-content .data-table th:last-child {
     border-top-right-radius: 12px;
   }
-  
+
   .streaming-content .data-table td {
     padding: 14px 18px;
     border-bottom: 1px solid hsl(var(--border) / 0.5);
@@ -1208,11 +1254,11 @@ All colors MUST be HSL.
     line-height: var(--line-height-normal);
     transition: background-color 0.2s ease;
   }
-  
+
   .streaming-content .data-table tr:hover td {
     background: hsl(var(--muted) / 0.3);
   }
-  
+
   .streaming-content .data-table tr:last-child td {
     border-bottom: none;
   }
@@ -1224,128 +1270,184 @@ All colors MUST be HSL.
   .streaming-content .data-table tr:last-child td:last-child {
     border-bottom-right-radius: 12px;
   }
-  
+
   /* Responsive table design */
   @media (max-width: 768px) {
     .streaming-content .data-table {
       font-size: var(--font-size-xs);
     }
-    
+
     .streaming-content .data-table th,
     .streaming-content .data-table td {
       padding: 10px 14px;
     }
   }
 
-  /* ChatGPT-style Compact Mobile Design */
+  /* ========================================
+     WORLD-CLASS MOBILE EXPERIENCE
+     Optimized for all mobile screen sizes with premium feel
+     ======================================== */
   @media (max-width: 768px) {
-    /* Clean mobile layout */
-    .mx-2 { margin-left: 0.5rem; margin-right: 0.5rem; }
-    .answer-card-mobile { margin-left: 0rem !important; margin-right: 0rem !important; }
 
-    /* Prevent horizontal overflow */
+    /* ===== CORE MOBILE FOUNDATION ===== */
+
+    /* Prevent horizontal overflow and ensure smooth scrolling */
     body {
       overflow-x: hidden;
+      -webkit-overflow-scrolling: touch;
+      overscroll-behavior-y: contain;
     }
-    
-    /* Clean touch targets */
-    .touch-manipulation {
-      touch-action: manipulation;
-      -webkit-tap-highlight-color: transparent;
+
+    /* Mobile viewport optimization */
+    html {
+      -webkit-text-size-adjust: 100%;
+      -moz-text-size-adjust: 100%;
+      text-size-adjust: 100%;
     }
-    
-    /* Compact mobile action buttons */
-    .mobile-action-button {
+
+    /* ===== ENHANCED TOUCH INTERACTIONS ===== */
+
+    /* Premium touch targets - minimum 44px for accessibility */
+    button,
+    .mobile-action-button,
+    [role="button"],
+    a[href] {
       min-height: 44px;
       min-width: 44px;
       touch-action: manipulation;
       -webkit-tap-highlight-color: transparent;
-    }
-    
-    /* Clean text rendering */
-    .streaming-content {
-      -webkit-font-smoothing: antialiased;
-      -moz-osx-font-smoothing: grayscale;
-      word-wrap: break-word;
-      overflow-wrap: break-word;
-    }
-    
-    /* Clean code blocks */
-    .code-block pre {
-      overflow-x: auto;
-      -webkit-overflow-scrolling: touch;
-    }
-    
-    /* Clean table responsive behavior */
-    .table-wrapper {
-      overflow-x: auto;
-      -webkit-overflow-scrolling: touch;
-      max-width: calc(100vw - 2rem);
-    }
-    
-    /* Prevent zoom on input focus */
-    input[type="text"],
-    input[type="email"],
-    input[type="password"],
-    textarea,
-    select {
-      font-size: 16px !important;
-    }
-    
-    /* Clean spacing for mobile content */
-    .streaming-content .paragraph {
-      margin-bottom: 0.75rem;
+      cursor: pointer;
     }
 
-    /* Clean text wrapping */
-    .streaming-content,
-    .prose,
-    .prose p,
-    .prose div,
-    .prose span,
-    .prose li,
-    .prose ul,
-    .prose ol {
-      word-break: break-word;
-      overflow-wrap: anywhere;
-    }
-    
-    /* Clean mobile code blocks */
-    .streaming-content pre {
-      font-size: var(--font-size-sm);
-      line-height: 1.4;
-      padding: 1rem;
-      white-space: pre-wrap;
+    /* Smooth touch feedback */
+    .touch-manipulation {
+      touch-action: manipulation;
+      -webkit-tap-highlight-color: transparent;
+      transition: transform 0.15s ease, opacity 0.15s ease;
     }
 
-    /* ChatGPT-style compact search bar */
+    .touch-manipulation:active {
+      transform: scale(0.98);
+      opacity: 0.9;
+    }
+
+    /* ===== FLUID TYPOGRAPHY SYSTEM ===== */
+
+    /* Responsive font sizes using clamp for perfect scaling */
+    h1,
+    .typography-h1 {
+      font-size: clamp(1.75rem, 5vw, 2.25rem) !important;
+      line-height: 1.2;
+      letter-spacing: -0.02em;
+    }
+
+    h2,
+    .typography-h2 {
+      font-size: clamp(1.5rem, 4vw, 1.875rem) !important;
+      line-height: 1.25;
+      letter-spacing: -0.015em;
+    }
+
+    h3,
+    .typography-h3 {
+      font-size: clamp(1.25rem, 3.5vw, 1.5rem) !important;
+      line-height: 1.3;
+    }
+
+    h4,
+    .typography-h4 {
+      font-size: clamp(1.125rem, 3vw, 1.25rem) !important;
+      line-height: 1.35;
+    }
+
+    /* Body text optimization for mobile readability */
+    body,
+    p,
+    .typography-body {
+      font-size: clamp(0.9375rem, 2.5vw, 1rem) !important;
+      line-height: 1.6;
+      letter-spacing: 0.01em;
+    }
+
+    /* ===== MOBILE LAYOUT & SPACING ===== */
+
+    /* Optimized container spacing */
+    .container {
+      padding-left: 1rem;
+      padding-right: 1rem;
+    }
+
+    /* Mobile-friendly margins */
+    .mx-2 {
+      margin-left: 0.75rem;
+      margin-right: 0.75rem;
+    }
+
+    .mx-4 {
+      margin-left: 1rem;
+      margin-right: 1rem;
+    }
+
+    /* Card spacing optimization */
+    .answer-card-mobile {
+      margin-left: 0.5rem !important;
+      margin-right: 0.5rem !important;
+      margin-bottom: 1rem !important;
+    }
+
+    /* ===== PREMIUM SEARCH BAR (MOBILE) ===== */
+
+    /* Main search bar container - ChatGPT-inspired */
     .search-bar {
-      background: hsl(var(--background) / 0.95);
-      backdrop-filter: blur(8px);
-      border: 1px solid hsl(var(--border) / 0.5);
-      border-radius: 16px;
-      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
-      transition: all 0.3s ease;
-      min-height: 40px;
+      background: hsl(var(--background) / 0.98);
+      backdrop-filter: blur(12px);
+      -webkit-backdrop-filter: blur(12px);
+      border: 1.5px solid hsl(var(--border) / 0.6);
+      border-radius: 20px;
+      box-shadow:
+        0 4px 16px rgba(0, 0, 0, 0.08),
+        0 2px 8px rgba(0, 0, 0, 0.04);
+      transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+      min-height: 48px;
       display: flex;
       align-items: center;
-    }
-    
-    .search-bar:focus-within {
-      border-color: hsl(var(--primary) / 0.8);
-      box-shadow: 0 6px 16px rgba(0, 0, 0, 0.15), 0 0 0 2px hsl(var(--primary) / 0.1);
+      padding: 4px;
     }
 
-    svg, .mermaid, .diagram-container {
-      display: block !important;
-      visibility: visible !important;
-      opacity: 1 !important;
+    /* Enhanced focus state */
+    .search-bar:focus-within {
+      border-color: hsl(var(--primary) / 0.9);
+      box-shadow:
+        0 8px 24px rgba(0, 0, 0, 0.12),
+        0 4px 12px rgba(0, 0, 0, 0.06),
+        0 0 0 3px hsl(var(--primary) / 0.15);
+      transform: translateY(-1px);
     }
-    
-    /* Stable textarea with fixed positioning */
+
+    /* Search bar container wrapper */
+    .search-bar-container {
+      position: sticky;
+      bottom: 0;
+      left: 0;
+      right: 0;
+      z-index: 50;
+      height: auto !important;
+      min-height: 48px !important;
+      padding: 12px;
+      background: linear-gradient(to top,
+          hsl(var(--background)) 0%,
+          hsl(var(--background) / 0.98) 80%,
+          hsl(var(--background) / 0.95) 100%);
+      backdrop-filter: blur(12px);
+      -webkit-backdrop-filter: blur(12px);
+      border-top: 1px solid hsl(var(--border) / 0.4);
+      box-shadow: 0 -4px 16px rgba(0, 0, 0, 0.04);
+    }
+
+    /* Textarea optimization */
     .search-bar textarea {
-      min-height: 32px !important;
-      max-height: 200px !important;
+      min-height: 40px !important;
+      max-height: 180px !important;
       display: flex !important;
       align-items: flex-start !important;
       box-sizing: border-box !important;
@@ -1353,92 +1455,639 @@ All colors MUST be HSL.
       resize: none !important;
       width: 100% !important;
       max-width: 100% !important;
-      padding-left: 40px !important;
-      padding-right: 80px !important;
-      padding-top: 8px !important;
-      padding-bottom: 8px !important;
-      font-size: 14px;
+      padding: 10px 12px 10px 44px !important;
+      font-size: 16px !important;
+      /* Prevent zoom on iOS */
       line-height: 1.5;
+      border: none;
+      background: transparent;
+      color: hsl(var(--foreground));
+      -webkit-font-smoothing: antialiased;
+      -moz-osx-font-smoothing: grayscale;
     }
-    
-    /* Stable textarea container */
+
+    /* Textarea container */
     .search-bar .flex-1 {
       min-width: 0 !important;
       overflow: visible !important;
       position: relative;
       display: flex;
-      align-items: flex-start;
+      align-items: center;
+      flex: 1;
     }
-    
-    /* Fixed + icon positioning */
+
+    /* Icon positioning - left side */
     .search-bar .absolute.left-0 {
+      position: absolute !important;
       pointer-events: auto !important;
       z-index: 10 !important;
-      left: 4px;
-      bottom: 4px;
+      left: 8px;
+      top: 50%;
+      transform: translateY(-50%);
+      display: flex;
+      align-items: center;
+      justify-content: center;
     }
-    
-    /* Fixed action buttons positioning */
+
+    /* Action buttons - right side */
     .search-bar .absolute.right-0 {
+      position: absolute !important;
       pointer-events: auto !important;
       z-index: 10 !important;
-      right: 4px;
-      bottom: 4px;
+      right: 8px;
+      top: 50%;
+      transform: translateY(-50%);
+      display: flex;
+      gap: 6px;
+      align-items: center;
     }
-    
-    /* Clean scrollbar */
+
+    /* Button styling in search bar */
+    .search-bar button {
+      min-height: 36px;
+      min-width: 36px;
+      padding: 8px;
+      border-radius: 12px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: all 0.2s ease;
+    }
+
+    .search-bar button:active {
+      transform: scale(0.95);
+    }
+
+    /* Elegant scrollbar for textarea */
     .search-bar textarea {
-      scrollbar-gutter: stable !important;
+      scrollbar-gutter: stable;
       scrollbar-width: thin;
       scrollbar-color: hsl(var(--muted-foreground) / 0.3) transparent;
     }
-    
+
     .search-bar textarea::-webkit-scrollbar {
-      width: 3px;
+      width: 4px;
     }
-    
+
     .search-bar textarea::-webkit-scrollbar-track {
       background: transparent;
     }
-    
+
     .search-bar textarea::-webkit-scrollbar-thumb {
       background: hsl(var(--muted-foreground) / 0.3);
       border-radius: 2px;
     }
-    
+
     .search-bar textarea::-webkit-scrollbar-thumb:hover {
       background: hsl(var(--muted-foreground) / 0.5);
     }
-    
-    /* Clean button container */
-    .search-bar .flex-shrink-0 {
-      width: auto !important;
-      flex-shrink: 0 !important;
-    }
-    
-    /* Clean placeholder styling */
+
+    /* Premium placeholder styling */
     .search-bar textarea::placeholder {
-      position: relative !important;
-      top: 0 !important;
-      transform: none !important;
-      line-height: 1.5 !important;
-      vertical-align: top !important;
-      color: hsl(var(--muted-foreground) / 0.7);
+      color: hsl(var(--muted-foreground) / 0.6);
+      font-size: 15px;
+      line-height: 1.5;
+      opacity: 1;
     }
-    
-    /* Compact search bar container */
-    .search-bar-container {
-      height: auto !important;
-      min-height: 40px !important;
-      padding: 8px 12px;
-      background: hsl(var(--background) / 0.95);
-      backdrop-filter: blur(8px);
-      border-top: 1px solid hsl(var(--border) / 0.5);
+
+    /* ===== MOBILE CARDS & CONTENT ===== */
+
+    /* Card optimization for mobile */
+    .card,
+    [class*="Card"] {
+      border-radius: 16px;
+      padding: 1rem;
+      margin-bottom: 1rem;
+      box-shadow:
+        0 2px 8px rgba(0, 0, 0, 0.06),
+        0 1px 4px rgba(0, 0, 0, 0.04);
+      border: 1px solid hsl(var(--border) / 0.5);
+    }
+
+    /* Answer card specific */
+    .answer-card {
+      padding: 1.25rem;
+      margin: 0.75rem;
+      border-radius: 18px;
+    }
+
+    /* ===== MOBILE CONTENT RENDERING ===== */
+
+    /* Enhanced text rendering */
+    .streaming-content,
+    .prose {
+      -webkit-font-smoothing: antialiased;
+      -moz-osx-font-smoothing: grayscale;
+      word-wrap: break-word;
+      overflow-wrap: break-word;
+      hyphens: auto;
+      -webkit-hyphens: auto;
+    }
+
+    /* Optimized paragraph spacing */
+    .streaming-content .paragraph,
+    .prose p {
+      margin-bottom: 0.875rem;
+      line-height: 1.65;
+    }
+
+    /* List optimization */
+    .streaming-content ul,
+    .streaming-content ol,
+    .prose ul,
+    .prose ol {
+      padding-left: 1.5rem;
+      margin: 0.75rem 0;
+    }
+
+    .streaming-content li,
+    .prose li {
+      margin-bottom: 0.5rem;
+      line-height: 1.6;
+    }
+
+    /* ===== CODE BLOCKS (MOBILE) ===== */
+
+    /* Mobile-optimized code blocks */
+    .code-block,
+    .streaming-content .code-block {
+      margin: 1rem 0;
+      border-radius: 12px;
+      overflow: hidden;
+      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+    }
+
+    .code-block pre,
+    .streaming-content pre {
+      overflow-x: auto;
+      -webkit-overflow-scrolling: touch;
+      padding: 1rem;
+      font-size: 13px;
+      line-height: 1.5;
+      white-space: pre;
+      border-radius: 12px;
+    }
+
+    /* Code block header */
+    .code-block .code-header {
+      padding: 10px 14px;
+      font-size: 12px;
+      background: hsl(var(--muted) / 0.5);
+      border-bottom: 1px solid hsl(var(--border) / 0.3);
+    }
+
+    /* ===== TABLES (MOBILE) ===== */
+
+    /* Responsive table wrapper */
+    .table-wrapper,
+    .streaming-content .table-wrapper {
+      overflow-x: auto;
+      -webkit-overflow-scrolling: touch;
+      max-width: calc(100vw - 2rem);
+      margin: 1rem 0;
+      border-radius: 12px;
+      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
+    }
+
+    /* Table styling */
+    .data-table,
+    .streaming-content .data-table {
+      font-size: 13px;
+      min-width: 100%;
+    }
+
+    .data-table th,
+    .streaming-content .data-table th {
+      padding: 12px 14px;
+      font-size: 11px;
+      white-space: nowrap;
+    }
+
+    .data-table td,
+    .streaming-content .data-table td {
+      padding: 10px 14px;
+      font-size: 13px;
+    }
+
+    /* ===== MOBILE BUTTONS & INTERACTIONS ===== */
+
+    /* Primary buttons */
+    .btn,
+    button:not(.search-bar button) {
+      min-height: 48px;
+      padding: 12px 20px;
+      font-size: 15px;
+      font-weight: 500;
+      border-radius: 14px;
+      transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+      box-shadow: 0 2px 6px rgba(0, 0, 0, 0.08);
+    }
+
+    .btn:active,
+    button:active {
+      transform: scale(0.97);
+      box-shadow: 0 1px 3px rgba(0, 0, 0, 0.12);
+    }
+
+    /* Icon buttons */
+    .icon-button,
+    [class*="IconButton"] {
+      min-height: 44px;
+      min-width: 44px;
+      padding: 10px;
+      border-radius: 12px;
+    }
+
+    /* ===== MOBILE NAVIGATION & TABS ===== */
+
+    /* Tab navigation */
+    .tabs-list,
+    [role="tablist"] {
+      overflow-x: auto;
+      -webkit-overflow-scrolling: touch;
+      scrollbar-width: none;
+      -ms-overflow-style: none;
+      gap: 8px;
+      padding: 4px;
+    }
+
+    .tabs-list::-webkit-scrollbar {
+      display: none;
+    }
+
+    /* Tab triggers */
+    .tabs-trigger,
+    [role="tab"] {
+      min-height: 44px;
+      padding: 10px 16px;
+      font-size: 14px;
+      white-space: nowrap;
+      border-radius: 12px;
+    }
+
+    /* ===== MOBILE SIDEBAR & OVERLAYS ===== */
+
+    /* Mobile sidebar */
+    .mobile-sidebar {
+      position: fixed;
+      top: 0;
+      left: 0;
+      bottom: 0;
+      width: 85%;
+      max-width: 320px;
+      background: hsl(var(--background));
+      box-shadow: 4px 0 24px rgba(0, 0, 0, 0.15);
+      z-index: 100;
+      transform: translateX(-100%);
+      transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    }
+
+    .mobile-sidebar.open {
+      transform: translateX(0);
+    }
+
+    /* Sidebar backdrop */
+    .sidebar-backdrop {
+      position: fixed;
+      inset: 0;
+      background: rgba(0, 0, 0, 0.5);
+      backdrop-filter: blur(4px);
+      -webkit-backdrop-filter: blur(4px);
+      z-index: 99;
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 0.3s ease;
+    }
+
+    .sidebar-backdrop.visible {
+      opacity: 1;
+      pointer-events: auto;
+    }
+
+    /* ===== MOBILE DIALOGS & MODALS ===== */
+
+    /* Dialog optimization */
+    .dialog,
+    [role="dialog"] {
+      max-width: calc(100vw - 2rem);
+      max-height: calc(100vh - 4rem);
+      margin: 1rem;
+      border-radius: 20px;
+      padding: 1.5rem;
+    }
+
+    /* ===== MOBILE ANIMATIONS ===== */
+
+    /* Smooth entrance animations */
+    @keyframes slideInUp {
+      from {
+        transform: translateY(20px);
+        opacity: 0;
+      }
+
+      to {
+        transform: translateY(0);
+        opacity: 1;
+      }
+    }
+
+    @keyframes fadeIn {
+      from {
+        opacity: 0;
+      }
+
+      to {
+        opacity: 1;
+      }
+    }
+
+    .animate-slide-in {
+      animation: slideInUp 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    }
+
+    .animate-fade-in {
+      animation: fadeIn 0.2s ease;
+    }
+
+    /* ===== MOBILE UTILITIES ===== */
+
+    /* Prevent zoom on input focus */
+    input[type="text"],
+    input[type="email"],
+    input[type="password"],
+    input[type="search"],
+    input[type="tel"],
+    input[type="url"],
+    textarea,
+    select {
+      font-size: 16px !important;
+      -webkit-appearance: none;
+      appearance: none;
+    }
+
+    /* Safe area handling for notched devices */
+    .safe-area-top {
+      padding-top: max(1rem, env(safe-area-inset-top));
+    }
+
+    .safe-area-bottom {
+      padding-bottom: max(1rem, env(safe-area-inset-bottom));
+    }
+
+    .safe-area-left {
+      padding-left: max(1rem, env(safe-area-inset-left));
+    }
+
+    .safe-area-right {
+      padding-right: max(1rem, env(safe-area-inset-right));
+    }
+
+    /* ===== MOBILE DIAGRAMS & SVG ===== */
+
+    /* Ensure diagrams are visible and responsive */
+    svg,
+    .mermaid,
+    .diagram-container {
+      display: block !important;
+      visibility: visible !important;
+      opacity: 1 !important;
+      max-width: 100%;
+      height: auto;
+    }
+
+    .diagram-container {
+      padding: 1rem;
+      overflow-x: auto;
+      -webkit-overflow-scrolling: touch;
+    }
+
+    /* ===== MOBILE PERFORMANCE OPTIMIZATIONS ===== */
+
+    /* GPU acceleration for smooth animations */
+    .animate,
+    .transition,
+    [class*="animate"],
+    [class*="transition"] {
+      will-change: transform, opacity;
+      transform: translateZ(0);
+      -webkit-transform: translateZ(0);
+    }
+
+    /* Reduce motion for accessibility */
+    @media (prefers-reduced-motion: reduce) {
+
+      *,
+      *::before,
+      *::after {
+        animation-duration: 0.01ms !important;
+        animation-iteration-count: 1 !important;
+        transition-duration: 0.01ms !important;
+      }
+    }
+
+    /* ===== MOBILE SPECIFIC FIXES ===== */
+
+    /* Fix for iOS Safari bottom bar */
+    .mobile-viewport-fix {
+      min-height: 100vh;
+      min-height: -webkit-fill-available;
+    }
+
+    /* Prevent pull-to-refresh on Chrome mobile */
+    body {
+      overscroll-behavior-y: contain;
+    }
+
+    /* Fix for Android keyboard resize */
+    .keyboard-aware {
+      height: 100vh;
+      height: -webkit-fill-available;
     }
   }
 
+  /* ========================================
+     SMALL MOBILE DEVICES (iPhone SE, etc.)
+     Extra optimizations for 320px - 480px screens
+     ======================================== */
+  @media (max-width: 480px) {
+
+    /* Tighter spacing for small screens */
+    .container {
+      padding-left: 0.75rem;
+      padding-right: 0.75rem;
+    }
+
+    /* Smaller cards */
+    .card,
+    [class*="Card"] {
+      padding: 0.875rem;
+      margin-bottom: 0.875rem;
+    }
+
+    .answer-card {
+      padding: 1rem;
+      margin: 0.5rem;
+    }
+
+    /* Compact search bar for small screens */
+    .search-bar {
+      min-height: 44px;
+      border-radius: 18px;
+    }
+
+    .search-bar textarea {
+      font-size: 15px !important;
+      padding: 8px 10px 8px 40px !important;
+    }
+
+    .search-bar-container {
+      padding: 10px;
+    }
+
+    /* Smaller buttons */
+    .btn,
+    button:not(.search-bar button) {
+      min-height: 44px;
+      padding: 10px 16px;
+      font-size: 14px;
+    }
+
+    /* Compact typography */
+    h1,
+    .typography-h1 {
+      font-size: clamp(1.5rem, 6vw, 2rem) !important;
+    }
+
+    h2,
+    .typography-h2 {
+      font-size: clamp(1.25rem, 5vw, 1.75rem) !important;
+    }
+
+    h3,
+    .typography-h3 {
+      font-size: clamp(1.125rem, 4vw, 1.5rem) !important;
+    }
+
+    /* Tighter content spacing */
+    .streaming-content .paragraph,
+    .prose p {
+      margin-bottom: 0.75rem;
+    }
+
+    /* Compact code blocks */
+    .code-block pre,
+    .streaming-content pre {
+      padding: 0.75rem;
+      font-size: 12px;
+    }
+
+    /* Smaller table text */
+    .data-table,
+    .streaming-content .data-table {
+      font-size: 12px;
+    }
+
+    .data-table th,
+    .streaming-content .data-table th {
+      padding: 10px 12px;
+      font-size: 10px;
+    }
+
+    .data-table td,
+    .streaming-content .data-table td {
+      padding: 8px 12px;
+      font-size: 12px;
+    }
+
+    /* Compact tabs */
+    .tabs-trigger,
+    [role="tab"] {
+      padding: 8px 12px;
+      font-size: 13px;
+    }
+
+    /* Narrower sidebar */
+    .mobile-sidebar {
+      width: 90%;
+      max-width: 280px;
+    }
+  }
+
+  /* ========================================
+     TABLET & LARGE MOBILE (481px - 768px)
+     Optimizations for mid-size screens
+     ======================================== */
+  @media (min-width: 481px) and (max-width: 768px) {
+
+    /* Balanced spacing */
+    .container {
+      padding-left: 1.25rem;
+      padding-right: 1.25rem;
+    }
+
+    /* Medium cards */
+    .card,
+    [class*="Card"] {
+      padding: 1.125rem;
+    }
+
+    .answer-card {
+      padding: 1.375rem;
+      margin: 0.875rem;
+    }
+
+    /* Comfortable search bar */
+    .search-bar {
+      min-height: 52px;
+      border-radius: 22px;
+    }
+
+    .search-bar textarea {
+      padding: 12px 14px 12px 48px !important;
+    }
+
+    /* Medium buttons */
+    .btn,
+    button:not(.search-bar button) {
+      min-height: 50px;
+      padding: 14px 24px;
+      font-size: 16px;
+    }
+
+    /* Comfortable typography */
+    h1,
+    .typography-h1 {
+      font-size: clamp(2rem, 4.5vw, 2.5rem) !important;
+    }
+
+    h2,
+    .typography-h2 {
+      font-size: clamp(1.625rem, 3.75vw, 2rem) !important;
+    }
+
+    /* Balanced content spacing */
+    .streaming-content .paragraph,
+    .prose p {
+      margin-bottom: 1rem;
+    }
+
+    /* Medium code blocks */
+    .code-block pre,
+    .streaming-content pre {
+      padding: 1.125rem;
+      font-size: 14px;
+    }
+
+    /* Wider sidebar for tablets */
+    .mobile-sidebar {
+      max-width: 360px;
+    }
+  }
+
+
   /* Desktop button positioning - also fixed */
   @media (min-width: 769px) {
+
     /* Fixed + icon positioning for desktop */
     .search-bar .absolute.left-0 {
       pointer-events: auto !important;
@@ -1446,7 +2095,7 @@ All colors MUST be HSL.
       left: 4px;
       bottom: 4px;
     }
-    
+
     /* Fixed action buttons positioning for desktop */
     .search-bar .absolute.right-0 {
       pointer-events: auto !important;
@@ -1454,7 +2103,7 @@ All colors MUST be HSL.
       right: 4px;
       bottom: 4px;
     }
-    
+
     /* Desktop textarea with stable alignment */
     .search-bar textarea {
       padding-left: 40px !important;
@@ -1463,7 +2112,7 @@ All colors MUST be HSL.
       padding-bottom: 8px !important;
       align-items: flex-start !important;
     }
-    
+
     /* Desktop textarea container with stable alignment */
     .search-bar .flex-1 {
       display: flex;
@@ -1482,17 +2131,17 @@ All colors MUST be HSL.
   .custom-scrollbar::-webkit-scrollbar {
     width: 6px;
   }
-  
+
   .custom-scrollbar::-webkit-scrollbar-track {
     background: hsl(var(--muted));
     border-radius: 3px;
   }
-  
+
   .custom-scrollbar::-webkit-scrollbar-thumb {
     background: hsl(var(--muted-foreground) / 0.3);
     border-radius: 3px;
   }
-  
+
   .custom-scrollbar::-webkit-scrollbar-thumb:hover {
     background: hsl(var(--muted-foreground) / 0.5);
   }
@@ -1511,7 +2160,7 @@ All colors MUST be HSL.
       transform: translateX(-100%);
       transition: transform 0.3s ease-in-out;
     }
-    
+
     .mobile-sidebar-enter-active {
       transform: translateX(0);
     }
