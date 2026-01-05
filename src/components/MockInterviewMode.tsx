@@ -110,7 +110,7 @@ export const MockInterviewMode = ({ selectedHistorySession, onHistoryUpdate }: M
     feedback: SubmitAnswerResponse["evaluation"];
     followUps: string[];
   }>>([]);
-  
+
   // Selected question for side-by-side comparison in summary
   const [selectedQuestionIndex, setSelectedQuestionIndex] = useState<number | null>(null);
   const [isAnswerExpanded, setIsAnswerExpanded] = useState<boolean>(false);
@@ -184,7 +184,7 @@ export const MockInterviewMode = ({ selectedHistorySession, onHistoryUpdate }: M
           setQuestionHistory(state.questionHistory || []);
           setHintsUsed(state.hintsUsed || 0);
           setProgressData(state.progressData);
-          
+
           toast({
             title: "Session restored",
             description: "Continuing from where you left off",
@@ -266,10 +266,10 @@ export const MockInterviewMode = ({ selectedHistorySession, onHistoryUpdate }: M
   const handleStartInterview = async () => {
     try {
       setIsSubmitting(true);
-      
+
       // Clear any previous session
       localStorage.removeItem("mock_interview_session");
-      
+
       console.log("[MockInterview] Starting interview with config:", {
         user_id: userId,
         interview_type: interviewType,
@@ -277,7 +277,7 @@ export const MockInterviewMode = ({ selectedHistorySession, onHistoryUpdate }: M
         num_questions: numQuestions,
         topic: topic || undefined,
       });
-      
+
       const response = await apiStartMockInterview({
         user_id: userId,
         interview_type: interviewType,
@@ -338,7 +338,7 @@ export const MockInterviewMode = ({ selectedHistorySession, onHistoryUpdate }: M
 
   const handleSkipQuestion = async () => {
     if (!sessionId || !currentQuestion) return;
-    
+
     const skipText = "[Skipped]";
     await submitAnswer(skipText);
   };
@@ -391,7 +391,7 @@ export const MockInterviewMode = ({ selectedHistorySession, onHistoryUpdate }: M
         const summaryData = await apiGetSessionSummary(sessionId);
         console.log("[MockInterview] Summary data:", summaryData);
         setSummary(summaryData);
-        
+
         // Save completed session to history cache
         try {
           console.log("[MockInterview] Saving to history - questionHistory:", questionHistory);
@@ -408,12 +408,18 @@ export const MockInterviewMode = ({ selectedHistorySession, onHistoryUpdate }: M
             total_questions: summaryData.total_questions,
             is_complete: true,
             evaluations: summaryData.evaluations.map((evaluation: any, idx: number) => {
-              const historyItem = questionHistory[idx];
-              console.log(`[MockInterview] Mapping evaluation ${idx}:`, {
+              // For the last question, we use the current data because state hasn't updated yet
+              const isLast = idx === summaryData.evaluations.length - 1;
+              const historyItem = isLast
+                ? { answer: answerText, feedback: response.evaluation, followUps: response.follow_up_questions || [] }
+                : questionHistory[idx];
+
+              console.log(`[MockInterview] Mapping evaluation ${idx}${isLast ? ' (LAST)' : ''}:`, {
                 question: evaluation.question,
                 userAnswer: historyItem?.answer?.substring(0, 50),
                 modelAnswer: historyItem?.feedback?.model_answer?.substring(0, 50),
               });
+
               return {
                 question: evaluation.question,
                 user_answer: historyItem?.answer || "",
@@ -425,13 +431,13 @@ export const MockInterviewMode = ({ selectedHistorySession, onHistoryUpdate }: M
             }),
           };
           console.log("[MockInterview] History session to save:", historySession);
-          
+
           // Add to localStorage history cache
           const cached = localStorage.getItem(`mock_interview_history_${userId}`);
           const sessions = cached ? JSON.parse(cached) : [];
           sessions.unshift(historySession);
           localStorage.setItem(`mock_interview_history_${userId}`, JSON.stringify(sessions.slice(0, 50))); // Keep last 50
-          
+
           // Notify parent to refresh history
           if (onHistoryUpdate) {
             onHistoryUpdate();
@@ -477,7 +483,7 @@ export const MockInterviewMode = ({ selectedHistorySession, onHistoryUpdate }: M
   const handleRestart = () => {
     // Clear saved session
     localStorage.removeItem("mock_interview_session");
-    
+
     setPhase("setup");
     setSessionId(null);
     setCurrentQuestion(null);
@@ -502,10 +508,10 @@ export const MockInterviewMode = ({ selectedHistorySession, onHistoryUpdate }: M
     try {
       setIsLoadingHint(true);
       const hintResponse = await apiGetHint(sessionId, hintLevel);
-      
+
       setCurrentHint(hintResponse.hint);
       setHintsUsed(hintResponse.hints_used_count);
-      
+
       // Auto-advance hint level for next hint (max 3)
       if (hintLevel < 3) {
         setHintLevel((prev) => (prev + 1) as 1 | 2 | 3);
@@ -708,11 +714,10 @@ export const MockInterviewMode = ({ selectedHistorySession, onHistoryUpdate }: M
                   <button
                     key={type.id}
                     onClick={() => setInterviewType(type.id as InterviewType)}
-                    className={`p-3 rounded-lg border-2 transition-all text-center ${
-                      interviewType === type.id
-                        ? 'border-primary bg-primary/10 shadow-lg'
-                        : 'border-border hover:border-primary/50'
-                    }`}
+                    className={`p-3 rounded-lg border-2 transition-all text-center ${interviewType === type.id
+                      ? 'border-primary bg-primary/10 shadow-lg'
+                      : 'border-border hover:border-primary/50'
+                      }`}
                   >
                     <div className="text-sm font-semibold mb-0.5">{type.name}</div>
                     <div className="text-xs text-muted-foreground">{type.description}</div>
@@ -732,11 +737,10 @@ export const MockInterviewMode = ({ selectedHistorySession, onHistoryUpdate }: M
                   <button
                     key={diff.id}
                     onClick={() => setDifficulty(diff.id as Difficulty)}
-                    className={`text-left rounded-lg p-2.5 border-2 transition-all ${
-                      difficulty === diff.id
-                        ? 'border-primary bg-primary/10'
-                        : 'border-border hover:border-primary/50'
-                    }`}
+                    className={`text-left rounded-lg p-2.5 border-2 transition-all ${difficulty === diff.id
+                      ? 'border-primary bg-primary/10'
+                      : 'border-border hover:border-primary/50'
+                      }`}
                   >
                     <div>
                       <div className="text-sm font-semibold">{diff.name}</div>
@@ -844,6 +848,7 @@ export const MockInterviewMode = ({ selectedHistorySession, onHistoryUpdate }: M
                 placeholder="e.g., Arrays, Dynamic Programming, Leadership..."
                 value={topic}
                 onChange={(e) => setTopic(e.target.value)}
+                maxLength={512}
                 className="mb-2 text-sm h-9"
               />
               <div className="flex flex-wrap gap-2">
@@ -862,7 +867,7 @@ export const MockInterviewMode = ({ selectedHistorySession, onHistoryUpdate }: M
 
             {/* Action Buttons */}
             <div className="flex gap-3">
-              <Button 
+              <Button
                 onClick={resetToDefaults}
                 variant="outline"
                 size="default"
@@ -871,9 +876,9 @@ export const MockInterviewMode = ({ selectedHistorySession, onHistoryUpdate }: M
                 <RotateCcw className="mr-2 h-4 w-4" />
                 Reset
               </Button>
-              <Button 
-                onClick={handleStartInterview} 
-                disabled={isSubmitting} 
+              <Button
+                onClick={handleStartInterview}
+                disabled={isSubmitting}
                 size="default"
                 className="flex-1 h-11 text-base font-semibold bg-gradient-to-r from-primary to-blue-600 hover:from-primary/90 hover:to-blue-600/90 shadow-lg shadow-primary/20"
               >
@@ -921,10 +926,10 @@ export const MockInterviewMode = ({ selectedHistorySession, onHistoryUpdate }: M
       setHintsUsed(0);
       setProgressData(null);
       setSummary(null);
-      
+
       // Clear localStorage to prevent restoration
       localStorage.removeItem("mock_interview_session");
-      
+
       toast({
         title: "Interview Stopped",
         description: "You can start a new interview anytime",
@@ -932,78 +937,81 @@ export const MockInterviewMode = ({ selectedHistorySession, onHistoryUpdate }: M
     };
 
     return (
-      <div className="h-full flex flex-col p-4 gap-4">
+      <div className="h-full flex flex-col p-2 sm:p-4 gap-3 sm:gap-4 overflow-hidden">
         {/* Header */}
-        <Card>
-          <CardContent className="py-4">
-            <div className="flex items-center justify-between mb-3">
-              <div className="flex items-center gap-4">
-                <Badge variant="outline" className="text-sm">
-                  Question {questionNumber} of {totalQuestions}
+        <Card className="border-primary/20 bg-card/50 backdrop-blur-sm">
+          <CardContent className="p-3 sm:p-4">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-3">
+              <div className="flex items-center gap-2 flex-wrap order-2 sm:order-1">
+                <Badge variant="outline" className="text-[10px] sm:text-xs">
+                  {questionNumber}/{totalQuestions}
                 </Badge>
-                <Badge variant="secondary">{currentQuestion.difficulty}</Badge>
-                {currentQuestion.topic && <Badge variant="outline">{currentQuestion.topic}</Badge>}
+                <Badge variant="secondary" className="text-[10px] sm:text-xs uppercase tracking-wider">{currentQuestion.difficulty}</Badge>
+                {currentQuestion.topic && (
+                  <Badge variant="outline" className="text-[10px] sm:text-xs max-w-[100px] truncate">
+                    {currentQuestion.topic}
+                  </Badge>
+                )}
               </div>
-              <div className="flex items-center gap-4">
-                {hintsUsed > 0 && (
-                  <div className="flex items-center gap-1 text-sm text-muted-foreground">
-                    <Lightbulb className="h-4 w-4 text-yellow-500" />
-                    <span>{hintsUsed} hint{hintsUsed > 1 ? 's' : ''} used</span>
+              <div className="flex items-center justify-between sm:justify-end gap-2 sm:gap-4 order-1 sm:order-2 w-full sm:w-auto">
+                <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-1.5 text-xs font-bold tabular-nums px-2 py-1 rounded-md bg-muted/30">
+                    <Clock className={`h-3.5 w-3.5 ${elapsedTime < 180 ? 'text-green-500' : elapsedTime < 300 ? 'text-yellow-500' : 'text-red-500'}`} />
+                    <span className={elapsedTime < 180 ? 'text-green-500' : elapsedTime < 300 ? 'text-yellow-500' : 'text-red-500'}>
+                      {formatTime(elapsedTime)}
+                    </span>
                   </div>
-                )}
-                <div className="flex items-center gap-2 text-sm">
-                  <Clock className={`h-4 w-4 ${
-                    elapsedTime < 180 ? 'text-green-400' : 
-                    elapsedTime < 300 ? 'text-yellow-400' : 
-                    'text-red-400'
-                  }`} />
-                  <span className={`font-mono ${
-                    elapsedTime < 180 ? 'text-green-400' : 
-                    elapsedTime < 300 ? 'text-yellow-400' : 
-                    'text-red-400'
-                  }`}>{formatTime(elapsedTime)}</span>
+                  {hintsUsed > 0 && (
+                    <div className="flex items-center gap-1 text-[10px] sm:text-xs text-muted-foreground bg-yellow-500/10 px-2 py-1 rounded-md">
+                      <Lightbulb className="h-3 w-3 text-yellow-500" />
+                      <span>{hintsUsed}</span>
+                    </div>
+                  )}
                 </div>
-                {questionHistory.length > 0 && (
-                  <Select onValueChange={(value) => {
-                    const index = parseInt(value);
-                    const previous = questionHistory[index];
-                    if (previous && previous.feedback) {
-                      setCurrentFeedback(previous.feedback);
-                      setFollowUpQuestions(previous.followUps);
-                      setPhase("feedback");
-                    }
-                  }}>
-                    <SelectTrigger className="w-[160px]">
-                      <SelectValue placeholder="View Feedback" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {questionHistory.map((item, idx) => (
-                        <SelectItem key={idx} value={idx.toString()}>
-                          Question {idx + 1}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                )}
-                <Button
-                  variant="destructive"
-                  size="sm"
-                  onClick={handleStopInterview}
-                  className="gap-2"
-                >
-                  <X className="h-4 w-4" />
-                  Stop Interview
-                </Button>
+
+                <div className="flex items-center gap-2">
+                  {questionHistory.length > 0 && (
+                    <Select onValueChange={(value) => {
+                      const index = parseInt(value);
+                      const previous = questionHistory[index];
+                      if (previous && previous.feedback) {
+                        setCurrentFeedback(previous.feedback);
+                        setFollowUpQuestions(previous.followUps);
+                        setPhase("feedback");
+                      }
+                    }}>
+                      <SelectTrigger className="w-[110px] sm:w-[140px] h-8 text-[10px] sm:text-xs">
+                        <SelectValue placeholder="Feedback" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {questionHistory.map((item, idx) => (
+                          <SelectItem key={idx} value={idx.toString()} className="text-xs">
+                            Q{idx + 1}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  )}
+                  <Button
+                    variant="destructive"
+                    size="sm"
+                    onClick={handleStopInterview}
+                    className="h-8 px-2 sm:px-3 text-[10px] sm:text-xs font-bold uppercase tracking-tight"
+                  >
+                    <X className="h-3.5 w-3.5 sm:mr-1" />
+                    <span className="hidden sm:inline">Stop</span>
+                  </Button>
+                </div>
               </div>
             </div>
-            <Progress value={(questionNumber / totalQuestions) * 100} className="mt-2" />
+            <Progress value={(questionNumber / totalQuestions) * 100} className="h-1.5 sm:h-2" />
             {progressData && (
-              <div className="mt-3 flex items-center gap-4 text-xs text-muted-foreground">
-                <span>Average Score: {progressData.average_score.toFixed(1)}/10</span>
+              <div className="mt-2.5 flex items-center gap-3 text-[10px] text-muted-foreground overflow-x-auto whitespace-nowrap scrollbar-hide">
+                <span className="flex items-center gap-1"><Award className="h-3 w-3" /> Avg: {progressData.average_score.toFixed(1)}</span>
                 <span>•</span>
-                <span>Total Time: {progressData.total_time_seconds ? formatTime(progressData.total_time_seconds) : '0:00'}</span>
+                <span className="flex items-center gap-1"><Clock className="h-3 w-3" /> {progressData.total_time_seconds ? formatTime(progressData.total_time_seconds) : '0:00'}</span>
                 <span>•</span>
-                <span>Total Hints: {progressData.hints_used_total || 0}</span>
+                <span className="flex items-center gap-1"><Lightbulb className="h-3 w-3" /> Hints: {progressData.hints_used_total || 0}</span>
               </div>
             )}
           </CardContent>
@@ -1026,7 +1034,7 @@ export const MockInterviewMode = ({ selectedHistorySession, onHistoryUpdate }: M
               <div className="space-y-4 pr-4">
                 <div className="space-y-3">
                   <p className="text-base leading-relaxed font-medium">{currentQuestion.question_text}</p>
-                  
+
                   {showCodeEditor && (
                     <>
                       <Separator className="my-3" />
@@ -1038,7 +1046,7 @@ export const MockInterviewMode = ({ selectedHistorySession, onHistoryUpdate }: M
                           <div className="text-muted-foreground mt-1">Explanation: The value 1 appears at indices 0 and 3.</div>
                         </div>
                       </div>
-                      
+
                       <div className="space-y-2">
                         <h4 className="text-sm font-semibold text-muted-foreground">Constraints:</h4>
                         <ul className="text-sm text-muted-foreground space-y-1">
@@ -1055,7 +1063,7 @@ export const MockInterviewMode = ({ selectedHistorySession, onHistoryUpdate }: M
                     </>
                   )}
                 </div>
-                
+
                 {currentQuestion.hints && currentQuestion.hints.length > 0 && (
                   <div className="space-y-2 mt-4">
                     <Separator className="my-3" />
@@ -1074,34 +1082,36 @@ export const MockInterviewMode = ({ selectedHistorySession, onHistoryUpdate }: M
 
           {/* Answer Panel */}
           <Card className="flex flex-col min-h-0 border-primary/20">
-            <CardHeader className="flex-shrink-0 bg-gradient-to-r from-primary/5 to-transparent">
+            <CardHeader className="flex-shrink-0 bg-gradient-to-r from-primary/5 to-transparent py-2.5 px-3 sm:px-4">
               <div className="flex items-center justify-between">
-                <CardTitle className="text-base font-semibold">Your Answer</CardTitle>
-                <div className="flex items-center gap-2">
+                <CardTitle className="text-xs sm:text-base font-semibold truncate mr-2 hidden min-[360px]:block">Your Answer</CardTitle>
+                <CardTitle className="text-xs font-semibold min-[360px]:hidden">Ans</CardTitle>
+                <div className="flex items-center gap-1 sm:gap-2">
                   <Button
                     variant="ghost"
                     size="icon"
-                    className="h-7 w-7"
+                    className="h-7 w-7 sm:h-8 sm:w-8 text-muted-foreground hover:text-primary transition-colors"
                     onClick={() => setIsAnswerExpanded(true)}
                     title="Expand answer"
                   >
-                    <Maximize2 className="h-4 w-4" />
+                    <Maximize2 className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
                   </Button>
                   {!showCodeEditor && isSpeechSupported && (
                     <Button
                       variant={isListening ? "destructive" : "outline"}
                       size="sm"
                       onClick={toggleRecording}
+                      className={`h-7 sm:h-8 px-1.5 sm:px-3 text-[9px] sm:text-xs font-bold uppercase transition-all ${isListening ? 'animate-pulse' : ''}`}
                     >
                       {isListening ? (
                         <>
-                          <MicOff className="h-4 w-4 mr-2" />
-                          Stop
+                          <MicOff className="h-3 w-3 sm:mr-1.5" />
+                          <span className="hidden sm:inline">Stop</span>
                         </>
                       ) : (
                         <>
-                          <Mic className="h-4 w-4 mr-2" />
-                          Voice
+                          <Mic className="h-3 w-3 sm:mr-1.5" />
+                          <span>Voice</span>
                         </>
                       )}
                     </Button>
@@ -1111,17 +1121,14 @@ export const MockInterviewMode = ({ selectedHistorySession, onHistoryUpdate }: M
                     size="sm"
                     onClick={handleRequestHint}
                     disabled={isLoadingHint || hintLevel > 3}
-                    className="gap-2"
+                    className="h-7 sm:h-8 px-1.5 sm:px-3 text-[9px] sm:text-xs font-bold uppercase transition-all"
                   >
                     {isLoadingHint ? (
-                      <>
-                        <Loader2 className="h-4 w-4 animate-spin" />
-                        Loading...
-                      </>
+                      <Loader2 className="h-3 w-3 animate-spin" />
                     ) : (
                       <>
-                        <Lightbulb className="h-4 w-4" />
-                        Hint {hintLevel > 3 ? '(Max)' : `(${hintLevel}/3)`}
+                        <Lightbulb className="h-3 w-3 sm:mr-1.5 text-yellow-500" />
+                        <span>Hint {hintLevel > 3 ? 'Max' : `${hintLevel}/3`}</span>
                       </>
                     )}
                   </Button>
@@ -1303,33 +1310,31 @@ export const MockInterviewMode = ({ selectedHistorySession, onHistoryUpdate }: M
             </CardContent>
           </Card>
         </div>
-        
+
         {/* Expanded Answer Dialog */}
         <Dialog open={isAnswerExpanded} onOpenChange={setIsAnswerExpanded}>
-          <DialogContent className="max-w-6xl max-h-[95vh] flex flex-col p-0">
-            <DialogHeader className="px-6 pt-6 pb-4 border-b">
-              <div className="flex items-center justify-between pr-8">
-                <DialogTitle className="text-lg font-semibold">Question & Answer - Expanded View</DialogTitle>
-                <div className="flex items-center gap-2">
-                  <Badge variant="outline">{questionNumber} of {totalQuestions}</Badge>
-                  <div className="flex items-center gap-2 text-sm">
-                    <Clock className={`h-4 w-4 ${
-                      elapsedTime < 180 ? 'text-green-400' : 
-                      elapsedTime < 300 ? 'text-yellow-400' : 
-                      'text-red-400'
-                    }`} />
-                    <span className={`font-mono ${
-                      elapsedTime < 180 ? 'text-green-400' : 
-                      elapsedTime < 300 ? 'text-yellow-400' : 
-                      'text-red-400'
-                    }`}>{formatTime(elapsedTime)}</span>
+          <DialogContent className="w-[calc(100vw-2rem)] sm:max-w-6xl max-h-[92vh] flex flex-col p-0 border-none bg-background/95 backdrop-blur-xl">
+            <DialogHeader className="px-4 sm:px-6 pt-5 sm:pt-6 pb-4 border-b">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pr-8">
+                <DialogTitle className="text-base sm:text-lg font-bold leading-tight uppercase tracking-tight">Expanded View</DialogTitle>
+                <div className="flex items-center gap-3">
+                  <Badge variant="outline" className="font-bold">{questionNumber} of {totalQuestions}</Badge>
+                  <div className="flex items-center gap-2 text-sm font-bold tabular-nums bg-muted/30 px-2 py-1 rounded-md">
+                    <Clock className={`h-4 w-4 ${elapsedTime < 180 ? 'text-green-500' :
+                      elapsedTime < 300 ? 'text-yellow-500' :
+                        'text-red-500'
+                      }`} />
+                    <span className={elapsedTime < 180 ? 'text-green-500' :
+                      elapsedTime < 300 ? 'text-yellow-500' :
+                        'text-red-500'
+                    }>{formatTime(elapsedTime)}</span>
                   </div>
                 </div>
               </div>
             </DialogHeader>
-            
-            <div className="flex-1 overflow-y-auto px-6 py-4 scrollbar-hide">
-              <div className="grid grid-cols-2 gap-6 h-full">
+
+            <div className="flex-1 overflow-y-auto px-4 sm:px-6 py-4 scrollbar-hide">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6 h-full">
                 {/* Question Panel */}
                 <div className="space-y-4">
                   <div>
@@ -1344,7 +1349,7 @@ export const MockInterviewMode = ({ selectedHistorySession, onHistoryUpdate }: M
                     </h3>
                     <p className="text-base text-foreground leading-relaxed">{currentQuestion?.question_text}</p>
                   </div>
-                  
+
                   {currentHint && (
                     <div className="bg-yellow-500/10 border border-yellow-500/30 rounded-lg p-4">
                       <div className="flex items-start gap-2">
@@ -1364,7 +1369,7 @@ export const MockInterviewMode = ({ selectedHistorySession, onHistoryUpdate }: M
                       </div>
                     </div>
                   )}
-                  
+
                   {showCodeEditor && (
                     <div className="space-y-2 text-sm">
                       <h4 className="font-semibold text-muted-foreground">Example:</h4>
@@ -1376,27 +1381,29 @@ export const MockInterviewMode = ({ selectedHistorySession, onHistoryUpdate }: M
                     </div>
                   )}
                 </div>
-                
+
                 {/* Answer Panel */}
                 <div className="flex flex-col space-y-3">
                   <div className="flex items-center justify-between">
-                    <h3 className="text-base font-semibold text-primary">Your Answer</h3>
-                    <div className="flex items-center gap-2">
+                    <h3 className="text-sm sm:text-base font-semibold text-primary uppercase tracking-tight">Your Answer</h3>
+                    <div className="flex items-center gap-1.5 sm:gap-2">
                       {!showCodeEditor && isSpeechSupported && (
                         <Button
                           variant={isListening ? "destructive" : "outline"}
                           size="sm"
                           onClick={toggleRecording}
+                          className={`h-8 px-2 sm:px-3 text-[10px] sm:text-xs font-bold uppercase transition-all ${isListening ? 'animate-pulse' : ''}`}
                         >
                           {isListening ? (
                             <>
-                              <MicOff className="h-4 w-4 mr-2" />
-                              Stop
+                              <MicOff className="h-3.5 w-3.5 sm:mr-1.5" />
+                              <span className="hidden sm:inline">Stop</span>
                             </>
                           ) : (
                             <>
-                              <Mic className="h-4 w-4 mr-2" />
-                              Voice
+                              <Mic className="h-3.5 w-3.5 sm:mr-1.5" />
+                              <span className="hidden sm:inline">Voice</span>
+                              <span className="sm:hidden">Mic</span>
                             </>
                           )}
                         </Button>
@@ -1406,23 +1413,20 @@ export const MockInterviewMode = ({ selectedHistorySession, onHistoryUpdate }: M
                         size="sm"
                         onClick={handleRequestHint}
                         disabled={isLoadingHint || hintLevel > 3}
-                        className="gap-2"
+                        className="h-8 px-2 sm:px-3 text-[10px] sm:text-xs font-bold uppercase transition-all"
                       >
                         {isLoadingHint ? (
-                          <>
-                            <Loader2 className="h-4 w-4 animate-spin" />
-                            Loading...
-                          </>
+                          <Loader2 className="h-3.5 w-3.5 animate-spin" />
                         ) : (
                           <>
-                            <Lightbulb className="h-4 w-4" />
-                            Hint {hintLevel > 3 ? '(Max)' : `(${hintLevel}/3)`}
+                            <Lightbulb className="h-3.5 w-3.5 sm:mr-1.5 text-yellow-500" />
+                            <span>Hint {hintLevel > 3 ? 'Max' : `${hintLevel}/3`}</span>
                           </>
                         )}
                       </Button>
                     </div>
                   </div>
-                  
+
                   {isListening && transcript && (
                     <div className="bg-blue-900/20 border border-blue-800/30 rounded-lg p-3 text-sm">
                       <div className="flex items-center gap-2 mb-1">
@@ -1432,7 +1436,7 @@ export const MockInterviewMode = ({ selectedHistorySession, onHistoryUpdate }: M
                       <p className="text-gray-300">{transcript}</p>
                     </div>
                   )}
-                  
+
                   {showCodeEditor ? (
                     <div className="flex flex-col gap-3 flex-1">
                       <div className="flex items-center justify-between">
@@ -1534,27 +1538,28 @@ export const MockInterviewMode = ({ selectedHistorySession, onHistoryUpdate }: M
                             e.preventDefault();
                             if (userAnswer.trim()) {
                               handleSubmitAnswer();
+                              setIsAnswerExpanded(false);
                             }
                           }
                         }}
-                        className="min-h-[400px] resize-none font-sans flex-1"
+                        className="min-h-[250px] sm:min-h-[400px] resize-none font-sans flex-1"
                       />
-                      <div className="flex items-center justify-between text-xs text-muted-foreground">
-                        <span>{wordCount} {wordCount === 1 ? 'word' : 'words'}</span>
-                        <span className="text-xs">Press Ctrl+Enter to submit</span>
+                      <div className="flex items-center justify-between text-[10px] sm:text-xs text-muted-foreground mt-1">
+                        <span className="font-medium">{wordCount} words</span>
+                        <span className="hidden sm:inline">Press Ctrl+Enter to submit</span>
                       </div>
                     </div>
                   )}
                 </div>
               </div>
             </div>
-            
+
             {/* Action Buttons */}
-            <div className="px-6 py-4 border-t flex gap-2">
+            <div className="px-4 sm:px-6 py-4 border-t flex gap-3">
               <Button
                 variant="outline"
                 size="lg"
-                className="flex-1 gap-2"
+                className="flex-1 gap-2 h-11 text-xs sm:text-sm font-bold uppercase tracking-wider"
                 onClick={handleSkipQuestion}
                 disabled={isSubmitting}
               >
@@ -1568,7 +1573,7 @@ export const MockInterviewMode = ({ selectedHistorySession, onHistoryUpdate }: M
                 }}
                 disabled={isSubmitting || (!userAnswer.trim() && !codeAnswer.trim())}
                 size="lg"
-                className="flex-[2] gap-2"
+                className="flex-[2] gap-2 h-11 text-xs sm:text-sm font-bold uppercase tracking-wider"
               >
                 {isSubmitting ? (
                   <>
@@ -1585,7 +1590,7 @@ export const MockInterviewMode = ({ selectedHistorySession, onHistoryUpdate }: M
             </div>
           </DialogContent>
         </Dialog>
-      </div>
+      </div >
     );
   }
 
@@ -1840,7 +1845,7 @@ export const MockInterviewMode = ({ selectedHistorySession, onHistoryUpdate }: M
     const scores = summary.evaluations.map(e => e.score);
     const bestScore = Math.max(...scores);
     const worstScore = Math.min(...scores);
-    const scoreVariance = scores.length > 1 
+    const scoreVariance = scores.length > 1
       ? Math.sqrt(scores.reduce((sum, score) => sum + Math.pow(score - summary.average_score, 2), 0) / scores.length)
       : 0;
     const consistencyScore = Math.max(0, 10 - scoreVariance);
@@ -1849,20 +1854,20 @@ export const MockInterviewMode = ({ selectedHistorySession, onHistoryUpdate }: M
     if (selectedQuestionIndex !== null && questionHistory[selectedQuestionIndex]) {
       const selected = questionHistory[selectedQuestionIndex];
       const evaluation = summary.evaluations[selectedQuestionIndex];
-      
+
       return (
         <div className="h-full overflow-auto p-4">
           <div className="max-w-7xl mx-auto space-y-4">
             {/* Back button */}
-            <Button 
-              variant="outline" 
+            <Button
+              variant="outline"
               onClick={() => setSelectedQuestionIndex(null)}
               className="mb-2"
             >
               <ChevronLeft className="h-4 w-4 mr-2" />
               Back to Summary
             </Button>
-            
+
             {/* Question Header */}
             <Card>
               <CardHeader className="border-b bg-gradient-to-r from-primary/5 to-transparent">
@@ -2037,9 +2042,9 @@ export const MockInterviewMode = ({ selectedHistorySession, onHistoryUpdate }: M
                 <div className="text-right">
                   <div className="text-3xl font-bold text-primary">{summary.average_score.toFixed(1)}</div>
                   <Badge variant="secondary" className="mt-1 text-xs">
-                    {summary.average_score >= 8 ? "Excellent" : 
-                     summary.average_score >= 6 ? "Good" : 
-                     summary.average_score >= 4 ? "Fair" : "Needs Work"}
+                    {summary.average_score >= 8 ? "Excellent" :
+                      summary.average_score >= 6 ? "Good" :
+                        summary.average_score >= 4 ? "Fair" : "Needs Work"}
                   </Badge>
                 </div>
               </div>
@@ -2112,8 +2117,8 @@ export const MockInterviewMode = ({ selectedHistorySession, onHistoryUpdate }: M
                       <div className="flex justify-between items-center">
                         <span className="text-xs text-muted-foreground">Efficiency Rating</span>
                         <span className="text-xs">
-                          {progressData.hints_used_total < 3 ? "Excellent" : 
-                           progressData.hints_used_total < 6 ? "Good" : "Needs Work"}
+                          {progressData.hints_used_total < 3 ? "Excellent" :
+                            progressData.hints_used_total < 6 ? "Good" : "Needs Work"}
                         </span>
                       </div>
                     )}
@@ -2127,8 +2132,8 @@ export const MockInterviewMode = ({ selectedHistorySession, onHistoryUpdate }: M
                 <h3 className="text-sm font-semibold mb-3">Question Performance - Click to Compare Answers</h3>
                 <div className="space-y-2 max-h-[400px] overflow-y-auto pr-2 scrollbar-hide">
                   {summary.evaluations.map((evaluation, idx) => (
-                    <div 
-                      key={idx} 
+                    <div
+                      key={idx}
                       className="border rounded-lg p-3 space-y-2 cursor-pointer hover:border-primary/50 hover:bg-primary/5 transition-all"
                       onClick={() => setSelectedQuestionIndex(idx)}
                     >
@@ -2138,8 +2143,8 @@ export const MockInterviewMode = ({ selectedHistorySession, onHistoryUpdate }: M
                             <span className="text-xs font-semibold text-muted-foreground">Question {idx + 1}</span>
                             <Badge variant={
                               evaluation.rating === "Excellent" ? "default" :
-                              evaluation.rating === "Good" || evaluation.rating === "Strong" ? "secondary" :
-                              evaluation.rating === "Fair" ? "outline" : "destructive"
+                                evaluation.rating === "Good" || evaluation.rating === "Strong" ? "secondary" :
+                                  evaluation.rating === "Fair" ? "outline" : "destructive"
                             } className="text-[10px] px-1.5 py-0">
                               {evaluation.rating}
                             </Badge>
@@ -2177,10 +2182,10 @@ export const MockInterviewMode = ({ selectedHistorySession, onHistoryUpdate }: M
 
   // History View Phase - Show past interview session with question comparison
   if (phase === "history" && selectedHistorySession) {
-    const currentEval = selectedQuestionIndex !== null && selectedHistorySession.evaluations?.[selectedQuestionIndex] 
-      ? selectedHistorySession.evaluations[selectedQuestionIndex] 
+    const currentEval = selectedQuestionIndex !== null && selectedHistorySession.evaluations?.[selectedQuestionIndex]
+      ? selectedHistorySession.evaluations[selectedQuestionIndex]
       : null;
-    
+
     const handleBackToSetup = () => {
       setPhase("setup");
       setSelectedQuestionIndex(null);
@@ -2237,14 +2242,14 @@ export const MockInterviewMode = ({ selectedHistorySession, onHistoryUpdate }: M
             </div>
             <div className="flex items-center gap-2">
               <div className="text-sm text-muted-foreground">
-                {selectedHistorySession.started_at 
-                ? new Date(selectedHistorySession.started_at).toLocaleDateString("en-US", {
+                {selectedHistorySession.started_at
+                  ? new Date(selectedHistorySession.started_at).toLocaleDateString("en-US", {
                     year: "numeric",
                     month: "short",
                     day: "numeric",
                   })
-                : 'Unknown date'
-              }
+                  : 'Unknown date'
+                }
               </div>
               <Button
                 variant="ghost"
@@ -2303,9 +2308,9 @@ export const MockInterviewMode = ({ selectedHistorySession, onHistoryUpdate }: M
                       </div>
                       <Badge variant={
                         currentEval.rating === "Excellent" || currentEval.rating === "excellent" ? "default" :
-                        currentEval.rating === "Good" || currentEval.rating === "good" || 
-                        currentEval.rating === "Strong" || currentEval.rating === "strong" ? "secondary" :
-                        "outline"
+                          currentEval.rating === "Good" || currentEval.rating === "good" ||
+                            currentEval.rating === "Strong" || currentEval.rating === "strong" ? "secondary" :
+                            "outline"
                       } className="capitalize">
                         {currentEval.rating}
                       </Badge>
@@ -2329,7 +2334,7 @@ export const MockInterviewMode = ({ selectedHistorySession, onHistoryUpdate }: M
                       <div className="prose prose-sm max-w-none">
                         {currentEval.user_answer ? (
                           <pre className="whitespace-pre-wrap text-sm bg-muted/50 rounded-lg p-4 leading-relaxed font-sans">
-{currentEval.user_answer}
+                            {currentEval.user_answer}
                           </pre>
                         ) : (
                           <div className="flex items-center justify-center h-32 text-muted-foreground italic text-sm">
@@ -2354,7 +2359,7 @@ export const MockInterviewMode = ({ selectedHistorySession, onHistoryUpdate }: M
                       <div className="prose prose-sm max-w-none">
                         {currentEval.model_answer ? (
                           <pre className="whitespace-pre-wrap text-sm bg-muted/50 rounded-lg p-4 leading-relaxed font-sans">
-{currentEval.model_answer}
+                            {currentEval.model_answer}
                           </pre>
                         ) : (
                           <div className="flex items-center justify-center h-32 text-muted-foreground italic text-sm">
@@ -2372,9 +2377,9 @@ export const MockInterviewMode = ({ selectedHistorySession, onHistoryUpdate }: M
                 <Dialog open={historyExpanded} onOpenChange={setHistoryExpanded}>
                   <DialogContent className="max-w-7xl max-h-[95vh] flex flex-col p-0">
                     <DialogHeader className="px-6 pt-6 pb-4 border-b">
-                        <div className="flex items-center justify-between pr-8">
-                          <DialogTitle className="text-lg font-semibold">Expanded Answers</DialogTitle>
-                        </div>
+                      <div className="flex items-center justify-between pr-8">
+                        <DialogTitle className="text-lg font-semibold">Expanded Answers</DialogTitle>
+                      </div>
                     </DialogHeader>
 
                     <div className="flex-1 overflow-y-auto px-6 py-4 scrollbar-hide">
@@ -2385,7 +2390,7 @@ export const MockInterviewMode = ({ selectedHistorySession, onHistoryUpdate }: M
                             <div className="prose prose-lg max-w-none">
                               {currentEval.user_answer ? (
                                 <pre className="whitespace-pre-wrap text-sm bg-muted/50 rounded-lg p-6 leading-relaxed font-sans">
-{currentEval.user_answer}
+                                  {currentEval.user_answer}
                                 </pre>
                               ) : (
                                 <div className="flex items-center justify-center h-32 text-muted-foreground italic text-sm">
@@ -2402,7 +2407,7 @@ export const MockInterviewMode = ({ selectedHistorySession, onHistoryUpdate }: M
                             <div className="prose prose-lg max-w-none">
                               {currentEval.model_answer ? (
                                 <pre className="whitespace-pre-wrap text-sm bg-muted/50 rounded-lg p-6 leading-relaxed font-sans">
-{currentEval.model_answer}
+                                  {currentEval.model_answer}
                                 </pre>
                               ) : (
                                 <div className="flex items-center justify-center h-32 text-muted-foreground italic text-sm">

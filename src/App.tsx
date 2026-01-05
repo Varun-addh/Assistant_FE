@@ -6,6 +6,7 @@ import { BrowserRouter, Routes, Route } from "react-router-dom";
 import Index from "./pages/Index";
 import NotFound from "./pages/NotFound";
 import Runner from "./pages/Runner";
+import ArchitecturePage from "./pages/Architecture";
 import { InterviewAssistant } from "./components/InterviewAssistant";
 
 
@@ -21,6 +22,7 @@ const App = () => (
           <Route path="/" element={<Index />} />
           <Route path="/app" element={<InterviewAssistant />} />
           <Route path="/run" element={<Runner />} />
+          <Route path="/architecture" element={<ArchitecturePage />} />
           {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
           <Route path="*" element={<NotFound />} />
         </Routes>

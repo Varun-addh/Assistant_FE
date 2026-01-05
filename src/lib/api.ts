@@ -1,4 +1,5 @@
 import { resolveIntelligenceFlag } from "./intelligenceConfig";
+import { isDevelopmentMode } from "./devUtils";
 
 export type AnswerStyle = "short" | "detailed";
 
@@ -16,22 +17,44 @@ function getOrCreateUserId(): string {
   return userId;
 }
 
-function buildHeaders(): HeadersInit {
+function buildHeaders(options?: { forceGemini?: boolean }): HeadersInit {
   const headers: Record<string, string> = {
     "Content-Type": "application/json",
-    // Primary method for personalized history isolation
-    "X-User-ID": getOrCreateUserId(),
   };
 
-  // Developer/Default API key
+  // Primary method for personalized history isolation
+  const userId = getOrCreateUserId();
+  headers["X-User-ID"] = userId;
+
+  // Developer/Default API key from environment
   if (API_KEY) {
     headers["Authorization"] = `Bearer ${API_KEY}`;
   }
 
-  // User-provided API key (Bring Your Own Key)
-  const userKey = typeof window !== 'undefined' ? localStorage.getItem("user_api_key") : null;
-  if (userKey) {
-    headers["X-API-Key"] = userKey;
+  // Interview Engine (Groq) - Primary key for questions, mock, search
+  const groqKey = typeof window !== 'undefined' ? localStorage.getItem("user_api_key") : null;
+  if (groqKey) {
+    headers["X-API-Key"] = groqKey;
+  }
+
+  // Answer Engine (Gemini) - For advanced answer cards
+  const geminiKey = typeof window !== 'undefined' ? localStorage.getItem("gemini_api_key") : null;
+  if (geminiKey) {
+    headers["X-Gemini-Key"] = geminiKey;
+  }
+
+  // In development mode, log if keys are being sent
+  if (isDevelopmentMode()) {
+    if (groqKey || geminiKey) {
+      console.log('🔧 [Dev Mode] Sending user-provided API keys from local storage');
+    } else {
+      console.log('🔧 [Dev Mode] No local API keys found - backend will use its own environment variables');
+    }
+  }
+
+  // If forceGemini is true and we have a Gemini key, use it as primary
+  if (options?.forceGemini && geminiKey) {
+    headers["X-API-Key"] = geminiKey;
   }
 
   return headers;
@@ -60,11 +83,13 @@ export interface SubmitQuestionRequest {
   session_id: string;
   question: string;
   style: AnswerStyle;
+  architecture_mode?: "single" | "multi-view" | null;
 }
 export interface SubmitQuestionResponse {
   answer: string;
   style: AnswerStyle;
   created_at: string; // ISO8601
+  truncated?: boolean; // Backend indicates if answer was cut off
 }
 export async function apiSubmitQuestion(body: SubmitQuestionRequest): Promise<SubmitQuestionResponse> {
   const res = await fetch(`${BASE_URL}/api/question`, {
@@ -77,6 +102,45 @@ export async function apiSubmitQuestion(body: SubmitQuestionRequest): Promise<Su
     throw new Error(`Submit question failed: ${res.status} ${text}`);
   }
   return res.json();
+}
+
+// Streaming version of apiSubmitQuestion
+export async function apiSubmitQuestionStream(
+  body: SubmitQuestionRequest,
+  onChunk: (chunk: string) => void
+): Promise<{ answer: string; style: AnswerStyle; created_at: string; truncated?: boolean }> {
+  const res = await fetch(`${BASE_URL}/api/question`, {
+    method: "POST",
+    headers: buildHeaders(),
+    body: JSON.stringify({ ...body, stream: true }),
+  });
+
+  if (!res.ok || !res.body) {
+    const text = await res.text().catch(() => "");
+    throw new Error(`Submit question failed: ${res.status} ${text}`);
+  }
+
+  const reader = res.body.getReader();
+  const decoder = new TextDecoder();
+  let fullAnswer = "";
+
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+
+    const chunk = decoder.decode(value, { stream: true });
+    if (chunk) {
+      fullAnswer += chunk;
+      onChunk(chunk);
+    }
+  }
+
+  return {
+    answer: fullAnswer,
+    style: body.style,
+    created_at: new Date().toISOString(),
+    truncated: false
+  };
 }
 
 // Streaming evaluation
@@ -119,7 +183,8 @@ export interface GetHistoryResponse {
   items: HistoryItem[];
 }
 export async function apiGetHistory(sessionId: string): Promise<GetHistoryResponse> {
-  const res = await fetch(`${BASE_URL}/api/history/${encodeURIComponent(sessionId)}`, {
+  // FIXED: Use SessionManager endpoint for chat history, not HistoryManager (Search Intelligence)
+  const res = await fetch(`${BASE_URL}/api/session/${encodeURIComponent(sessionId)}/chat`, {
     method: "GET",
     headers: buildHeaders(),
   });
@@ -136,6 +201,7 @@ export async function apiDeleteHistoryItem(params: { session_id: string; created
   // Try DELETE first (query param)
   const urlDelete = `${BASE_URL}/api/history/${encodeURIComponent(session_id)}?created_at=${encodeURIComponent(created_at)}`;
   let res = await fetch(urlDelete, { method: "DELETE", headers: buildHeaders() });
+  if (res.status === 404) return { status: "deleted" };
   if (res.ok) return res.json();
 
   // Fallback: some servers don't allow DELETE here; try POST-based delete endpoint
@@ -146,6 +212,7 @@ export async function apiDeleteHistoryItem(params: { session_id: string; created
     body: JSON.stringify({ created_at }),
   });
   if (!res.ok) {
+    if (res.status === 404) return { status: "deleted" };
     const text = await res.text().catch(() => "");
     throw new Error(`Delete history failed: ${res.status} ${text}`);
   }
@@ -156,6 +223,8 @@ export interface SessionSummary {
   session_id: string;
   last_update: string;
   qna_count: number;
+  title?: string;
+  custom_title?: string;
 }
 export async function apiGetSessions(): Promise<SessionSummary[]> {
   const res = await fetch(`${BASE_URL}/api/sessions`, {
@@ -163,7 +232,20 @@ export async function apiGetSessions(): Promise<SessionSummary[]> {
     headers: buildHeaders(),
   });
   if (!res.ok) throw new Error(`Get sessions failed: ${res.status}`);
-  return res.json();
+  const data = await res.json();
+
+  // Backend returns { items: [sessions] }, not a direct array
+  if (data && typeof data === 'object' && Array.isArray(data.items)) {
+    return data.items;
+  }
+
+  // Fallback: if it's already an array, use it directly
+  if (Array.isArray(data)) {
+    return data;
+  }
+
+  console.warn('[apiGetSessions] Unexpected response format:', data);
+  return [];
 }
 
 export async function apiDeleteSession(sessionId: string): Promise<{ status: string }> {
@@ -171,9 +253,26 @@ export async function apiDeleteSession(sessionId: string): Promise<{ status: str
     method: "DELETE",
     headers: buildHeaders(),
   });
+  if (res.status === 404) {
+    // If not found, treat as already deleted
+    return { status: "deleted" };
+  }
   if (!res.ok) {
     const text = await res.text().catch(() => "");
     throw new Error(`Delete session failed: ${res.status} ${text}`);
+  }
+  return res.json();
+}
+
+export async function apiUpdateSessionTitle(sessionId: string, title: string): Promise<{ status: string }> {
+  const res = await fetch(`${BASE_URL}/api/session/${encodeURIComponent(sessionId)}/title`, {
+    method: "PUT",
+    headers: buildHeaders(),
+    body: JSON.stringify({ title }),
+  });
+  if (!res.ok) {
+    const text = await res.text().catch(() => "");
+    throw new Error(`Update title failed: ${res.status} ${text}`);
   }
   return res.json();
 }
@@ -186,6 +285,7 @@ export async function apiDeleteHistoryItemByIndex(params: { session_id: string; 
     headers: buildHeaders(),
   });
   if (!res.ok) {
+    if (res.status === 404) return { status: "deleted" };
     const text = await res.text().catch(() => "");
     throw new Error(`Delete history item failed: ${res.status} ${text}`);
   }
@@ -720,6 +820,7 @@ export async function apiDeleteHistoryTab(tabId: string): Promise<{ status: stri
     method: "DELETE",
   });
   if (!res.ok) {
+    if (res.status === 404) return { status: "deleted" };
     const text = await res.text().catch(() => "");
     throw new Error(`Delete history tab failed: ${res.status} ${text}`);
   }
@@ -731,6 +832,7 @@ export async function apiDeleteAllHistory(): Promise<{ message: string }> {
     method: "DELETE",
   });
   if (!res.ok) {
+    if (res.status === 404) return { message: "All history deleted" };
     const text = await res.text().catch(() => "");
     throw new Error(`Delete all history failed: ${res.status} ${text}`);
   }

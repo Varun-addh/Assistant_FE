@@ -1,25 +1,53 @@
 import { useEffect, useState, useRef } from "react";
 import { SearchBar } from "./SearchBar";
 import { AnswerCard } from "./AnswerCard";
+
+// Animated Loading Dots Component
+const LoadingDots = () => (
+  <span className="inline-flex items-center">
+    <style>{`
+      @keyframes dotFlow {
+        0%, 20% { opacity: 0.3; }
+        40% { opacity: 1; }
+        100% { opacity: 0.3; }
+      }
+      .dot-1 { animation: dotFlow 1.4s infinite; animation-delay: 0s; }
+      .dot-2 { animation: dotFlow 1.4s infinite; animation-delay: 0.2s; }
+      .dot-3 { animation: dotFlow 1.4s infinite; animation-delay: 0.4s; }
+    `}</style>
+    <span className="dot-1">.</span>
+    <span className="dot-2">.</span>
+    <span className="dot-3">.</span>
+  </span>
+);
 import { MockInterviewMode } from "./MockInterviewMode";
 import { PracticeMode } from "./PracticeMode";
 import { InterviewIntelligence } from "./InterviewIntelligence";
+import { AnswerEngineUpgradeBanner } from "./AnswerEngineUpgradeBanner";
 import { ThemeToggle } from "./ThemeToggle";
-import { MessageSquare, MoreVertical, Trash2, Menu, X, History as HistoryIcon, RefreshCw, Loader2, AlertCircle, Sparkles } from "lucide-react";
-import { apiCreateSession, apiSubmitQuestion, apiGetHistory, apiGetSessions, apiDeleteHistoryItemByIndex, apiGetHistoryTabs, apiDeleteHistoryTab, apiDeleteAllHistory, type AnswerStyle, type SessionSummary, type GetHistoryResponse, type HistoryTabSummary, type HistoryItem } from "@/lib/api";
+import { MessageSquare, MoreVertical, Trash2, Menu, X, History as HistoryIcon, RefreshCw, Loader2, AlertCircle, Sparkles, Copy, Download, Edit2, Code2 } from "lucide-react";
+import { apiCreateSession, apiSubmitQuestion, apiSubmitQuestionStream, apiGetHistory, apiGetSessions, apiDeleteSession, apiUpdateSessionTitle, apiDeleteHistoryItemByIndex, apiGetHistoryTabs, apiDeleteHistoryTab, apiDeleteAllHistory, apiUploadProfile, type AnswerStyle, type SessionSummary, type GetHistoryResponse, type HistoryTabSummary, type HistoryItem } from "@/lib/api";
+import { apiRenderMermaid } from "@/lib/api";
+import { downloadAnswerPdf } from "@/lib/utils";
+import { generateArchitecture, type ArchitecturePackage } from "@/lib/architectureApi";
+import { Plus, Check } from "lucide-react";
 import { apiGetMockInterviewHistory, apiDeleteMockInterviewSession, apiDeleteAllMockInterviewSessions, type MockInterviewHistorySession } from "@/lib/mockInterviewApi";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { useToast } from "@/hooks/use-toast";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, DropdownMenuSeparator, DropdownMenuLabel } from "@/components/ui/dropdown-menu";
 import { Link } from "react-router-dom";
 import { startEvaluationOverlay } from "@/overlayHost";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { BYOKOnboarding } from "./BYOKOnboarding";
 import { ApiKeySettings } from "./ApiKeySettings";
+import { UnlockAnswerEngine } from "./UnlockAnswerEngine";
 import { AnimatePresence } from "framer-motion";
 import { Key, Settings } from "lucide-react";
+import { PoweredByBadge } from "./PoweredByBadge";
+import { isDevelopmentMode, hasValidApiKeys } from "@/lib/devUtils";
 
 interface BeforeInstallPromptEvent extends Event {
   prompt: () => Promise<void>;
@@ -28,6 +56,7 @@ interface BeforeInstallPromptEvent extends Event {
 
 export const InterviewAssistant = () => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  const mainScrollRef = useRef<HTMLDivElement>(null);
   const [question, setQuestion] = useState("");
   const [answer, setAnswer] = useState("");
   const [isGenerating, setIsGenerating] = useState(false);
@@ -38,6 +67,7 @@ export const InterviewAssistant = () => {
   const [style, setStyle] = useState<AnswerStyle>("detailed");
   const [resetToken, setResetToken] = useState(0);
   const [lastQuestion, setLastQuestion] = useState("");
+  const [answerTruncated, setAnswerTruncated] = useState(false);
   const { toast } = useToast();
   const [sessions, setSessions] = useState<SessionSummary[]>([]);
   const [history, setHistory] = useState<GetHistoryResponse | null>(null);
@@ -46,6 +76,7 @@ export const InterviewAssistant = () => {
   const [menuPos, setMenuPos] = useState<{ top: number; left: number } | null>(null);
   const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState(false);
   const [deferredPrompt, setDeferredPrompt] = useState<BeforeInstallPromptEvent | null>(null);
+  const [showInstallBanner, setShowInstallBanner] = useState(false);
   const [activeMainTab, setActiveMainTab] = useState<"answer" | "intelligence" | "mock-interview" | "practice">("answer");
 
   // Intelligence history state (only for intelligence tab)
@@ -73,6 +104,36 @@ export const InterviewAssistant = () => {
   const [mockInterviewDeletingSessionId, setMockInterviewDeletingSessionId] = useState<string | null>(null);
   const [mockInterviewClearingAll, setMockInterviewClearingAll] = useState<boolean>(false);
 
+  // Deleted sessions blacklist to handle eventual consistency - persisted to localStorage
+  const deletedSessionIdsRef = useRef<Set<string>>((() => {
+    try {
+      const stored = window.localStorage.getItem('ia_deleted_sessions');
+      if (stored) return new Set<string>(JSON.parse(stored));
+    } catch { }
+    return new Set<string>();
+  })());
+
+  // Helper to add a session to deleted list and persist
+  const markSessionDeleted = (sessionId: string) => {
+    deletedSessionIdsRef.current.add(sessionId);
+    try {
+      window.localStorage.setItem('ia_deleted_sessions', JSON.stringify([...deletedSessionIdsRef.current]));
+      // Also update the sessions cache to remove this session immediately
+      const raw = window.localStorage.getItem('ia_sessions_cache');
+      if (raw) {
+        const cached = JSON.parse(raw);
+        if (Array.isArray(cached)) {
+          const updated = cached.filter((s: any) => s.session_id !== sessionId);
+          window.localStorage.setItem('ia_sessions_cache', JSON.stringify(updated));
+        }
+      }
+    } catch { }
+  };
+
+  // Answer Engine unlock dialog
+  const [showUnlockAnswerEngine, setShowUnlockAnswerEngine] = useState(false);
+  const [showUpgradeBanner, setShowUpgradeBanner] = useState(false);
+
   // Versioning for edit-and-compare flow
   const [originalQA, setOriginalQA] = useState<{ q: string; a: string } | null>(null);
   const [latestQA, setLatestQA] = useState<{ q: string; a: string } | null>(null);
@@ -84,17 +145,373 @@ export const InterviewAssistant = () => {
   const [showKeyOnboarding, setShowKeyOnboarding] = useState(false);
   const [hasApiKey, setHasApiKey] = useState(false);
 
-  useEffect(() => {
-    const key = localStorage.getItem("user_api_key");
-    const isDev = import.meta.env.DEV;
+  // Profile upload state
+  const profileInputRef = useRef<HTMLInputElement>(null);
+  const [isUploadingProfile, setIsUploadingProfile] = useState(false);
+  const [lastUploadedProfile, setLastUploadedProfile] = useState<{ name: string; characters: number } | null>(null);
 
-    if (!key && !isDev) {
-      // Always redirect to landing page if no API key is found
+  // Architecture mode selection state
+  const [showArchitectureChoice, setShowArchitectureChoice] = useState(false);
+  const [pendingArchitectureQuestion, setPendingArchitectureQuestion] = useState<string>("");
+
+  // Rename session state
+  const [editingSessionId, setEditingSessionId] = useState<string | null>(null);
+  const [newSessionTitle, setNewSessionTitle] = useState("");
+  const [isRenaming, setIsRenaming] = useState(false);
+
+  // Streaming state for typewriter animation
+  const [streaming, setStreaming] = useState(false);
+
+  // 🛡️ Debounce protection: Track if session creation is in progress
+  const [isCreatingSession, setIsCreatingSession] = useState(false);
+
+  // 📄 PDF Export: Track export progress
+  const [isExportingPdf, setIsExportingPdf] = useState(false);
+  const [exportingSessionId, setExportingSessionId] = useState<string | null>(null);
+
+  const buildPdfHtmlFromQA = async (qaItems: Array<{ question?: string; answer?: string }>) => {
+    // Build HTML with proper structure so utils.ts can normalize it
+    const htmlPromises = qaItems.map(async (it, idx) => {
+      // Escape the question text
+      const escapedQuestion = String(it.question || '')
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;');
+
+      let rawAnswer = String(it.answer || '');
+
+      // 1. Pre-render Mermaid diagrams if they exist - use Kroki PNG API for reliable text
+      const mermaidRegex = /```mermaid\n([\s\S]*?)```/g;
+      let match;
+      const mermaidMatches: Array<{ full: string; code: string }> = [];
+      while ((match = mermaidRegex.exec(rawAnswer)) !== null) {
+        mermaidMatches.push({ full: match[0], code: match[1] });
+      }
+
+      // Helper: Render mermaid to PNG via Kroki with retry and timeout
+      async function renderMermaidToPngViaKroki(code: string, retries = 2): Promise<string | null> {
+        let mermaidCode = code.trim();
+        // Add init directive for native text (not foreignObject)
+        if (!mermaidCode.includes('%%{init:')) {
+          mermaidCode = `%%{init: {'theme': 'neutral', 'flowchart': {'htmlLabels': false}}}%%\n${mermaidCode}`;
+        }
+
+        for (let attempt = 0; attempt <= retries; attempt++) {
+          try {
+            const controller = new AbortController();
+            const timeoutId = setTimeout(() => controller.abort(), 15000); // 15 second timeout
+
+            console.log(`[PDF] Kroki attempt ${attempt + 1}/${retries + 1}...`);
+
+            const response = await fetch('https://kroki.io/mermaid/png', {
+              method: 'POST',
+              headers: { 'Content-Type': 'text/plain' },
+              body: mermaidCode,
+              signal: controller.signal
+            });
+
+            clearTimeout(timeoutId);
+
+            if (!response.ok) {
+              console.error(`[PDF] Kroki PNG failed (attempt ${attempt + 1}):`, response.status);
+              if (attempt < retries) continue;
+              return null;
+            }
+
+            const blob = await response.blob();
+            return new Promise((resolve) => {
+              const reader = new FileReader();
+              reader.onloadend = () => resolve(reader.result as string);
+              reader.onerror = () => resolve(null);
+              reader.readAsDataURL(blob);
+            });
+          } catch (e: any) {
+            console.error(`[PDF] Kroki error (attempt ${attempt + 1}):`, e?.name || e);
+            if (attempt < retries) continue;
+            return null;
+          }
+        }
+        return null;
+      }
+
+      // Fallback: Render mermaid via backend API then convert SVG to PNG
+      async function renderMermaidViaBackend(code: string): Promise<string | null> {
+        try {
+          let mermaidCode = code.trim();
+
+          // Add init directive for native text
+          if (!mermaidCode.includes('%%{init:')) {
+            mermaidCode = `%%{init: {'theme': 'neutral', 'flowchart': {'htmlLabels': false}}}%%\n${mermaidCode}`;
+          }
+
+          const svg = await apiRenderMermaid({
+            code: mermaidCode,
+            theme: 'neutral',
+            style: 'modern'
+          });
+
+          if (!svg || !svg.includes('<svg')) return null;
+
+          // Convert SVG to PNG using canvas with text extraction
+          return new Promise((resolve) => {
+            try {
+              const parser = new DOMParser();
+              const doc = parser.parseFromString(svg, 'image/svg+xml');
+              const svgEl = doc.querySelector('svg');
+              if (!svgEl) { resolve(null); return; }
+
+              // Extract all text content from foreignObjects BEFORE conversion
+              const textLabels: Array<{ x: number, y: number, text: string, w: number, h: number }> = [];
+              svgEl.querySelectorAll('foreignObject').forEach(fo => {
+                const x = parseFloat(fo.getAttribute('x') || '0');
+                const y = parseFloat(fo.getAttribute('y') || '0');
+                const w = parseFloat(fo.getAttribute('width') || '100');
+                const h = parseFloat(fo.getAttribute('height') || '30');
+                let text = '';
+                const labelEl = fo.querySelector('.nodeLabel, .label, .edgeLabel, div, span');
+                if (labelEl) text = labelEl.textContent?.trim() || '';
+                if (!text) text = fo.textContent?.trim() || '';
+                text = text.replace(/\s+/g, ' ').trim();
+                if (text) textLabels.push({ x, y, text, w, h });
+                fo.remove(); // Remove foreignObject - it won't render anyway
+              });
+
+              // Get dimensions
+              let width = 800, height = 600;
+              const vb = svgEl.getAttribute('viewBox');
+              if (vb) {
+                const parts = vb.split(/[\s,]+/).map(Number);
+                if (parts.length >= 4) { width = parts[2] || 800; height = parts[3] || 600; }
+              }
+
+              // Scale for PDF - MUCH LARGER for crisp sharp diagram
+              const maxW = 1600, maxH = 1200;
+              const scale = Math.min(maxW / width, maxH / height, 3.0);
+              const finalW = Math.round(width * scale);
+              const finalH = Math.round(height * scale);
+
+              svgEl.setAttribute('width', String(finalW));
+              svgEl.setAttribute('height', String(finalH));
+              if (!svgEl.getAttribute('xmlns')) {
+                svgEl.setAttribute('xmlns', 'http://www.w3.org/2000/svg');
+              }
+
+              const serializer = new XMLSerializer();
+              const svgStr = serializer.serializeToString(svgEl);
+              const encoded = 'data:image/svg+xml;base64,' + btoa(unescape(encodeURIComponent(svgStr)));
+
+              const img = new Image();
+              img.onload = () => {
+                const canvas = document.createElement('canvas');
+                // 4x DPI for CRISP text
+                const dpr = 4;
+                canvas.width = finalW * dpr;
+                canvas.height = finalH * dpr;
+                const ctx = canvas.getContext('2d');
+                if (!ctx) { resolve(null); return; }
+
+                ctx.imageSmoothingEnabled = true;
+                ctx.imageSmoothingQuality = 'high';
+
+                // White background
+                ctx.fillStyle = '#ffffff';
+                ctx.fillRect(0, 0, canvas.width, canvas.height);
+                ctx.scale(dpr, dpr);
+                ctx.drawImage(img, 0, 0, finalW, finalH);
+
+                // Draw text labels
+                ctx.font = 'bold 14px Arial, sans-serif';
+                ctx.fillStyle = '#000000';
+                ctx.textAlign = 'center';
+                ctx.textBaseline = 'middle';
+
+                textLabels.forEach(({ x, y, text, w, h }) => {
+                  const cx = (x + w / 2) * scale;
+                  const cy = (y + h / 2) * scale;
+                  const maxChars = Math.floor(w * scale / 7);
+                  if (text.length > maxChars && maxChars > 8) {
+                    const words = text.split(' ');
+                    let lines: string[] = [];
+                    let line = '';
+                    for (const word of words) {
+                      if ((line + ' ' + word).trim().length <= maxChars) {
+                        line = (line + ' ' + word).trim();
+                      } else {
+                        if (line) lines.push(line);
+                        line = word;
+                      }
+                    }
+                    if (line) lines.push(line);
+                    const lineH = 15;
+                    const startY = cy - ((lines.length - 1) * lineH) / 2;
+                    lines.forEach((l, i) => ctx.fillText(l, cx, startY + i * lineH));
+                  } else {
+                    ctx.fillText(text, cx, cy);
+                  }
+                });
+
+                resolve(canvas.toDataURL('image/png'));
+              };
+              img.onerror = () => resolve(null);
+              img.src = encoded;
+            } catch (e) {
+              console.error('[PDF] Backend SVG conversion error:', e);
+              resolve(null);
+            }
+          });
+        } catch (e) {
+          console.error('[PDF] Backend render error:', e);
+          return null;
+        }
+      }
+
+      for (const m of mermaidMatches) {
+        try {
+          console.log('[PDF] Rendering diagram via Kroki...');
+          let pngDataUrl = await renderMermaidToPngViaKroki(m.code);
+
+          if (!pngDataUrl) {
+            console.log('[PDF] Kroki failed, trying backend fallback...');
+            pngDataUrl = await renderMermaidViaBackend(m.code);
+          }
+
+          if (pngDataUrl) {
+            const renderedReplacement = `
+                <div class="mermaid-rendered" style="margin: 20px 0; page-break-inside: avoid; text-align: center;">
+                  <img src="${pngDataUrl}" style="width: 100%; max-width: none; height: auto; display: block;" alt="Architecture Diagram" />
+                </div>`;
+            rawAnswer = rawAnswer.replace(m.full, renderedReplacement);
+          } else {
+            const renderedReplacement = `<div style="background: #1e293b; border-radius: 12px; padding: 20px; margin: 16px 0; color: #60a5fa; font-size: 13px; text-align: center;"><strong>📊 Architecture Diagram</strong><br/><span style="color: #94a3b8;">View in web app for interactive diagram.</span></div>`;
+            rawAnswer = rawAnswer.replace(m.full, renderedReplacement);
+          }
+        } catch (err) {
+          console.warn('[PDF Export] Failed to render diagram:', err);
+        }
+      }
+
+      // 2. Convert remaining Markdown to Structured HTML
+      const codeBlocks: string[] = [];
+      // Extract code blocks to prevent them from being wrapped in <p> tags later
+      let formattedAnswer = rawAnswer.replace(/```([a-zA-Z0-9+\-#\.]*)\s*?\n([\s\S]*?)```/g, (_m, lang, content) => {
+        let c = content.trim()
+          .replace(/&/g, '&amp;')
+          .replace(/</g, '&lt;')
+          .replace(/>/g, '&gt;');
+
+        // Basic syntax highlighting for PDF (safe placeholder strategy)
+        const tokens: string[] = [];
+        const addToken = (html: string) => {
+          tokens.push(html);
+          return `###TOKEN${tokens.length - 1}###`;
+        };
+
+        // 1. Strings
+        c = c.replace(/("[^"]*"|'[^']*')/g, (m) => addToken(`<span class="code-string">${m}</span>`));
+        // 2. Comments
+        c = c.replace(/(\/\/[^\n]*)/g, (m) => addToken(`<span class="code-comment">${m}</span>`));
+        // 3. Keywords (including Python specific ones)
+        c = c.replace(/\b(class|const|let|var|function|return|if|else|for|while|import|export|from|def|try|catch|async|await|switch|case|public|private|protected|interface|type|module|implements|extends|void|int|float|bool|boolean|string|None|True|False|self|yield|pass|break|continue|lambda|raise|assert|global|nonlocal|with|as|in|is|not|and|or)\b/g, (m) => addToken(`<span class="code-keyword">${m}</span>`));
+        // 4. Numbers
+        c = c.replace(/\b(\d+)\b/g, (m) => addToken(`<span class="code-number">${m}</span>`));
+        // 5. Functions
+        c = c.replace(/(\w+)\s*\(/g, (_m2, name) => addToken(`<span class="code-function">${name}</span>`) + '(');
+
+        // Restore tokens
+        c = c.replace(/###TOKEN(\d+)###/g, (_m3, id) => tokens[parseInt(id)]);
+
+        codeBlocks.push(`<div class="code-block" data-lang="${lang || ''}"><pre><code>${c}</code></pre></div>`);
+        return `<!--CODE_BLOCK_${codeBlocks.length - 1}-->`;
+      });
+
+      formattedAnswer = formattedAnswer
+        // Tables
+        .replace(/\|(.+)\|/g, (m2) => {
+          if (m2.includes('---')) return '';
+          const cells = m2.split('|').filter(x => x.trim() !== '');
+          return `<tr>${cells.map(c2 => `<td>${c2.trim()}</td>`).join('')}</tr>`;
+        })
+        // Basic Formatting
+        .replace(/\*\*([^*\n]+)\*\*/g, '<strong>$1</strong>')
+        .replace(/\*([^*\n]+)\*/g, '<em>$1</em>')
+        .replace(/^#{1,6}\s+(.+)$/gm, '<h3>$1</h3>')
+        .replace(/^(?:-\s+|\*\s+)(.+)$/gm, '<li>$1</li>')
+        // IMPORTANT: Only wrap lines that don't start with HTML tags to avoid huge gaps
+        .replace(/^\s*([^<>\n].+)$/gm, '<p>$1</p>');
+
+      // Final structure cleanup for lists and tables
+      if (formattedAnswer.includes('<tr>')) {
+        formattedAnswer = formattedAnswer.replace(/((?:<tr>[\s\S]*?<\/tr>\s*)+)/g, '<table class="table-professional">$1</table>');
+      }
+      if (formattedAnswer.includes('<li>')) {
+        formattedAnswer = formattedAnswer.replace(/(<li>[\s\S]*?<\/li>)/g, '<ul style="margin: 8px 0 8px 16px;">$1</ul>');
+      }
+
+      // Restore code blocks
+      codeBlocks.forEach((block, i) => {
+        formattedAnswer = formattedAnswer.replace(`<!--CODE_BLOCK_${i}-->`, block);
+      });
+
+      return `
+          <div class="session-block" style="margin-bottom: 40px;">
+            <div style="font-weight: 700; font-size: 16px; margin-bottom: 12px; color: #0f172a; border-bottom: 2px solid #f1f5f9; padding-bottom: 8px;">
+              Question ${idx + 1}: ${escapedQuestion}
+            </div>
+            <div class="answer" style="color: #0f172a;">
+              ${formattedAnswer}
+            </div>
+          </div>
+        `;
+    });
+
+    const processedHtmlParts = await Promise.all(htmlPromises);
+    return processedHtmlParts.join('');
+  };
+
+  // Auto-scroll to new prompt
+  const activeQuestionRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (isGenerating && mainScrollRef.current) {
+      // Delay scroll slightly to ensure DOM has updated with new content
+      setTimeout(() => {
+        if (mainScrollRef.current) {
+          const scrollBefore = mainScrollRef.current.scrollTop;
+          console.log('[Scroll] Scrolling to bottom NOW, current scrollTop:', scrollBefore);
+
+          // Scroll to bottom like ChatGPT to show the new question and response
+          mainScrollRef.current.scrollTop = mainScrollRef.current.scrollHeight;
+
+          // Verify it worked
+          setTimeout(() => {
+            if (mainScrollRef.current) {
+              console.log('[Scroll] After scroll, scrollTop:', mainScrollRef.current.scrollTop);
+            }
+          }, 100);
+        }
+      }, 100);
+    }
+  }, [isGenerating]);
+
+  useEffect(() => {
+    // In development mode, bypass API key checks
+    if (isDevelopmentMode()) {
+      console.log('🔧 [Dev Mode] Bypassing API key requirements');
+      setHasApiKey(true);
+      setShowKeyOnboarding(false);
+      return;
+    }
+
+    // Production: Check for API keys
+    const key = localStorage.getItem("user_api_key");
+
+    if (!key) {
+      // Always redirect to landing page if no API key is found in production
       window.location.href = "/";
       return;
     }
 
-    setHasApiKey(!!key || isDev);
+    setHasApiKey(!!key);
   }, []);
 
   const handleDeleteHistory = async (idx: number) => {
@@ -157,6 +574,22 @@ export const InterviewAssistant = () => {
     }
   };
 
+  const handleUpdateSessionTitle = async (sid: string, title: string) => {
+    if (!title.trim()) return;
+    setIsRenaming(true);
+    try {
+      await apiUpdateSessionTitle(sid, title);
+      // Update sessions list
+      setSessions((prev) => prev.map(s => s.session_id === sid ? { ...s, custom_title: title, title: title } : s));
+      setEditingSessionId(null);
+      toast({ title: "Title updated" });
+    } catch (err) {
+      toast({ title: "Update failed", variant: "destructive" });
+    } finally {
+      setIsRenaming(false);
+    }
+  };
+
   const ensureSession = async (opts?: { forceNew?: boolean }): Promise<string> => {
     const forceNew = !!opts?.forceNew;
     if (!forceNew && sessionId) return sessionId;
@@ -171,6 +604,268 @@ export const InterviewAssistant = () => {
       // Ignore localStorage errors
     }
     return s.session_id;
+  };
+
+  const handleCopySession = async (s: SessionSummary) => {
+    try {
+      let items = s.session_id === sessionId && history?.items ? history.items : null;
+      if (!items) {
+        const h = await apiGetHistory(s.session_id);
+        items = h.items;
+      }
+      if (!items || items.length === 0) {
+        toast({ title: "No messages to copy" });
+        return;
+      }
+      const text = [...items].reverse().map((it, idx) => `Q${idx + 1}: ${it.question}\n\nA${idx + 1}: ${it.answer}`).join('\n\n---\n\n');
+      navigator.clipboard.writeText(text);
+      toast({ title: "Copied!", description: "Conversation copied to clipboard" });
+    } catch (e) {
+      toast({ title: "Copy failed", variant: "destructive" });
+    }
+  };
+
+  const handleExportPdfSession = async (s: SessionSummary) => {
+    // Prevent duplicate exports
+    if (isExportingPdf) {
+      console.log('PDF export already in progress');
+      return;
+    }
+
+    try {
+      // Set loading state
+      setIsExportingPdf(true);
+      setExportingSessionId(s.session_id);
+
+      // Show initial feedback
+      toast({
+        title: "Starting PDF Export...",
+        description: "Preparing your document...",
+        duration: 60000, // Keep visible during export
+      });
+
+      let items = s.session_id === sessionId && history?.items ? history.items : null;
+      if (!items) {
+        const h = await apiGetHistory(s.session_id);
+        items = h.items;
+      }
+      if (!items || items.length === 0) {
+        toast({ title: "No messages to export" });
+        return;
+      }
+
+      const html = await buildPdfHtmlFromQA([...items].reverse());
+
+      // downloadAnswerPdf and apiRenderMermaid are now statically imported at the top
+      await downloadAnswerPdf({
+        question: s.custom_title || s.title || 'Conversation Export',
+        answerHtml: html,
+        fileName: `Stratax-Conversation-${s.session_id.slice(0, 8)}.pdf`,
+        onProgress: (stage) => {
+          // Update toast with progress
+          toast({
+            title: `📄 ${stage}`,
+            description: stage === 'Complete!' ? 'PDF ready!' : 'Please wait...',
+            duration: stage === 'Complete!' ? 3000 : 60000,
+          });
+        }
+      });
+      toast({ title: "Export Complete!", description: "Your PDF has been downloaded." });
+    } catch (e) {
+      console.error('[PDF Export] Error:', e);
+      toast({ title: "Export failed", description: String(e), variant: "destructive" });
+    } finally {
+      // Always reset loading state
+      setIsExportingPdf(false);
+      setExportingSessionId(null);
+    }
+  };
+
+  const handleExportPdfIntelligenceTab = async (tab: HistoryTabSummary) => {
+    if (isExportingPdf) {
+      console.log('PDF export already in progress');
+      return;
+    }
+
+    const exportKey = `intelligence:${tab.tab_id}`;
+
+    try {
+      setIsExportingPdf(true);
+      setExportingSessionId(exportKey);
+
+      toast({
+        title: "Starting PDF Export...",
+        description: "Preparing your document...",
+        duration: 60000,
+      });
+
+      const questions = Array.isArray(tab.questions) ? tab.questions : [];
+      if (questions.length === 0) {
+        toast({ title: "No questions to export" });
+        return;
+      }
+
+      const html = await buildPdfHtmlFromQA(questions);
+
+      await downloadAnswerPdf({
+        question: tab.query || 'Interview Intelligence Export',
+        answerHtml: html,
+        fileName: `Stratax-Interview-Intelligence-${tab.tab_id.slice(0, 8)}.pdf`,
+        onProgress: (stage) => {
+          toast({
+            title: `📄 ${stage}`,
+            description: stage === 'Complete!' ? 'PDF ready!' : 'Please wait...',
+            duration: stage === 'Complete!' ? 3000 : 60000,
+          });
+        }
+      });
+
+      toast({ title: "Export Complete!", description: "Your PDF has been downloaded." });
+    } catch (e) {
+      console.error('[PDF Export] Error:', e);
+      toast({ title: "Export failed", description: String(e), variant: "destructive" });
+    } finally {
+      setIsExportingPdf(false);
+      setExportingSessionId(null);
+    }
+  };
+
+  const handleDeleteAllSessions = async () => {
+    if (!window.confirm("Delete ALL chat conversations? This cannot be undone.")) return;
+    if (!window.confirm("Are you absolutely sure? All your chat history will be permanently deleted.")) return;
+
+    try {
+      // Delete each session individually (backend doesn't have a bulk delete endpoint for chat sessions)
+      const sessionsToDelete = [...sessions]; // Copy to avoid state mutation during loop
+
+      for (const session of sessionsToDelete) {
+        try {
+          // Add to blacklist and persist immediately
+          markSessionDeleted(session.session_id);
+          await apiDeleteSession(session.session_id);
+        } catch (err) {
+          console.error(`Failed to delete session ${session.session_id}:`, err);
+        }
+      }
+
+      // Clear UI state
+      setSessions([]);
+      setHistory(null);
+      setShowAnswer(false);
+      setSessionId("");
+      try {
+        window.localStorage.removeItem("ia_session_id");
+        window.localStorage.removeItem("ia_sessions_cache");
+      } catch { }
+
+      toast({ title: "All conversations deleted", description: `${sessionsToDelete.length} chat sessions removed` });
+    } catch (err) {
+      toast({ title: "Failed to clear all conversations", variant: "destructive" });
+    }
+  };
+
+  const handleNewChat = async () => {
+    // 🛡️ Debounce protection: Prevent multiple clicks
+    if (isCreatingSession) {
+      console.log('🛡️ Session creation already in progress, ignoring duplicate click');
+      return;
+    }
+
+    try {
+      // Set flag to prevent duplicate clicks
+      setIsCreatingSession(true);
+
+      console.log("[New Chat] Starting new chat flow...");
+      console.log("[New Chat] Current sessionId:", sessionId);
+      console.log("[New Chat] Current sessions count:", sessions.length);
+
+      // IMPORTANT: Clear localStorage FIRST to prevent ensureSession from reusing old session
+      try { window.localStorage.removeItem("ia_session_id"); } catch { }
+
+      // Clear UI state completely including streaming
+      setShowAnswer(false);
+      setAnswer("");
+      setQuestion("");
+      setLastQuestion("");
+      setViewingHistory(false);
+      setHistory(null);
+      setIsMobileSidebarOpen(false);
+      setStreaming(false); // CRITICAL: Reset streaming state
+
+      // Clear the animation cache so new answers will animate
+      try {
+        // Access the global cache from AnswerCard and clear it
+        (window as any).__seenAnswersCache?.clear?.();
+      } catch { }
+
+      // Wait for state to sync
+      await new Promise(resolve => setTimeout(resolve, 50));
+
+      // Create new session - this will set sessionId state AND localStorage
+      const newSessionId = await ensureSession({ forceNew: true });
+      console.log("[New Chat] Created new session:", newSessionId);
+
+      // Double-check that the new session ID is stored (defensive programming)
+      try {
+        window.localStorage.setItem("ia_session_id", newSessionId);
+        console.log("[New Chat] Stored new session in localStorage");
+      } catch { }
+
+      // Refresh sidebar list immediately so the old session appears in history
+      console.log("[New Chat] Loading sessions list...");
+      await loadSessions();
+      console.log("[New Chat] Sessions loaded, count:", sessions.length);
+
+      toast({
+        title: "New Chat Started",
+        description: "Starting a fresh conversation with memory reset.",
+      });
+    } catch (err) {
+      console.error("Failed to start new chat:", err);
+      toast({ title: "Failed to start new chat", variant: "destructive" });
+    } finally {
+      // Re-enable button after a short delay to prevent rapid re-clicking
+      setTimeout(() => {
+        setIsCreatingSession(false);
+      }, 500);
+    }
+  };
+
+  const handleProfileUploadClick = () => {
+    profileInputRef.current?.click();
+  };
+
+  const handleProfileFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    try {
+      setIsUploadingProfile(true);
+      let sid = await ensureSession();
+
+      try {
+        if (!sid) sid = await ensureSession({ forceNew: false });
+        const res = await apiUploadProfile({ session_id: sid as string, file });
+        setLastUploadedProfile({ name: file.name, characters: res.characters });
+        toast({ title: "Profile uploaded", description: `${file.name} • ${res.characters.toLocaleString()} characters indexed.` });
+      } catch (err: any) {
+        const msg = String(err?.message || "");
+        if (msg.includes("Session not found")) {
+          try { window.localStorage.removeItem("ia_session_id"); } catch { }
+          sid = await ensureSession({ forceNew: true });
+          const res = await apiUploadProfile({ session_id: sid as string, file });
+          setLastUploadedProfile({ name: file.name, characters: res.characters });
+          toast({ title: "Profile uploaded", description: `${file.name} • ${res.characters.toLocaleString()} characters indexed.` });
+        } else {
+          throw err;
+        }
+      }
+    } catch (err: any) {
+      toast({ title: "Upload failed", description: err?.message || "Please try again.", variant: "destructive" });
+    } finally {
+      setIsUploadingProfile(false);
+      if (profileInputRef.current) profileInputRef.current.value = "";
+    }
   };
 
   // Intelligence history handlers
@@ -241,6 +936,17 @@ export const InterviewAssistant = () => {
         }
         return filtered;
       });
+      // Also update localStorage cache to prevent reappearing on refresh
+      try {
+        const cached = window.localStorage.getItem('intelligence_history_cache');
+        if (cached) {
+          const tabs = JSON.parse(cached) as HistoryTabSummary[];
+          const updated = tabs.filter(t => t.tab_id !== tabId);
+          window.localStorage.setItem('intelligence_history_cache', JSON.stringify(updated));
+        }
+      } catch (e) {
+        console.warn("[InterviewAssistant] Failed to update history cache after delete", e);
+      }
       toast({
         title: "History entry deleted",
         description: "The saved search has been removed.",
@@ -266,6 +972,10 @@ export const InterviewAssistant = () => {
       const result = await apiDeleteAllHistory();
       setIntelligenceHistoryTabs([]);
       setSelectedIntelligenceHistoryTabId(null);
+      // Clear localStorage cache
+      try {
+        window.localStorage.removeItem('intelligence_history_cache');
+      } catch (e) { }
       toast({
         title: "History cleared",
         description: result?.message || "All saved searches were deleted.",
@@ -454,6 +1164,85 @@ export const InterviewAssistant = () => {
     setActiveMainTab("mock-interview"); // Switch to Mock Interview tab
   };
 
+  // 🏗️ Architecture Mode Selection Handler
+  const handleArchitectureModeSelection = async (mode: "single" | "multi-view") => {
+    console.log(`[Architecture] User selected mode: ${mode}`);
+    
+    // Hide choice UI
+    setShowArchitectureChoice(false);
+    
+    // Show loading state
+    setIsGenerating(true);
+    const loadingMessage = mode === "single" 
+      ? "🏗️ Generating comprehensive single-view architecture..."
+      : "🏗️ Generating multi-view architecture with specialized diagrams...";
+    setAnswer(loadingMessage);
+
+    try {
+      const sid = await ensureSession();
+      
+      // Resend the question with the selected architecture_mode
+      const res = await apiSubmitQuestion({
+        session_id: sid,
+        question: pendingArchitectureQuestion,
+        style: style,
+        architecture_mode: mode
+      });
+
+      console.log("[Architecture] Response received:", res);
+
+      // Handle the response normally
+      const orig = { q: pendingArchitectureQuestion, a: res.answer };
+      setOriginalQA(orig);
+      setLatestQA(null);
+      setCurrentVersion(0);
+      setLastQuestion(orig.q);
+      setAnswer(orig.a);
+
+      // Update existing history entry (don't create duplicate)
+      setHistory((prev) => {
+        const base = prev?.items ? [...prev.items] : [];
+        // Find the existing entry with this question
+        const existingIdx = base.findIndex(it => it.question === pendingArchitectureQuestion);
+        
+        if (existingIdx >= 0) {
+          // Update existing entry
+          const next = base.map((it, i) => i === existingIdx ? ({
+            question: pendingArchitectureQuestion,
+            answer: res.answer,
+            style: res.style,
+            created_at: base[existingIdx].created_at
+          }) : it);
+          return { session_id: sid, items: next } as GetHistoryResponse;
+        } else {
+          // Fallback: create new entry (shouldn't happen normally)
+          const next: HistoryItem[] = [{
+            question: pendingArchitectureQuestion,
+            answer: res.answer,
+            style: res.style,
+            created_at: new Date().toISOString()
+          }, ...base];
+          return { session_id: sid, items: next } as GetHistoryResponse;
+        }
+      });
+
+      // Update sidebar
+      loadSessions();
+      setShowAnswer(true);
+    } catch (err) {
+      console.error("[Architecture] Error:", err);
+      setAnswer(`Failed to generate architecture: ${err instanceof Error ? err.message : 'Unknown error'}`);
+      toast({
+        title: "Architecture generation failed",
+        description: err instanceof Error ? err.message : "Unknown error occurred",
+        variant: "destructive"
+      });
+    } finally {
+      setIsGenerating(false);
+      setPendingArchitectureQuestion("");
+    }
+  };
+
   // Load intelligence history on initial mount and when switching to the tab
   useEffect(() => {
     // On mount, load if empty (even if not on intelligence tab yet, to populate sidebar)
@@ -550,28 +1339,54 @@ export const InterviewAssistant = () => {
     }
   }, [sessionId]);
 
+  const loadSessions = async () => {
+    try {
+      const s = await apiGetSessions();
+      const sessionList = Array.isArray(s) ? s : [];
+      // Filter out sessions that are in the deleted blacklist
+      const validSessions = sessionList.filter(sess => !deletedSessionIdsRef.current.has(sess.session_id));
+      setSessions(validSessions);
+      console.log("[api] GET /api/sessions ->", s);
+
+      // Update cache with fresh data (excluding deleted sessions)
+      try {
+        window.localStorage.setItem('ia_sessions_cache', JSON.stringify(validSessions));
+
+        // Clean up deleted sessions that are no longer in the API response
+        // (they've been confirmed deleted from backend)
+        const apiSessionIds = new Set(sessionList.map(sess => sess.session_id));
+        const toRemove: string[] = [];
+        deletedSessionIdsRef.current.forEach(id => {
+          if (!apiSessionIds.has(id)) {
+            toRemove.push(id);
+          }
+        });
+        if (toRemove.length > 0) {
+          toRemove.forEach(id => deletedSessionIdsRef.current.delete(id));
+          window.localStorage.setItem('ia_deleted_sessions', JSON.stringify([...deletedSessionIdsRef.current]));
+        }
+      } catch { }
+    } catch (e) {
+      console.error("[api] sessions error", e);
+    }
+  };
+
   // Load recent sessions for sidebar
   useEffect(() => {
-    (async () => {
-      try {
-        // Restore cached sessions immediately for instant UI on return
-        try {
-          const raw = window.localStorage.getItem('ia_sessions_cache');
-          if (raw) {
-            const cached = JSON.parse(raw);
-            if (Array.isArray(cached)) setSessions(cached);
-          }
-        } catch { }
-        const s = await apiGetSessions();
-        setSessions(s);
-        console.log("[api] GET /api/sessions ->", s);
-        try { window.localStorage.setItem('ia_sessions_cache', JSON.stringify(s)); } catch {
-          // Ignore localStorage errors
+    // Restore cached sessions immediately for instant UI on return
+    try {
+      const raw = window.localStorage.getItem('ia_sessions_cache');
+      if (raw) {
+        const cached = JSON.parse(raw);
+        if (Array.isArray(cached)) {
+          // Filter out deleted sessions from cache too
+          const validCached = cached.filter((s: any) => !deletedSessionIdsRef.current.has(s.session_id));
+          setSessions(validCached);
         }
-      } catch (e) {
-        console.error("[api] sessions error", e);
       }
-    })();
+    } catch { }
+
+    loadSessions();
   }, []);
 
   // Capture install prompt and surface an Install action
@@ -579,18 +1394,18 @@ export const InterviewAssistant = () => {
     const handler = (e: Event) => {
       e.preventDefault();
       setDeferredPrompt(e as BeforeInstallPromptEvent);
-      try {
-        toast({
-          title: "Install available",
-          description: "Install Interview Assistant as an app for a better mobile experience.",
-        });
-      } catch {
-        // Ignore toast errors
-      }
+
+      // Proactively show install banner for 5 seconds on initial detection
+      setShowInstallBanner(true);
+      const timer = setTimeout(() => {
+        setShowInstallBanner(false);
+      }, 5000);
+
+      return () => clearTimeout(timer);
     };
     window.addEventListener('beforeinstallprompt', handler);
     return () => window.removeEventListener('beforeinstallprompt', handler);
-  }, [toast]);
+  }, []);
 
   // Load history when sessionId available or reset token changes
   useEffect(() => {
@@ -768,31 +1583,47 @@ export const InterviewAssistant = () => {
   // Removed aggressive auto-scroll behavior to allow free scrolling
 
   const handleGenerateAnswer = async (overrideQuestion?: string) => {
+    // Reset navigation states immediately
     setIsNavigatingVersion(false);
     setViewingHistory(false);
-    // Do not generate if user is viewing a saved history item
-    if (viewingHistory) {
-      console.log('[ui] Generation blocked while viewing history');
-      return;
-    }
+
     const currentQuestion = (overrideQuestion ?? question).trim();
     if (!currentQuestion) return;
 
     try {
+      // Ensure streaming is enabled for the new generation
+      setStreaming(true);
       setIsGenerating(true);
-      // Avoid jumping to the composer when editing inline
-      try { window.scrollTo({ top: 0, behavior: 'smooth' }); } catch { }
-      // Clear previous UI and stop mic/input accumulation for the next turn
-      // During inline edit, hide the previous card and show generating placeholder
-      setAnswer("");
-      setShowAnswer(true);
-      if (!overrideQuestion) setQuestion("");
-      setResetToken((t) => t + 1);
-      setLastQuestion(currentQuestion);
-      // Ensure session up-front so we can optimistically insert into history
-      const sid = await ensureSession();
+
+      console.log('[Generation] Starting, streaming enabled');
+
+      // Get the CURRENT session ID from state and localStorage
+      const currentSessionId = sessionId || (typeof window !== 'undefined' ? window.localStorage.getItem("ia_session_id") : null) || "";
+
+      // CRITICAL: Check if we're in a fresh session (history should be empty for new chats)
+      // If history session_id doesn't match current session, clear the history first
+      const isNewSession = !history || history.session_id !== currentSessionId;
+
+      if (isNewSession) {
+        console.log('[Generation] New session detected, clearing old history. Current:', currentSessionId, 'History:', history?.session_id);
+        setHistory(null);
+        setShowAnswer(false);
+      } else if (!history?.items?.length) {
+        setShowAnswer(false);
+      }
+
+      // Use existing SID if available for immediate optimistic update
+      const immediateSid = currentSessionId;
+
       // Optimistic history insert (empty answer until completion)
+      // Do this BEFORE the await ensureSession to prevent flicker
       setHistory((prev) => {
+        // If session changed, start fresh
+        if (prev && prev.session_id !== immediateSid) {
+          console.log('[Generation] Session mismatch in history update, starting fresh');
+          return { session_id: immediateSid || "pending", items: [{ question: currentQuestion, answer: '', style, created_at: new Date().toISOString() }] } as GetHistoryResponse;
+        }
+
         const nowIso = new Date().toISOString();
         const items = prev?.items || [];
         const hasPending = items.some(it => it.question === currentQuestion && it.answer === '');
@@ -806,8 +1637,16 @@ export const InterviewAssistant = () => {
           next.push(...items);
         }
 
-        return { session_id: sid, items: next } as GetHistoryResponse;
+        return { session_id: immediateSid || "pending", items: next } as GetHistoryResponse;
       });
+
+      // Clear input immediately on submit so it never "sticks" on early-return flows.
+      // If the request fails, we restore the user's prompt in the catch block.
+      if (!overrideQuestion) setQuestion("");
+      setLastQuestion(currentQuestion);
+
+      // Now ensure session (might take a second)
+      const sid = await ensureSession();
       try {
         const archiveKey = `ia_history_archive_${sid}`;
         const raw = window.localStorage.getItem(archiveKey);
@@ -825,6 +1664,9 @@ export const InterviewAssistant = () => {
       const responsePromise = (async () => {
         let res;
         try {
+          // 🏗️ ARCHITECTURE REQUESTS NOW GO TO BACKEND FOR MODE SELECTION
+          // Old direct frontend generation removed - backend handles choice flow
+          
           // Debug: log outgoing payload so we can inspect it in network/console
           console.log('[api] POST /api/question payload', { session_id: sid, question: currentQuestion, style });
           res = await apiSubmitQuestion({ session_id: sid, question: currentQuestion, style });
@@ -855,14 +1697,67 @@ export const InterviewAssistant = () => {
         setCurrentVersion(0);
       }
 
+      // Clear the animation cache BEFORE showing answer to ensure streaming works
+      try {
+        const cache = (window as any).__seenAnswersCache;
+        if (cache) {
+          console.log('[Cache] Clearing cache before showing answer, size before:', cache.size);
+          cache.clear();
+          console.log('[Cache] Cleared successfully');
+        }
+      } catch (e) {
+        console.error('[Cache] Error clearing before answer:', e);
+      }
+
       // Show immediate feedback only when not inline-editing existing response
       if (!(isEditingFromAnswer && originalQA)) {
-        setAnswer("Analyzing your question and generating a comprehensive response...");
+        setShowAnswer(true);
+        setAnswer("**Generating your response**");
       }
 
       try {
         const res = await responsePromise;
         console.log("[question] response", res);
+        console.log("[truncation] Backend truncated flag:", res.truncated);
+        console.log("[truncation] Gemini key exists:", !!localStorage.getItem("gemini_api_key"));
+
+        // Note: Truncation handling removed to match ChatGPT/Claude behavior
+        // Responses are shown in full without upgrade prompts
+        setAnswerTruncated(false);
+        setShowUpgradeBanner(false);
+
+        // 🏗️ Architecture Mode Choice Detection
+        // Check if backend is asking user to choose between single/multi-view
+        const isArchitectureChoice = res.answer.includes("Choose your preferred architecture format") ||
+          res.answer.includes("architecture_mode") ||
+          (res.answer.includes("Single Comprehensive") && res.answer.includes("Multi-View"));
+        
+        if (isArchitectureChoice) {
+          // Show choice UI instead of normal answer
+          setShowArchitectureChoice(true);
+          setPendingArchitectureQuestion(currentQuestion);
+          setAnswer(res.answer); // Show the choice message
+          setIsGenerating(false);
+          
+          // Update the pending history entry with the choice message
+          setHistory((prev) => {
+            const base = prev?.items ? [...prev.items] : [];
+            const pendingIdx = base.findIndex(it => it.question === currentQuestion && it.answer === '');
+            if (pendingIdx >= 0) {
+              const next = base.map((it, i) => i === pendingIdx ? ({
+                question: currentQuestion,
+                answer: res.answer,
+                style: res.style,
+                created_at: base[pendingIdx].created_at
+              }) : it);
+              return { session_id: sid, items: next } as GetHistoryResponse;
+            }
+            return prev;
+          });
+          
+          return; // Don't proceed with normal flow
+        }
+
         if (isEditingFromAnswer && originalQA) {
           // Save as latest and show latest
           const latest = { q: currentQuestion, a: res.answer };
@@ -910,6 +1805,9 @@ export const InterviewAssistant = () => {
           });
           return { session_id: sid, items: dedup } as GetHistoryResponse;
         });
+
+        // Update sidebar with latest counts/titles
+        loadSessions();
         // Persist to local durable archive (replace pending entry if present)
         try {
           const archiveKey = `ia_history_archive_${sid}`;
@@ -921,10 +1819,116 @@ export const InterviewAssistant = () => {
           const CUTOFF = 1000;
           window.localStorage.setItem(archiveKey, JSON.stringify(list.slice(0, CUTOFF)));
         } catch { }
+        
+        // ✅ SUCCESS - Now clear the input field
+        if (!overrideQuestion) setQuestion("");
+        
         setShowAnswer(true);
       } catch (err) {
         console.error("[question] error", err);
-        setAnswer("I apologize, but I encountered an error while processing your question. Please try again.");
+
+        // ❌ ERROR - Restore the input so user doesn't lose their prompt
+        if (!overrideQuestion && question !== currentQuestion) {
+          setQuestion(currentQuestion);
+        }
+
+        // Parse error message for specific error types
+        const errorMessage = String(err?.message || "");
+        const errorLower = errorMessage.toLowerCase();
+
+        // Detect and handle specific error types professionally
+        if (
+          errorMessage.includes("401") ||
+          errorMessage.includes("403") ||
+          errorLower.includes("unauthorized") ||
+          errorLower.includes("forbidden") ||
+          errorLower.includes("invalid api key") ||
+          errorLower.includes("authentication") ||
+          errorLower.includes("invalid_key")
+        ) {
+          // Missing or invalid API key
+          setAnswer(
+            "🔑 **API Key Issue**\n\n" +
+            "The AI service rejected your request. This usually means your API key is missing, incorrect, or has expired.\n\n" +
+            "**What you can do:**\n" +
+            "1. Open **Bridge Settings** (top right icon)\n" +
+            "2. Check if your Groq or Gemini key is entered correctly\n" +
+            "3. Ensure there are no extra spaces at the beginning or end of the key\n\n" +
+            "**Get a fresh free key:**\n" +
+            "- **Groq:** [console.groq.com](https://console.groq.com/keys)\n" +
+            "- **Gemini:** [aistudio.google.com/app/apikey](https://aistudio.google.com/app/apikey)\n\n" +
+            "Your keys are stored locally in your browser and are never shared with anyone else."
+          );
+        } else if (errorLower.includes("rate limit") || errorLower.includes("429") || errorLower.includes("too many requests")) {
+          // Rate limit exceeded
+          setAnswer(
+            "⏱️ **Rate Limit Reached**\n\n" +
+            "You've hit the rate limit for your API key. This is a temporary restriction.\n\n" +
+            "**What you can do:**\n" +
+            "- **Wait a few minutes** and try again\n" +
+            "- **Upgrade your API tier** for higher limits\n" +
+            "- **Use a different API key** if you have one\n\n" +
+            "**Pro tip:** If you have both Groq and Gemini keys, the app will automatically switch between them."
+          );
+        } else if (errorLower.includes("quota") || errorLower.includes("insufficient") || errorLower.includes("exceeded")) {
+          // Quota exhausted
+          setAnswer(
+            "📊 **Quota Exhausted**\n\n" +
+            "Your API key has reached its usage quota for this billing period.\n\n" +
+            "**What you can do:**\n" +
+            "- **Wait until quota resets** (usually monthly)\n" +
+            "- **Upgrade your plan** for more quota\n" +
+            "- **Get a new free API key** from the provider\n" +
+            "- **Switch providers** (add Gemini if using Groq, or vice versa)\n\n" +
+            "**Free tier limits:**\n" +
+            "- Groq: Generous free tier with high limits\n" +
+            "- Gemini: Free tier with daily quota"
+          );
+        } else if (errorLower.includes("timeout") || errorLower.includes("timed out")) {
+          // Request timeout
+          setAnswer(
+            "⏰ **Request Timed Out**\n\n" +
+            "The request took too long to complete.\n\n" +
+            "**What you can do:**\n" +
+            "- **Try again** - it might work on retry\n" +
+            "- **Simplify your question** - break it into smaller parts\n" +
+            "- **Check your connection**\n\n" +
+            "If this persists, the AI service might be experiencing high load."
+          );
+        } else if (errorLower.includes("network") || errorLower.includes("fetch failed") || errorLower.includes("connection")) {
+          // Network error
+          setAnswer(
+            "🌐 **Connection Error**\n\n" +
+            "Unable to reach the AI service.\n\n" +
+            "**What you can do:**\n" +
+            "- **Check your internet connection**\n" +
+            "- **Try again in a moment**\n" +
+            "- **Refresh the page** if it persists\n\n" +
+            "If you're behind a firewall or VPN, it might be blocking the connection."
+          );
+        } else if (errorLower.includes("500") || errorLower.includes("internal server error")) {
+          // Server error
+          setAnswer(
+            "🔧 **Service Temporarily Unavailable**\n\n" +
+            "The AI service is experiencing technical difficulties.\n\n" +
+            "**What you can do:**\n" +
+            "- **Wait a few minutes** and try again\n" +
+            "- **Try a different provider** (switch between Groq/Gemini)\n\n" +
+            "The service should be back online shortly!"
+          );
+        } else {
+          // Generic error with helpful guidance
+          setAnswer(
+            "⚠️ **Something Went Wrong**\n\n" +
+            "I encountered an unexpected error.\n\n" +
+            "**What you can do:**\n" +
+            "- **Try again** - it might be temporary\n" +
+            "- **Rephrase your question** if it was complex\n" +
+            "- **Check Bridge Settings** for valid API key\n\n" +
+            "If this keeps happening, check the browser console (F12) for details."
+          );
+        }
+
         // Remove the optimistic insert with empty answer since response failed
         setHistory((prev) => {
           const items = prev?.items || [];
@@ -946,6 +1950,11 @@ export const InterviewAssistant = () => {
       console.error("[question] error", err);
     } finally {
       setIsGenerating(false);
+      // Turn off streaming after a delay to allow AnswerCard animation to complete and cache
+      // This prevents re-streaming when navigating between tabs
+      setTimeout(() => {
+        setStreaming(false);
+      }, 500);
     }
   };
 
@@ -1099,12 +2108,49 @@ export const InterviewAssistant = () => {
   }, []);
 
   return (
-    <div className="relative min-h-screen overflow-hidden bg-background">
+    <div className="relative h-screen overflow-hidden overflow-x-hidden bg-background" style={{ overscrollBehavior: 'none' }}>
       {/* Animated Background - Only visible in dark mode */}
       <canvas
         ref={canvasRef}
         className="absolute inset-0 hidden dark:block dark:opacity-20"
       />
+
+      {/* Premium Install Notification Banner */}
+      <AnimatePresence>
+        {showInstallBanner && deferredPrompt && (
+          <div
+            className="fixed top-24 left-1/2 -translate-x-1/2 z-[100] w-[90%] max-w-sm pointer-events-auto"
+            onClick={() => setShowInstallBanner(false)}
+          >
+            <div className="bg-primary/10 backdrop-blur-xl border border-primary/20 rounded-2xl p-4 shadow-2xl shadow-primary/20 flex items-center gap-4 animate-in fade-in zoom-in slide-in-from-top-4 duration-500">
+              <div className="w-10 h-10 rounded-xl bg-primary flex items-center justify-center shadow-lg shadow-primary/30">
+                <Sparkles className="w-5 h-5 text-primary-foreground" />
+              </div>
+              <div className="flex-1">
+                <h4 className="text-sm font-bold text-foreground">Install Stratax AI</h4>
+                <p className="text-[11px] text-muted-foreground leading-tight">Get a faster, native experience with offline access.</p>
+              </div>
+              <Button
+                size="sm"
+                className="h-8 rounded-lg font-bold shadow-md shadow-primary/20"
+                onClick={async (e) => {
+                  e.stopPropagation();
+                  const prompt = deferredPrompt;
+                  setDeferredPrompt(null);
+                  setShowInstallBanner(false);
+                  try {
+                    await prompt.prompt();
+                    await prompt.userChoice;
+                  } catch { }
+                }}
+              >
+                Install
+              </Button>
+            </div>
+          </div>
+        )}
+      </AnimatePresence>
+
 
       {/* Gradient Overlays - Only visible in dark mode */}
       <div className="absolute inset-0 hidden dark:block bg-gradient-to-br dark:from-purple-900/20 dark:via-black dark:to-blue-900/20 pointer-events-none" />
@@ -1124,168 +2170,371 @@ export const InterviewAssistant = () => {
       )}
 
       {/* Content */}
-      <div className="relative z-10">
-        {/* Mobile Header */}
-        <div className="md:hidden sticky top-0 z-50 bg-background/80 backdrop-blur-xl border-b border-border">
-          <div className="flex items-center justify-between px-4 py-3">
-            <div className="flex items-center gap-3">
+      <div className="relative z-10 flex flex-col h-full w-full overflow-hidden">
+        {/* Mobile Header - Minimal and Transparent */}
+        <div className="md:hidden sticky top-0 z-50 bg-transparent pointer-events-none">
+          <div className="flex items-center justify-between px-4 py-3 pointer-events-auto">
+            <div className="flex items-center">
               <Button
                 variant="ghost"
                 size="sm"
-                onClick={() => setIsMobileSidebarOpen(true)}
                 className="h-8 w-8 p-0 hover:bg-white/10"
+                onClick={() => setIsMobileSidebarOpen(true)}
               >
-                <Menu className="h-5 w-5" />
+                <Menu className="h-4 w-4" />
               </Button>
-              <div className="flex items-center gap-2">
-                <div className="w-6 h-6 bg-gradient-to-br from-purple-500 to-blue-500 rounded-lg flex items-center justify-center">
-                  <Sparkles className="w-4 h-4 text-white" />
-                </div>
-                <h1 className="text-lg font-bold bg-gradient-to-r from-white to-gray-400 bg-clip-text text-transparent">Stratax AI</h1>
-              </div>
             </div>
-            <div className="flex items-center gap-2">
-              <ThemeToggle />
+
+            <div className="flex items-center gap-0.5">
+              <ThemeToggle className="h-8 w-8" iconClassName="h-4 w-4" />
               <Dialog>
                 <DialogTrigger asChild>
-                  <Button variant="ghost" size="sm" className={`h-9 px-3 flex items-center gap-2 hover:bg-white/10 ${!hasApiKey ? 'bg-amber-500/10 text-amber-500 border border-amber-500/20' : ''}`}>
-                    <Settings className="h-4 w-4" />
-                    {!hasApiKey && <span className="text-xs font-bold">Connect Bridge</span>}
+                  <Button variant="ghost" size="sm" className={`h-8 w-8 p-0 hover:bg-white/10 ${!hasApiKey ? 'bg-amber-500/10 text-amber-500' : ''}`}>
+                    <Settings className="h-3.5 w-3.5" />
                   </Button>
                 </DialogTrigger>
-                <DialogContent className="sm:max-w-[450px] p-0 border-none bg-transparent">
+                <DialogContent className="w-[calc(100vw-2rem)] sm:max-w-[450px] p-0 border-none bg-transparent">
                   <ApiKeySettings />
                 </DialogContent>
               </Dialog>
-              <Link to="/run">
-                <Button variant="outline" size="sm" className="hidden md:inline-flex">Run Code</Button>
-              </Link>
-              {deferredPrompt && (
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={async () => {
-                    const prompt = deferredPrompt;
-                    setDeferredPrompt(null);
-                    try {
-                      await prompt.prompt();
-                      await prompt.userChoice;
-                    } catch { }
-                  }}
-                >
-                  Install
-                </Button>
-              )}
             </div>
           </div>
         </div>
 
         {/* Mobile Sidebar Overlay */}
         {isMobileSidebarOpen && (
-          <div className="md:hidden fixed inset-0 z-50 bg-gray-900/30 dark:bg-black/50" onClick={() => setIsMobileSidebarOpen(false)}>
+          <div className="md:hidden fixed inset-0 z-[100] bg-gray-900/60 backdrop-blur-sm dark:bg-black/60" onClick={() => setIsMobileSidebarOpen(false)}>
             <div
-              className="fixed left-0 top-0 bottom-0 w-72 max-w-[75vw] bg-background/95 backdrop-blur-xl border-r border-border shadow-xl"
+              className="fixed left-0 top-0 bottom-0 w-80 max-w-[85vw] h-full bg-background border-r border-border shadow-2xl flex flex-col"
               onClick={(e) => e.stopPropagation()}
             >
-              {/* Mobile Sidebar Header */}
-              <div className="flex items-center justify-between p-4 border-b border-border/40">
-                <h2 className="text-lg font-bold text-foreground">History</h2>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => setIsMobileSidebarOpen(false)}
-                  className="h-8 w-8 p-0 hover:bg-muted/50"
-                >
-                  <X className="h-5 w-5" />
-                </Button>
-              </div>
-
               {/* Mobile Sidebar Content */}
-              <div className="flex flex-col h-full">
-                {/* Sessions */}
-                <div className="px-2 py-2 overflow-y-auto">
-                  {sessions?.length ? (
-                    <div className="mb-4">
-                      <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wide px-2 mb-2">Sessions</h3>
-                      <ul className="space-y-1">
-                        {sessions.map((s) => (
-                          <li key={s.session_id} className="group">
-                            <button
-                              className="w-full text-left px-3 py-2 rounded-md hover:bg-white/10 transition-colors"
-                              onClick={async () => {
-                                try {
-                                  setSessionId(s.session_id);
-                                  const h = await apiGetHistory(s.session_id);
-                                  setHistory(h);
-                                  setIsMobileSidebarOpen(false);
-                                  console.log(`[api] GET /api/history/${s.session_id} ->`, h);
-                                } catch (e) {
-                                  console.error("[api] history error", e);
-                                }
-                              }}
-                            >
-                              <div className="text-sm font-medium truncate">{s.session_id}</div>
-                              <div className="text-[10px] text-muted-foreground flex items-center gap-2">
-                                <span>{new Date(s.last_update).toLocaleString()}</span>
-                                <span>•</span>
-                                <span>{s.qna_count} QnA</span>
-                              </div>
-                            </button>
-                          </li>
-                        ))}
-                      </ul>
-                    </div>
-                  ) : null}
-
-                  {/* Current History */}
+              <div className="flex-1 overflow-y-auto custom-scrollbar overflow-x-hidden pt-4" style={{ WebkitOverflowScrolling: 'touch', overscrollBehavior: 'contain' }}>
+                <div className="px-4 py-6 space-y-8 pb-20">
+                  {/* View Selection */}
                   <div>
-                    <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wide px-2 mb-2">Current History</h3>
-                    {history?.items?.length ? (
-                      <ul className="space-y-1">
-                        {history.items.map((it, idx) => (
-                          <li key={idx} className="group" data-history-item>
-                            <div
-                              className="relative rounded-md bg-white/5 border border-white/10 hover:bg-white/10 transition-colors cursor-pointer"
-                              onClick={() => {
-                                try { window.scrollTo({ top: 0, behavior: 'smooth' }); } catch { }
-                                setLastQuestion(it.question);
-                                // Mark this as a history view first so `AnswerCard` will
-                                // receive `streaming={false}`. Use a microtask to avoid
-                                // React's batching merging these updates into one render.
-                                setViewingHistory(true);
-                                setTimeout(() => {
-                                  setAnswer(it.answer);
-                                  setShowAnswer(true);
-                                  setQuestion("");
-                                  setIsMobileSidebarOpen(false);
-                                }, 0);
-                                console.log('[ui] Opened history item', { index: idx, question: it.question });
-                              }}
-                            >
-                              {/* Content */}
-                              <div className="px-3 py-2 pr-10">
-                                <div className="text-xs font-medium line-clamp-2 leading-relaxed">Q: {it.question}</div>
-                              </div>
-
-                              {/* Three-dots menu - better positioned */}
-                              <button
-                                className="absolute right-2 top-2 p-1 rounded hover:bg-muted/60 transition-colors"
-                                title="Delete"
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  handleDeleteHistory(idx);
-                                }}
-                              >
-                                <Trash2 className="h-3 w-3 text-muted-foreground hover:text-destructive" />
-                              </button>
-                            </div>
-                          </li>
-                        ))}
-                      </ul>
-                    ) : (
-                      <div className="px-2 text-xs text-muted-foreground">No history yet</div>
-                    )}
+                    <h3 className="text-[10px] font-bold text-muted-foreground uppercase tracking-[0.2em] mb-4 px-2">Navigation</h3>
+                    <div className="space-y-1">
+                      {[
+                        { id: "answer", label: "AI Copilot", icon: MessageSquare },
+                        { id: "intelligence", label: "Search Intelligence", icon: Sparkles },
+                        { id: "mock-interview", label: "Mock Interview", icon: HistoryIcon },
+                        { id: "practice", label: "Live Practice", icon: RefreshCw },
+                      ].map((item) => (
+                        <Button
+                          key={item.id}
+                          variant="ghost"
+                          onClick={() => {
+                            setActiveMainTab(item.id as any);
+                            setIsMobileSidebarOpen(false);
+                          }}
+                          className={`w-full justify-start h-10 px-3 gap-3 rounded-xl transition-all ${activeMainTab === item.id
+                            ? "bg-primary/10 text-primary font-bold"
+                            : "text-muted-foreground hover:bg-muted/50"
+                            }`}
+                        >
+                          <item.icon className="h-4 w-4" />
+                          <span className="text-sm">{item.label}</span>
+                        </Button>
+                      ))}
+                      {/* Code Runner Link */}
+                      <Link to="/run" onClick={() => setIsMobileSidebarOpen(false)}>
+                        <Button
+                          variant="ghost"
+                          className="w-full justify-start h-10 px-3 gap-3 rounded-xl transition-all text-muted-foreground hover:bg-muted/50"
+                        >
+                          <Code2 className="h-4 w-4" />
+                          <span className="text-sm">Code Runner</span>
+                        </Button>
+                      </Link>
+                    </div>
                   </div>
+
+                  {/* New Chat Button - Only for AI Copilot */}
+                  {activeMainTab === "answer" && (
+                    <div className="px-2">
+                      <Button
+                        variant="outline"
+                        onClick={handleNewChat}
+                        disabled={isCreatingSession}
+                        className="w-full justify-start h-10 px-3 gap-3 rounded-xl bg-primary/5 hover:bg-primary/10 text-primary font-medium border-primary/20 disabled:opacity-60 disabled:cursor-not-allowed"
+                      >
+                        {isCreatingSession ? (
+                          <Loader2 className="h-4 w-4 animate-spin" />
+                        ) : (
+                          <Plus className="h-4 w-4" />
+                        )}
+                        <span className="text-sm">{isCreatingSession ? "Creating..." : "New Chat"}</span>
+                      </Button>
+                    </div>
+                  )}
+
+                  {/* Context-Aware History */}
+                  <div>
+                    <div className="flex items-center justify-between px-2 mb-4">
+                      <h3 className="text-[10px] font-bold text-muted-foreground uppercase tracking-[0.2em]">
+                        {activeMainTab === "intelligence" ? "Search History" :
+                          activeMainTab === "mock-interview" ? "Mock History" : "Answer History"}
+                      </h3>
+                    </div>
+
+                    <div className="space-y-2 max-h-[60vh] overflow-y-auto custom-scrollbar">
+                      {/* AI Copilot History - Show current conversation only */}
+                      {activeMainTab === "answer" && (
+                        history?.items?.length ? (
+                          <div className="space-y-1">
+                            {/* Show current session as ONE item */}
+                            <div
+                              onClick={() => {
+                                // Already viewing current conversation - do nothing or scroll to top
+                                setViewingHistory(false);
+                                setShowAnswer(true);
+                                setIsMobileSidebarOpen(false);
+                              }}
+                              className="group relative flex items-center gap-3 p-3 rounded-xl bg-primary/10 cursor-pointer transition-all border border-primary/20"
+                            >
+                              <div className="p-2 rounded-lg bg-primary/10 text-primary">
+                                <MessageSquare className="h-3.5 w-3.5" />
+                              </div>
+                              <div className="flex-1 min-w-0 pr-8">
+                                <div className="text-xs font-medium line-clamp-1 opacity-90">
+                                  {(() => {
+                                    const currentSession = Array.isArray(sessions) ? sessions.find(s => s.session_id === sessionId) : null;
+                                    return currentSession?.custom_title || currentSession?.title || (history?.items && history.items[history.items.length - 1]?.question) || "New Chat";
+                                  })()}
+                                </div>
+                                <div className="text-[10px] text-muted-foreground mt-0.5">
+                                  {history?.items?.length || 0} message{(history?.items?.length || 0) !== 1 ? 's' : ''}
+                                </div>
+                              </div>
+                              {/* Mobile Actions Dropdown */}
+                              <DropdownMenu>
+                                <DropdownMenuTrigger asChild onClick={(e) => e.stopPropagation()}>
+                                  <Button
+                                    variant="ghost"
+                                    size="icon"
+                                    className="absolute right-2 top-2 h-7 w-7 text-muted-foreground hover:text-primary"
+                                  >
+                                    <MoreVertical className="h-3.5 w-3.5" />
+                                  </Button>
+                                </DropdownMenuTrigger>
+                                <DropdownMenuContent align="end" className="w-40">
+                                  <DropdownMenuItem onClick={(e) => {
+                                    e.stopPropagation();
+                                    const currentSession = Array.isArray(sessions) ? sessions.find(s => s.session_id === sessionId) : null;
+                                    if (currentSession) handleCopySession(currentSession);
+                                    setIsMobileSidebarOpen(false);
+                                  }}>
+                                    <Copy className="h-4 w-4 mr-2" />
+                                    <span>Copy</span>
+                                  </DropdownMenuItem>
+                                  <DropdownMenuItem
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      const currentSession = Array.isArray(sessions) ? sessions.find(s => s.session_id === sessionId) : null;
+                                      if (currentSession) handleExportPdfSession(currentSession);
+                                      setIsMobileSidebarOpen(false);
+                                    }}
+                                    disabled={isExportingPdf}
+                                  >
+                                    {isExportingPdf && exportingSessionId === sessionId ? (
+                                      <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                                    ) : (
+                                      <Download className="h-4 w-4 mr-2" />
+                                    )}
+                                    <span>{isExportingPdf && exportingSessionId === sessionId ? "Exporting..." : "Export PDF"}</span>
+                                  </DropdownMenuItem>
+                                  <DropdownMenuItem onClick={(e) => {
+                                    e.stopPropagation();
+                                    const currentSession = Array.isArray(sessions) ? sessions.find(s => s.session_id === sessionId) : null;
+                                    setEditingSessionId(sessionId);
+                                    setNewSessionTitle(currentSession?.custom_title || currentSession?.title || (history?.items && history.items[history.items.length - 1]?.question) || "");
+                                    setIsMobileSidebarOpen(false);
+                                  }}>
+                                    <Edit2 className="h-4 w-4 mr-2" />
+                                    <span>Rename</span>
+                                  </DropdownMenuItem>
+                                  <DropdownMenuSeparator />
+                                  <DropdownMenuItem
+                                    className="text-destructive focus:text-destructive"
+                                    onClick={async (e) => {
+                                      e.stopPropagation();
+                                      if (!window.confirm("Delete this conversation?")) return;
+                                      setIsMobileSidebarOpen(false);
+                                      try {
+                                        markSessionDeleted(sessionId);
+                                        await apiDeleteSession(sessionId);
+                                        setSessions((prev) => prev.filter((ps) => ps.session_id !== sessionId));
+                                        setShowAnswer(false);
+                                        setAnswer("");
+                                        setLastQuestion("");
+                                        setQuestion("");
+                                        setHistory(null);
+                                        setSessionId("");
+                                        setOriginalQA(null);
+                                        setLatestQA(null);
+                                        setCurrentVersion(0);
+                                        try {
+                                          window.localStorage.removeItem("ia_session_id");
+                                          window.localStorage.removeItem("ia_last_question");
+                                          window.localStorage.removeItem("ia_last_answer");
+                                          window.localStorage.setItem("ia_show_answer", "false");
+                                        } catch { }
+                                        toast({ title: "Conversation deleted" });
+                                      } catch (err) {
+                                        toast({ title: "Delete failed", variant: "destructive" });
+                                      }
+                                    }}
+                                  >
+                                    <Trash2 className="h-4 w-4 mr-2" />
+                                    <span>Delete</span>
+                                  </DropdownMenuItem>
+                                </DropdownMenuContent>
+                              </DropdownMenu>
+                            </div>
+                          </div>
+                        ) : <div className="px-2 py-4 text-xs text-muted-foreground/60 text-center italic">No messages yet</div>
+                      )}
+
+                      {/* Search Intelligence History */}
+                      {activeMainTab === "intelligence" && (
+                        intelligenceHistoryTabs.length ? (
+                          <div className="space-y-1">
+                            {intelligenceHistoryTabs.map((tab) => (
+                              <div
+                                key={tab.tab_id}
+                                onClick={() => {
+                                  handleSelectIntelligenceHistoryTab(tab);
+                                  setIsMobileSidebarOpen(false);
+                                }}
+                                className="group relative flex items-center gap-3 p-3 rounded-xl hover:bg-muted/50 cursor-pointer transition-all border border-transparent hover:border-border/40"
+                              >
+                                <div className="p-2 rounded-lg bg-primary/5 text-primary">
+                                  <Sparkles className="h-3.5 w-3.5" />
+                                </div>
+                                <div className="flex-1 min-w-0 pr-14">
+                                  <div className="text-xs font-medium line-clamp-1 opacity-90">{tab.query || "Untitled Search"}</div>
+                                  <div className="text-[10px] text-muted-foreground mt-0.5 flex items-center gap-1.5">
+                                    <span>{tab.created_at ? new Date(tab.created_at).toLocaleDateString() : 'Recent'}</span>
+                                    <span>•</span>
+                                    <span>{tab.question_count || 0} questions</span>
+                                  </div>
+                                </div>
+                                {/* Mobile Actions Dropdown (match AI Copilot) */}
+                                <DropdownMenu>
+                                  <DropdownMenuTrigger asChild onClick={(e) => e.stopPropagation()}>
+                                    <Button
+                                      variant="ghost"
+                                      size="icon"
+                                      className="absolute right-2 top-2 h-7 w-7 text-muted-foreground hover:text-primary"
+                                    >
+                                      <MoreVertical className="h-3.5 w-3.5" />
+                                    </Button>
+                                  </DropdownMenuTrigger>
+                                  <DropdownMenuContent align="end" className="w-40">
+                                    <DropdownMenuItem
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        handleExportPdfIntelligenceTab(tab);
+                                        setIsMobileSidebarOpen(false);
+                                      }}
+                                      disabled={isExportingPdf}
+                                    >
+                                      {isExportingPdf && exportingSessionId === `intelligence:${tab.tab_id}` ? (
+                                        <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                                      ) : (
+                                        <Download className="h-4 w-4 mr-2" />
+                                      )}
+                                      <span>{isExportingPdf && exportingSessionId === `intelligence:${tab.tab_id}` ? "Exporting..." : "Export PDF"}</span>
+                                    </DropdownMenuItem>
+                                    <DropdownMenuSeparator />
+                                    <DropdownMenuItem
+                                      className="text-destructive focus:text-destructive"
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        handleDeleteIntelligenceHistoryTab(tab.tab_id);
+                                        setIsMobileSidebarOpen(false);
+                                      }}
+                                      disabled={intelligenceHistoryDeletingTabId === tab.tab_id}
+                                    >
+                                      {intelligenceHistoryDeletingTabId === tab.tab_id ? (
+                                        <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                                      ) : (
+                                        <Trash2 className="h-4 w-4 mr-2" />
+                                      )}
+                                      <span>Delete</span>
+                                    </DropdownMenuItem>
+                                  </DropdownMenuContent>
+                                </DropdownMenu>
+                              </div>
+                            ))}
+                          </div>
+                        ) : <div className="px-2 py-4 text-xs text-muted-foreground/60 text-center italic">No searches yet</div>
+                      )}
+
+                      {/* Mock Interview History */}
+                      {activeMainTab === "mock-interview" && (
+                        mockInterviewSessions.length > 0 ? (
+                          <div className="space-y-1">
+                            {mockInterviewSessions.map((session) => (
+                              <div
+                                key={session.session_id}
+                                onClick={() => {
+                                  handleSelectMockSession(session);
+                                  setIsMobileSidebarOpen(false);
+                                }}
+                                className="group relative flex items-center gap-3 p-3 rounded-xl hover:bg-muted/50 cursor-pointer transition-all border border-transparent hover:border-border/40"
+                              >
+                                <div className="p-2 rounded-lg bg-primary/5 text-primary">
+                                  <HistoryIcon className="h-3.5 w-3.5" />
+                                </div>
+                                <div className="flex-1 min-w-0 pr-8">
+                                  <div className="text-xs font-medium line-clamp-1 opacity-90">
+                                    {session.interview_type ? session.interview_type.replace('_', ' ') : 'Mock Interview'} · {session.difficulty || 'Medium'}
+                                  </div>
+                                  <div className="text-[10px] text-muted-foreground mt-1 flex items-center gap-1.5">
+                                    <span>{session.started_at ? new Date(session.started_at).toLocaleDateString() : 'Recent'}</span>
+                                    <span>•</span>
+                                    <span>{session.questions_answered || 0}/{session.total_questions || 0} Qs</span>
+                                  </div>
+                                </div>
+                                <button
+                                  className="absolute right-2 top-3 p-1 rounded-md opacity-0 group-hover:opacity-100 hover:bg-destructive/10 text-muted-foreground hover:text-destructive transition-all"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    handleDeleteMockInterviewSession(session.session_id);
+                                  }}
+                                >
+                                  <Trash2 className="h-3 w-3" />
+                                </button>
+                              </div>
+                            ))}
+                          </div>
+                        ) : <div className="px-2 py-4 text-xs text-muted-foreground/60 text-center italic">No interview history</div>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Install Option */}
+                  {deferredPrompt && (
+                    <div className="pt-4 border-t border-border/40">
+                      <Button
+                        variant="ghost"
+                        onClick={async () => {
+                          const prompt = deferredPrompt;
+                          setDeferredPrompt(null);
+                          try {
+                            await prompt.prompt();
+                            await prompt.userChoice;
+                          } catch { }
+                        }}
+                        className="w-full justify-start h-10 px-3 gap-3 rounded-xl text-primary font-bold hover:bg-primary/5"
+                      >
+                        <Sparkles className="h-4 w-4" />
+                        <span className="text-sm">Install Stratax AI</span>
+                      </Button>
+                    </div>
+                  )}
                 </div>
               </div>
             </div>
@@ -1342,19 +2591,50 @@ export const InterviewAssistant = () => {
                                   </p>
                                 </div>
                                 <div className="flex items-center gap-1">
-                                  <Button
-                                    variant="ghost"
-                                    size="icon"
-                                    className="text-red-500 hover:text-red-600"
-                                    onClick={() => handleDeleteIntelligenceHistoryTab(tab.tab_id)}
-                                    disabled={intelligenceHistoryDeletingTabId === tab.tab_id}
-                                  >
-                                    {intelligenceHistoryDeletingTabId === tab.tab_id ? (
-                                      <Loader2 className="h-4 w-4 animate-spin" />
-                                    ) : (
-                                      <Trash2 className="h-4 w-4" />
-                                    )}
-                                  </Button>
+                                  {/* Desktop Actions Dropdown (match AI Copilot) */}
+                                  <DropdownMenu>
+                                    <DropdownMenuTrigger asChild onClick={(e) => e.stopPropagation()}>
+                                      <Button
+                                        variant="ghost"
+                                        size="icon"
+                                        className="text-muted-foreground hover:text-foreground"
+                                      >
+                                        <MoreVertical className="h-4 w-4" />
+                                      </Button>
+                                    </DropdownMenuTrigger>
+                                    <DropdownMenuContent align="end" className="w-40">
+                                      <DropdownMenuItem
+                                        onClick={(e) => {
+                                          e.stopPropagation();
+                                          handleExportPdfIntelligenceTab(tab);
+                                        }}
+                                        disabled={isExportingPdf}
+                                      >
+                                        {isExportingPdf && exportingSessionId === `intelligence:${tab.tab_id}` ? (
+                                          <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                                        ) : (
+                                          <Download className="h-4 w-4 mr-2" />
+                                        )}
+                                        <span>{isExportingPdf && exportingSessionId === `intelligence:${tab.tab_id}` ? "Exporting..." : "Export PDF"}</span>
+                                      </DropdownMenuItem>
+                                      <DropdownMenuSeparator />
+                                      <DropdownMenuItem
+                                        className="text-destructive focus:text-destructive"
+                                        onClick={(e) => {
+                                          e.stopPropagation();
+                                          handleDeleteIntelligenceHistoryTab(tab.tab_id);
+                                        }}
+                                        disabled={intelligenceHistoryDeletingTabId === tab.tab_id}
+                                      >
+                                        {intelligenceHistoryDeletingTabId === tab.tab_id ? (
+                                          <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                                        ) : (
+                                          <Trash2 className="h-4 w-4 mr-2" />
+                                        )}
+                                        <span>Delete</span>
+                                      </DropdownMenuItem>
+                                    </DropdownMenuContent>
+                                  </DropdownMenu>
                                 </div>
                               </div>
                               {tab.metadata && (
@@ -1540,90 +2820,342 @@ export const InterviewAssistant = () => {
               </Card>
             ) : (
               <>
+
+                {/* New Chat Button - Moved to top for better UX */}
+                <div className="px-4 py-3 border-b border-border/40">
+                  <Button
+                    variant="outline"
+                    onClick={handleNewChat}
+                    disabled={isCreatingSession}
+                    className="w-full justify-center h-9 px-3 gap-2 rounded-lg bg-primary/5 hover:bg-primary/10 text-primary font-medium border-primary/20 disabled:opacity-60 disabled:cursor-not-allowed"
+                  >
+                    {isCreatingSession ? (
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                    ) : (
+                      <Plus className="h-4 w-4" />
+                    )}
+                    <span className="text-sm">{isCreatingSession ? "Creating..." : "New Chat"}</span>
+                  </Button>
+                </div>
+
                 {/* Sessions */}
-                <div className="px-2 overflow-y-auto">
-                  {sessions?.length ? (
+                <div className="px-4 pt-4 pb-2">
+                  <h2 className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Previous Sessions</h2>
+                </div>
+                <div className="px-2 overflow-y-auto max-h-[30vh]">
+                  {Array.isArray(sessions) && sessions.length ? (
                     <ul className="space-y-1 pr-2">
-                      {sessions.map((s) => (
-                        <li key={s.session_id} className="group">
-                          <button
-                            className="w-full text-left px-3 py-2 rounded-md hover:bg-muted/50 transition-colors"
-                            onClick={async () => {
-                              try {
-                                setSessionId(s.session_id);
-                                const h = await apiGetHistory(s.session_id);
-                                setHistory(h);
-                                console.log(`[api] GET /api/history/${s.session_id} ->`, h);
-                              } catch (e) {
-                                console.error("[api] history error", e);
-                              }
-                            }}
-                          >
-                            <div className="text-sm font-medium truncate">{s.session_id}</div>
-                            <div className="text-[10px] text-muted-foreground flex items-center gap-2">
-                              <span>{new Date(s.last_update).toLocaleString()}</span>
-                              <span>•</span>
-                              <span>{s.qna_count} QnA</span>
+                      {sessions
+                        .filter(s => s.session_id !== sessionId)
+                        .map((s) => (
+                          <li key={s.session_id} className="group">
+                            <div className="flex items-center gap-1 group">
+                              {editingSessionId === s.session_id ? (
+                                <div className="flex-1 flex items-center gap-1 px-2 py-1">
+                                  <input
+                                    autoFocus
+                                    className="flex-1 bg-background border border-primary/30 rounded px-2 py-1 text-xs outline-none focus:ring-1 focus:ring-primary"
+                                    value={newSessionTitle}
+                                    onChange={(e) => setNewSessionTitle(e.target.value)}
+                                    onKeyDown={(e) => {
+                                      if (e.key === 'Enter') handleUpdateSessionTitle(s.session_id, newSessionTitle);
+                                      if (e.key === 'Escape') setEditingSessionId(null);
+                                    }}
+                                  />
+                                  <Button
+                                    variant="ghost"
+                                    size="icon"
+                                    className="h-7 w-7 text-primary hover:bg-primary/10"
+                                    onClick={() => handleUpdateSessionTitle(s.session_id, newSessionTitle)}
+                                    disabled={isRenaming}
+                                  >
+                                    {isRenaming ? <Loader2 className="h-3 w-3 animate-spin" /> : <Check className="h-3 w-3" />}
+                                  </Button>
+                                  <Button
+                                    variant="ghost"
+                                    size="icon"
+                                    className="h-7 w-7 text-muted-foreground"
+                                    onClick={() => setEditingSessionId(null)}
+                                  >
+                                    <X className="h-3 w-3" />
+                                  </Button>
+                                </div>
+                              ) : (
+                                <>
+                                  <button
+                                    className="flex-1 min-w-0 text-left px-3 py-2 rounded-md hover:bg-muted/50 transition-colors overflow-hidden"
+                                    onClick={async () => {
+                                      try {
+                                        // Clear UI state for fresh load
+                                        setShowAnswer(false);
+                                        setAnswer("");
+                                        setQuestion("");
+                                        setViewingHistory(true);
+                                        setHistory(null);
+
+                                        setSessionId(s.session_id);
+                                        try { window.localStorage.setItem("ia_session_id", s.session_id); } catch { }
+
+                                        // Switch to Copilot tab if not already there
+                                        setActiveMainTab("answer");
+
+                                        const h = await apiGetHistory(s.session_id);
+                                        setHistory(h);
+                                        setShowAnswer(true);
+
+                                        console.log(`[api] GET /api/history/${s.session_id} ->`, h);
+                                      } catch (e) {
+                                        console.error("[api] history error", e);
+                                      }
+                                    }}
+                                  >
+                                    <div className="text-sm font-medium truncate max-w-[180px]">
+                                      {s?.custom_title || s?.title || s?.session_id || "Untitled Session"}
+                                    </div>
+                                    <div className="text-[10px] text-muted-foreground flex items-center gap-2 truncate">
+                                      <span>{s?.last_update ? new Date(s.last_update).toLocaleDateString() : "Recent"}</span>
+                                      <span>•</span>
+                                      <span>{s?.qna_count || 0} QnA</span>
+                                    </div>
+                                  </button>
+                                  <div className="flex items-center">
+                                    <DropdownMenu>
+                                      <DropdownMenuTrigger asChild>
+                                        <Button
+                                          variant="ghost"
+                                          size="icon"
+                                          className="h-7 w-7 opacity-0 group-hover:opacity-100 data-[state=open]:opacity-100 transition-opacity text-muted-foreground hover:text-primary"
+                                        >
+                                          <MoreVertical className="h-3.5 w-3.5" />
+                                        </Button>
+                                      </DropdownMenuTrigger>
+                                      <DropdownMenuContent align="end" className="w-40">
+                                        <DropdownMenuItem onClick={() => handleCopySession(s)}>
+                                          <Copy className="h-4 w-4 mr-2" />
+                                          <span>Copy</span>
+                                        </DropdownMenuItem>
+                                        <DropdownMenuItem
+                                          onClick={() => handleExportPdfSession(s)}
+                                          disabled={isExportingPdf}
+                                        >
+                                          {exportingSessionId === s.session_id ? (
+                                            <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                                          ) : (
+                                            <Download className="h-4 w-4 mr-2" />
+                                          )}
+                                          <span>{exportingSessionId === s.session_id ? "Exporting..." : "Export PDF"}</span>
+                                        </DropdownMenuItem>
+                                        <DropdownMenuItem onClick={() => {
+                                          setEditingSessionId(s.session_id);
+                                          setNewSessionTitle(s.custom_title || s.title || "");
+                                        }}>
+                                          <Edit2 className="h-4 w-4 mr-2" />
+                                          <span>Rename</span>
+                                        </DropdownMenuItem>
+                                        <DropdownMenuSeparator />
+                                        <DropdownMenuItem
+                                          className="text-destructive focus:text-destructive"
+                                          onClick={async (e) => {
+                                            e.stopPropagation();
+                                            if (!window.confirm("Delete this session?")) return;
+                                            try {
+                                              markSessionDeleted(s.session_id);
+                                              await apiDeleteSession(s.session_id);
+                                              setSessions((prev) => prev.filter((ps) => ps.session_id !== s.session_id));
+                                              if (sessionId === s.session_id) {
+                                                // Clear ALL UI state to prevent stale data
+                                                setHistory(null);
+                                                setShowAnswer(false);
+                                                setAnswer("");
+                                                setLastQuestion("");
+                                                setQuestion("");
+                                                setSessionId("");
+                                                // Clear version tracking
+                                                setOriginalQA(null);
+                                                setLatestQA(null);
+                                                setCurrentVersion(0);
+                                                // Clear localStorage to prevent restoration
+                                                try {
+                                                  window.localStorage.removeItem("ia_session_id");
+                                                  window.localStorage.removeItem("ia_last_question");
+                                                  window.localStorage.removeItem("ia_last_answer");
+                                                  window.localStorage.setItem("ia_show_answer", "false");
+                                                  // Clear the history archive for this session
+                                                  window.localStorage.removeItem(`ia_history_archive_${s.session_id}`);
+                                                } catch { }
+                                              }
+                                              toast({ title: "Session deleted" });
+                                            } catch (err) {
+                                              toast({ title: "Delete failed", variant: "destructive" });
+                                            }
+                                          }}
+                                        >
+                                          <Trash2 className="h-4 w-4 mr-2" />
+                                          <span>Delete</span>
+                                        </DropdownMenuItem>
+                                      </DropdownMenuContent>
+                                    </DropdownMenu>
+                                  </div>
+                                </>
+                              )}
                             </div>
-                          </button>
-                        </li>
-                      ))}
+                          </li>
+                        ))}
                     </ul>
                   ) : null}
                 </div>
+
+
                 {/* Current History */}
-                <div className="px-4 pt-4 pb-2">
-                  <h2 className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Current History</h2>
+                <div className="px-4 pt-2 pb-2">
+                  <h2 className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Current Conversation</h2>
                 </div>
-                <div className="px-2 overflow-y-auto mb-2">
+                <div className="px-2 overflow-y-auto mb-2 max-h-[50vh] flex-1">
                   {history?.items?.length ? (
                     <ul className="space-y-1 pr-2">
-                      {history.items.map((it, idx) => (
-                        <li key={idx} className="group" data-history-item>
+                      {/* Show current session as ONE item */}
+                      <li className="group" data-history-item>
+                        {editingSessionId === sessionId ? (
+                          <div className="flex items-center gap-1 px-2 py-2 bg-primary/10 border border-primary/20 rounded-md">
+                            <input
+                              autoFocus
+                              className="flex-1 bg-background border border-primary/30 rounded px-2 py-1 text-xs outline-none focus:ring-1 focus:ring-primary"
+                              value={newSessionTitle}
+                              onChange={(e) => setNewSessionTitle(e.target.value)}
+                              onKeyDown={(e) => {
+                                if (e.key === 'Enter') handleUpdateSessionTitle(sessionId, newSessionTitle);
+                                if (e.key === 'Escape') setEditingSessionId(null);
+                              }}
+                            />
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="h-7 w-7 text-primary hover:bg-primary/10"
+                              onClick={() => handleUpdateSessionTitle(sessionId, newSessionTitle)}
+                              disabled={isRenaming}
+                            >
+                              {isRenaming ? <Loader2 className="h-3 w-3 animate-spin" /> : <Check className="h-3 w-3" />}
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="h-7 w-7 text-muted-foreground"
+                              onClick={() => setEditingSessionId(null)}
+                            >
+                              <X className="h-3 w-3" />
+                            </Button>
+                          </div>
+                        ) : (
                           <div
-                            className="relative rounded-md bg-card/40 border border-border/30 hover:bg-muted/50 transition-colors cursor-pointer"
+                            className="relative rounded-md bg-primary/10 border border-primary/20 hover:bg-primary/15 transition-colors cursor-pointer group"
                             onClick={() => {
+                              // Already viewing current conversation
+                              setViewingHistory(false);
+                              setShowAnswer(true);
                               try { window.scrollTo({ top: 0, behavior: 'smooth' }); } catch { }
-                              setLastQuestion(it.question);
-                              // Ensure we flip the viewingHistory flag BEFORE updating the
-                              // answer/showAnswer. Use a microtask so React renders with
-                              // `viewingHistory=true` before mounting the AnswerCard.
-                              setViewingHistory(true);
-                              setTimeout(() => {
-                                setAnswer(it.answer);
-                                setShowAnswer(true);
-                                setQuestion("");
-                              }, 0);
-                              console.log('[ui] Opened history item', { index: idx, question: it.question });
                             }}
                           >
-                            {/* Three-dots hover menu INSIDE the box (top-right) */}
-                            <button
-                              className="absolute right-1 top-1 transition-opacity px-2 py-1 rounded hover:bg-muted/60"
-                              title="More"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
-                                const nextIndex = openMenuIndex === idx ? null : idx;
-                                setOpenMenuIndex(nextIndex);
-                                if (nextIndex !== null) {
-                                  // Use viewport coordinates directly for fixed positioning
-                                  setMenuPos({ top: rect.top, left: rect.right + 8 });
-                                } else {
-                                  setMenuPos(null);
-                                }
-                              }}
-                            >
-                              <MoreVertical className="h-4 w-4" />
-                            </button>
-
                             {/* Content */}
-                            <div className="px-3 py-2">
-                              <div className="text-xs font-medium truncate">Q: {it.question}</div>
+                            <div className="flex items-center justify-between px-3 py-2">
+                              <div className="min-w-0 flex-1 pr-2">
+                                <div className="text-xs font-medium truncate max-w-[160px]">
+                                  {(() => {
+                                    const currentSession = Array.isArray(sessions) ? sessions.find(s => s.session_id === sessionId) : null;
+                                    return currentSession?.custom_title || currentSession?.title || (history?.items && history.items[history.items.length - 1]?.question) || "New Chat";
+                                  })()}
+                                </div>
+                                <div className="text-[10px] text-muted-foreground mt-0.5 truncate">
+                                  {history?.items?.length || 0} message{(history?.items?.length || 0) !== 1 ? 's' : ''}
+                                </div>
+                              </div>
+                              <div className="flex items-center">
+                                <DropdownMenu>
+                                  <DropdownMenuTrigger asChild>
+                                    <Button
+                                      variant="ghost"
+                                      size="icon"
+                                      className="h-7 w-7 opacity-0 group-hover:opacity-100 data-[state=open]:opacity-100 transition-opacity text-muted-foreground hover:text-primary"
+                                    >
+                                      <MoreVertical className="h-3.5 w-3.5" />
+                                    </Button>
+                                  </DropdownMenuTrigger>
+                                  <DropdownMenuContent align="end" className="w-40">
+                                    <DropdownMenuItem onClick={() => {
+                                      const currentSession = Array.isArray(sessions) ? sessions.find(s => s.session_id === sessionId) : null;
+                                      if (currentSession) handleCopySession(currentSession);
+                                    }}>
+                                      <Copy className="h-4 w-4 mr-2" />
+                                      <span>Copy</span>
+                                    </DropdownMenuItem>
+                                    <DropdownMenuItem
+                                      onClick={() => {
+                                        const currentSession = Array.isArray(sessions) ? sessions.find(s => s.session_id === sessionId) : null;
+                                        if (currentSession) handleExportPdfSession(currentSession);
+                                      }}
+                                      disabled={isExportingPdf}
+                                    >
+                                      {isExportingPdf && exportingSessionId === sessionId ? (
+                                        <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                                      ) : (
+                                        <Download className="h-4 w-4 mr-2" />
+                                      )}
+                                      <span>{isExportingPdf && exportingSessionId === sessionId ? "Exporting..." : "Export PDF"}</span>
+                                    </DropdownMenuItem>
+                                    <DropdownMenuItem onClick={() => {
+                                      const currentSession = Array.isArray(sessions) ? sessions.find(s => s.session_id === sessionId) : null;
+                                      setEditingSessionId(sessionId);
+                                      setNewSessionTitle(currentSession?.custom_title || currentSession?.title || (history?.items && history.items[history.items.length - 1]?.question) || "");
+                                    }}>
+                                      <Edit2 className="h-4 w-4 mr-2" />
+                                      <span>Rename</span>
+                                    </DropdownMenuItem>
+                                    <DropdownMenuSeparator />
+                                    <DropdownMenuItem
+                                      className="text-destructive focus:text-destructive"
+                                      onClick={async (e) => {
+                                        e.stopPropagation();
+                                        if (!window.confirm("Delete this entire conversation?")) return;
+                                        try {
+                                          markSessionDeleted(sessionId);
+                                          await apiDeleteSession(sessionId);
+                                          // Remove from sessions list in sidebar
+                                          setSessions((prev) => prev.filter((ps) => ps.session_id !== sessionId));
+                                          // Clear ALL UI state completely
+                                          setShowAnswer(false);
+                                          setAnswer("");
+                                          setLastQuestion("");
+                                          setQuestion("");
+                                          setHistory(null);
+                                          setSessionId("");
+                                          // Clear version tracking
+                                          setOriginalQA(null);
+                                          setLatestQA(null);
+                                          setCurrentVersion(0);
+                                          // Clear localStorage to prevent restoration
+                                          try {
+                                            window.localStorage.removeItem("ia_session_id");
+                                            window.localStorage.removeItem("ia_last_question");
+                                            window.localStorage.removeItem("ia_last_answer");
+                                            window.localStorage.setItem("ia_show_answer", "false");
+                                            // Clear the history archive for this session
+                                            window.localStorage.removeItem(`ia_history_archive_${sessionId}`);
+                                          } catch { }
+                                          toast({ title: "Conversation deleted" });
+                                        } catch (err) {
+                                          toast({ title: "Delete failed", variant: "destructive" });
+                                        }
+                                      }}
+                                    >
+                                      <Trash2 className="h-4 w-4 mr-2" />
+                                      <span>Delete</span>
+                                    </DropdownMenuItem>
+                                  </DropdownMenuContent>
+                                </DropdownMenu>
+                              </div>
                             </div>
                           </div>
-                        </li>
-                      ))}
+                        )}
+                      </li>
                     </ul>
                   ) : (
                     <div className="px-4 text-xs text-muted-foreground">No history yet</div>
@@ -1634,106 +3166,273 @@ export const InterviewAssistant = () => {
           </div>
         </aside>
 
-        {/* Desktop Controls - theme toggle and settings */}
-        <div className="hidden md:block fixed top-3 right-3 z-50">
-          <div className="flex items-center gap-2">
-            <ThemeToggle />
-            <Dialog>
-              <DialogTrigger asChild>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  className={`h-9 flex items-center gap-2 transition-all duration-300 ${!hasApiKey
-                    ? 'bg-amber-500/10 text-amber-500 border-amber-500/50 hover:bg-amber-500/20 shadow-[0_0_15px_-5px_rgba(245,158,11,0.3)]'
-                    : 'hover:bg-accent'
-                    }`}
-                >
-                  <Settings className="h-4 w-4" />
-                  <span className="font-semibold">{hasApiKey ? 'Bridge Settings' : 'Connect AI Bridge'}</span>
-                </Button>
-              </DialogTrigger>
-              <DialogContent className="sm:max-w-[450px] p-0 border-none bg-transparent">
-                <ApiKeySettings />
-              </DialogContent>
-            </Dialog>
-            <Link to="/run">
-              <Button variant="outline" size="sm">Run Code</Button>
-            </Link>
-          </div>
-        </div>
-
         {/* Main content area */}
-        <div className={`flex flex-col h-screen overflow-hidden ${activeMainTab === "practice" ? "md:pl-0" : "md:pl-64"
+        <div className={`flex-1 flex flex-col min-h-0 overflow-hidden overflow-x-hidden transition-all duration-300 ${isMobileSidebarOpen ? 'overflow-hidden' : ''} ${activeMainTab === "practice" ? "md:pl-0" : "md:pl-64"
           }`}>
-          {/* Response Section */}
-          <div className={`flex-1 overflow-y-auto px-0 py-2 md:px-6 md:py-6 ${activeMainTab === "answer" ? "pb-40 md:pb-44" : ""
-            }`}>
-            <div className="max-w-4xl mx-auto w-full">
-              <Tabs value={activeMainTab} onValueChange={(v) => setActiveMainTab(v as "answer" | "intelligence" | "mock-interview" | "practice")} className="w-full">
-                <TabsList className="mb-4">
-                  <TabsTrigger value="answer">Answer</TabsTrigger>
-                  <TabsTrigger value="intelligence">Interview Intelligence</TabsTrigger>
-                  <TabsTrigger value="mock-interview">Mock Interview</TabsTrigger>
-                  <TabsTrigger value="practice">Real Time Practice Mode</TabsTrigger>
-                </TabsList>
+          <Tabs value={activeMainTab} onValueChange={(v) => setActiveMainTab(v as "answer" | "intelligence" | "mock-interview" | "practice")} className="flex-1 flex flex-col min-h-0">
+            {/* Unified Desktop Header */}
+            <header className="hidden md:flex items-center justify-between px-6 py-2 border-b border-border/50 bg-background/50 backdrop-blur-xl sticky top-0 z-40 transition-all duration-300">
+              <TabsList className="bg-transparent border-0 h-10 gap-2">
+                <TabsTrigger value="answer" className="data-[state=active]:bg-primary/10 data-[state=active]:text-primary font-bold px-4 transition-all whitespace-nowrap">AI Copilot</TabsTrigger>
+                <TabsTrigger value="intelligence" className="data-[state=active]:bg-primary/10 data-[state=active]:text-primary font-bold px-4 transition-all whitespace-nowrap">Search Intelligence</TabsTrigger>
+                <TabsTrigger value="mock-interview" className="data-[state=active]:bg-primary/10 data-[state=active]:text-primary font-bold px-4 transition-all whitespace-nowrap">Mock Interview</TabsTrigger>
+                <TabsTrigger value="practice" className="data-[state=active]:bg-primary/10 data-[state=active]:text-primary font-bold px-4 transition-all whitespace-nowrap">Live Practice</TabsTrigger>
+              </TabsList>
 
-                <TabsContent value="answer" className="mt-0">
-                  {showAnswer ? (
-                    <div className="animate-in slide-in-from-top-4 duration-500">
-                      <AnswerCard
-                        answer={answer}
-                        question={lastQuestion}
-                        streaming={!viewingHistory && !isNavigatingVersion}
-                        evaluationAllowed={evaluationAllowed}
-                        evaluationReason={evaluationReason}
-                        onEdit={handleEditCurrent}
-                        onSubmitEdit={handleSubmitInlineEdit}
-                        canPrev={!!(originalQA && latestQA) && currentVersion === 1}
-                        canNext={!!latestQA && currentVersion === 0}
-                        onPrev={handlePrevVersion}
-                        onNext={handleNextVersion}
-                        versionLabel={latestQA ? (currentVersion === 1 ? 'Latest' : 'Original') : undefined}
-                        isGenerating={isGenerating}
-                        versionIndex={latestQA ? (currentVersion === 1 ? 2 : 1) : 1}
-                        versionTotal={latestQA ? 2 : 1}
-                      />
-                    </div>
-                  ) : isGenerating ? (
-                    <div className="flex flex-col items-center justify-center py-12 md:py-16 bg-card/30 backdrop-blur-sm rounded-xl mx-2 md:mx-0">
-                      <div className="relative">
-                        <div className="w-10 h-10 md:w-12 md:h-12 border-3 border-primary/20 rounded-full"></div>
-                        <div className="absolute top-0 left-0 w-10 h-10 md:w-12 md:h-12 border-3 border-primary border-t-transparent rounded-full animate-spin"></div>
-                      </div>
-                      <div className="mt-4 text-center px-4">
-                        <h3 className="text-lg md:text-xl font-semibold mb-2">Crafting Your Response</h3>
-                        <p className="text-sm md:text-base text-muted-foreground">Analyzing your question and generating a response...</p>
-                      </div>
+              <div className="flex items-center gap-2">
+                <ThemeToggle />
+                <Dialog>
+                  <DialogTrigger asChild>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className={`h-9 flex items-center gap-2 transition-all duration-300 ${!hasApiKey
+                        ? 'bg-amber-500/10 text-amber-500 border-amber-500/50 hover:bg-amber-500/20 shadow-[0_0_15px_-5px_rgba(245,158,11,0.3)]'
+                        : 'hover:bg-accent'
+                        }`}
+                    >
+                      <Settings className="h-4 w-4" />
+                      <span className="font-semibold">{hasApiKey ? 'Bridge Settings' : 'Connect AI Bridge'}</span>
+                    </Button>
+                  </DialogTrigger>
+                  <DialogContent className="w-[calc(100vw-2rem)] sm:max-w-[450px] p-0 border-none bg-transparent">
+                    <ApiKeySettings />
+                  </DialogContent>
+                </Dialog>
+                <Link to="/run">
+                  <Button variant="outline" size="sm" className="hidden lg:flex">Run Code</Button>
+                </Link>
+              </div>
+            </header>
+
+            {/* Content Section */}
+            <div ref={mainScrollRef} className={`flex-1 overflow-y-auto overflow-x-hidden scroll-professional px-0 py-2 md:px-6 md:py-6 ${activeMainTab === "answer" ? "pb-40 md:pb-44" : ""
+              }`} style={{ scrollbarGutter: 'stable', overscrollBehaviorX: 'none', WebkitOverflowScrolling: 'touch' }}>
+              <div className="max-w-4xl mx-auto w-full overflow-x-hidden">
+
+                <TabsContent value="answer" className="mt-0 overflow-x-hidden">
+                  {showAnswer || isGenerating ? (
+                    <div className="space-y-6 pb-4">
+                      {/* Render all Q&As from history as a conversation thread */}
+                      {[...(history?.items || [])].reverse().map((item, idx, arr) => {
+                        // The array is reversed to show Oldest -> Newest (top to bottom)
+                        // In this layout, the very bottom item is the most recent.
+                        const isLatest = idx === arr.length - 1;
+                        return (
+                          <div
+                            key={item.created_at || `idx-${idx}`}
+                            ref={isLatest ? activeQuestionRef : null}
+                            className="space-y-3 scroll-mt-24"
+                          >
+                            <div className="flex justify-end pr-3 md:pr-0">
+                              <div className="max-w-[80%] md:max-w-[70%] bg-primary text-primary-foreground rounded-2xl rounded-tr-sm px-4 py-3 shadow-sm">
+                                <p className="text-sm md:text-base">{item.question}</p>
+                              </div>
+                            </div>
+
+                            <div>
+                              {/* 🏗️ Architecture Mode Choice UI */}
+                              {isLatest && isGenerating && !showArchitectureChoice && (!item.answer || item.answer === "**Generating your response**") ? (
+                                <div className="pl-2">
+                                  <span className="text-sm text-muted-foreground">
+                                    Generating<LoadingDots />
+                                  </span>
+                                </div>
+                              ) : isLatest && showArchitectureChoice ? (
+                                <div className="bg-gradient-to-br from-blue-50 to-indigo-50 dark:from-blue-950/30 dark:to-indigo-950/30 rounded-2xl p-6 shadow-lg border border-blue-200/50 dark:border-blue-800/50">
+                                  <div className="text-center space-y-4 mb-6">
+                                    <div className="inline-flex items-center justify-center w-12 h-12 bg-primary/10 rounded-xl">
+                                      <Sparkles className="h-6 w-6 text-primary" />
+                                    </div>
+                                    <h3 className="text-xl font-bold text-foreground">
+                                      Choose Your Architecture Format
+                                    </h3>
+                                    <p className="text-sm text-muted-foreground max-w-lg mx-auto">
+                                      Select how you'd like to visualize your system design
+                                    </p>
+                                  </div>
+
+                                  <div className="grid md:grid-cols-2 gap-4">
+                                    {/* Single Comprehensive Option */}
+                                    <button
+                                      onClick={() => handleArchitectureModeSelection("single")}
+                                      disabled={isGenerating}
+                                      className="group relative bg-white dark:bg-gray-900 rounded-xl p-6 border-2 border-gray-200 dark:border-gray-700 hover:border-primary hover:shadow-xl transition-all duration-300 text-left disabled:opacity-50 disabled:cursor-not-allowed"
+                                    >
+                                      <div className="absolute top-4 right-4 w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center group-hover:scale-110 transition-transform">
+                                        <span className="text-2xl">📊</span>
+                                      </div>
+                                      <div className="pr-12">
+                                        <h4 className="text-lg font-bold text-foreground mb-2">
+                                          Single Comprehensive
+                                        </h4>
+                                        <div className="inline-flex items-center gap-1.5 px-2 py-1 bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400 rounded-md text-xs font-medium mb-3">
+                                          <span>⚡</span>
+                                          <span>Fast: ~15-20 seconds</span>
+                                        </div>
+                                        <p className="text-sm text-muted-foreground mb-4">
+                                          One complete diagram with all components, executive summary, key highlights, and detailed tables
+                                        </p>
+                                        <div className="space-y-1 text-xs text-muted-foreground">
+                                          <div className="flex items-center gap-2">
+                                            <Check className="h-3 w-3 text-green-500" />
+                                            <span>Comprehensive overview</span>
+                                          </div>
+                                          <div className="flex items-center gap-2">
+                                            <Check className="h-3 w-3 text-green-500" />
+                                            <span>Executive summary</span>
+                                          </div>
+                                          <div className="flex items-center gap-2">
+                                            <Check className="h-3 w-3 text-green-500" />
+                                            <span>Detailed analysis tables</span>
+                                          </div>
+                                        </div>
+                                      </div>
+                                    </button>
+
+                                    {/* Multi-View Option */}
+                                    <button
+                                      onClick={() => handleArchitectureModeSelection("multi-view")}
+                                      disabled={isGenerating}
+                                      className="group relative bg-gradient-to-br from-primary/5 to-primary/10 dark:from-primary/10 dark:to-primary/20 rounded-xl p-6 border-2 border-primary/30 hover:border-primary hover:shadow-xl transition-all duration-300 text-left disabled:opacity-50 disabled:cursor-not-allowed"
+                                    >
+                                      <div className="absolute top-4 right-4 w-10 h-10 rounded-full bg-primary/20 flex items-center justify-center group-hover:scale-110 transition-transform">
+                                        <span className="text-2xl">🎯</span>
+                                      </div>
+                                      <div className="pr-12">
+                                        <div className="flex items-center gap-2 mb-2">
+                                          <h4 className="text-lg font-bold text-foreground">
+                                            Multi-View
+                                          </h4>
+                                          <span className="text-xs font-semibold px-2 py-0.5 bg-primary text-primary-foreground rounded-full">
+                                            Recommended
+                                          </span>
+                                        </div>
+                                        <div className="inline-flex items-center gap-1.5 px-2 py-1 bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400 rounded-md text-xs font-medium mb-3">
+                                          <Loader2 className="h-3 w-3" />
+                                          <span>Takes longer: ~45-60 seconds</span>
+                                        </div>
+                                        <p className="text-sm text-muted-foreground mb-4">
+                                          5+ focused diagrams with explanations, code examples, and interview tips for each architectural layer
+                                        </p>
+                                        <div className="space-y-1 text-xs text-muted-foreground">
+                                          <div className="flex items-center gap-2">
+                                            <Check className="h-3 w-3 text-green-500" />
+                                            <span>Multiple specialized views</span>
+                                          </div>
+                                          <div className="flex items-center gap-2">
+                                            <Check className="h-3 w-3 text-green-500" />
+                                            <span>Code examples & templates</span>
+                                          </div>
+                                          <div className="flex items-center gap-2">
+                                            <Check className="h-3 w-3 text-green-500" />
+                                            <span>Interview strategy tips</span>
+                                          </div>
+                                        </div>
+                                      </div>
+                                    </button>
+                                  </div>
+                                </div>
+                              ) : (
+                                <AnswerCard
+                                  answer={item.answer}
+                                  question=""
+                                  id={item.created_at || `idx-${idx}`}
+                                  streaming={isLatest && streaming}
+                                  evaluationAllowed={isLatest && evaluationAllowed}
+                                  evaluationReason={isLatest ? evaluationReason : null}
+                                  onEdit={undefined}
+                                  onSubmitEdit={undefined}
+                                  canPrev={false}
+                                  canNext={false}
+                                  isGenerating={isLatest && isGenerating}
+                                  versionIndex={1}
+                                  versionTotal={1}
+                                  onShowUpgrade={() => setShowUpgradeBanner(true)}
+                                />
+                              )}
+                            </div>
+                          </div>
+                        );
+                      })}
                     </div>
                   ) : (
-                    <div className="flex flex-col items-center justify-center py-12 md:py-16 text-center bg-card/30 backdrop-blur-sm rounded-xl mx-2 md:mx-0">
-                      <div className="relative mb-6">
-                        <div className="w-14 h-14 md:w-16 md:h-16 bg-gradient-to-br from-primary/20 to-primary/10 rounded-xl flex items-center justify-center">
-                          <MessageSquare className="h-7 w-7 md:h-8 md:w-8 text-primary" />
+                    <div className="flex flex-col items-center justify-center min-h-[60vh] px-4 animate-in fade-in zoom-in duration-700">
+                      <div className="w-full max-w-2xl space-y-6">
+                        {/* Welcome Header */}
+                        <div className="text-center space-y-4 mb-8">
+                          <div className="inline-flex items-center justify-center w-16 h-16 bg-gradient-to-br from-primary/20 to-primary/10 rounded-2xl mb-4">
+                            <MessageSquare className="h-8 w-8 text-primary" />
+                          </div>
+                          <h2 className="text-2xl md:text-3xl font-bold bg-gradient-to-r from-foreground to-muted-foreground bg-clip-text text-transparent">
+                            What can I help with?
+                          </h2>
+                          <p className="text-sm md:text-base text-muted-foreground max-w-md mx-auto">
+                            Ask your interview question and get comprehensive responses with examples.
+                          </p>
                         </div>
-                        <div className="absolute -top-1 -right-1 w-5 h-5 bg-primary rounded-full flex items-center justify-center">
-                          <div className="w-2 h-2 bg-primary-foreground rounded-full animate-pulse"></div>
+
+                        {/* Centered Search Bar */}
+                        <div className="flex items-end gap-3">
+                          <Button
+                            variant="outline"
+                            size="icon"
+                            onClick={handleProfileUploadClick}
+                            disabled={isUploadingProfile}
+                            className="h-12 w-12 rounded-2xl border-primary/20 bg-background/95 backdrop-blur-xl hover:bg-primary/5 text-primary transition-all shrink-0"
+                            title="Upload Resume/Profile"
+                          >
+                            {isUploadingProfile ? (
+                              <Loader2 className="h-5 w-5 animate-spin" />
+                            ) : (
+                              <Plus className="h-6 w-6" />
+                            )}
+                          </Button>
+
+                          <div className="flex-1">
+                            <SearchBar
+                              value={question}
+                              onChange={(v) => {
+                                if (viewingHistory) setViewingHistory(false);
+                                setQuestion(v);
+                              }}
+                              placeholder="Ask anything..."
+                              resetToken={resetToken}
+                              ensureSession={ensureSession}
+                              onGenerate={handleGenerateAnswer}
+                              isGenerating={isGenerating}
+                              canGenerate={!viewingHistory}
+                            />
+                          </div>
                         </div>
-                      </div>
-                      <h3 className="text-lg md:text-xl font-semibold mb-2">Ready to Help</h3>
-                      <p className="text-sm md:text-base text-muted-foreground max-w-md px-4 mb-4">
-                        Ask your interview question and I'll provide a comprehensive response with examples and explanations.
-                      </p>
-                      <div className="flex flex-wrap gap-2 justify-center px-4">
-                        <span className="px-3 py-1 bg-primary/10 text-primary text-xs font-medium rounded-full">Code Examples</span>
-                        <span className="px-3 py-1 bg-primary/10 text-primary text-xs font-medium rounded-full">Best Practices</span>
-                        <span className="px-3 py-1 bg-primary/10 text-primary text-xs font-medium rounded-full">Real Examples</span>
+
+                        {/* Quick suggestions */}
+                        <div className="flex flex-wrap gap-2 justify-center pt-4">
+                          <span className="px-4 py-2 bg-primary/5 hover:bg-primary/10 text-primary text-sm font-medium rounded-full cursor-pointer transition-colors"
+                            onClick={() => setQuestion("Explain the difference between REST and GraphQL")}
+                          >
+                            REST vs GraphQL
+                          </span>
+                          <span className="px-4 py-2 bg-primary/5 hover:bg-primary/10 text-primary text-sm font-medium rounded-full cursor-pointer transition-colors"
+                            onClick={() => setQuestion("How do I implement authentication in React?")}
+                          >
+                            React Authentication
+                          </span>
+                          <span className="px-4 py-2 bg-primary/5 hover:bg-primary/10 text-primary text-sm font-medium rounded-full cursor-pointer transition-colors"
+                            onClick={() => setQuestion("What are design patterns?")}
+                          >
+                            Design Patterns
+                          </span>
+                        </div>
                       </div>
                     </div>
                   )}
                 </TabsContent>
 
                 <TabsContent value="intelligence" className="mt-0">
-                  <div className="h-[calc(100vh-200px)] min-h-[600px]">
+
+
+                  <div className="h-[calc(100dvh-85px)] md:h-[calc(100vh-200px)] md:min-h-[600px] pb-4 md:pb-0">
                     <InterviewIntelligence
                       onHistoryRefresh={() => loadIntelligenceHistoryTabs({ silent: true })}
                       historyTabs={intelligenceHistoryTabs}
@@ -1744,7 +3443,7 @@ export const InterviewAssistant = () => {
                 </TabsContent>
 
                 <TabsContent value="mock-interview" className="mt-0">
-                  <div className="h-[calc(100vh-200px)] min-h-[600px]">
+                  <div className="h-[calc(100dvh-85px)] md:h-[calc(100vh-200px)] md:min-h-[600px] pb-4 md:pb-0">
                     <MockInterviewMode
                       selectedHistorySession={selectedMockSession}
                       onHistoryUpdate={loadMockInterviewHistory}
@@ -1755,62 +3454,99 @@ export const InterviewAssistant = () => {
                 <TabsContent value="practice" className="mt-0 h-[calc(100vh-120px)]">
                   <PracticeMode />
                 </TabsContent>
-              </Tabs>
 
-              {/* Right-side popover for history item actions */}
-              {openMenuIndex !== null && menuPos && (
-                <div
-                  data-right-popover
-                  className="fixed w-40 bg-popover border border-border rounded-md shadow-lg z-50"
-                  style={{ top: menuPos.top, left: menuPos.left }}
-                >
-                  <button
-                    className="w-full text-left px-3 py-2 text-sm hover:bg-destructive/10 text-destructive flex items-center gap-2"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      if (openMenuIndex !== null) handleDeleteHistory(openMenuIndex);
-                    }}
+                {/* Right-side popover for history item actions */}
+                {openMenuIndex !== null && menuPos && (
+                  <div
+                    data-right-popover
+                    className="fixed w-40 bg-popover border border-border rounded-md shadow-lg z-50"
+                    style={{ top: menuPos.top, left: menuPos.left }}
                   >
-                    <Trash2 className="h-4 w-4 text-destructive" />
-                    Delete
-                  </button>
-                </div>
-              )}
+                    <button
+                      className="w-full text-left px-3 py-2 text-sm hover:bg-destructive/10 text-destructive flex items-center gap-2"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        if (openMenuIndex !== null) handleDeleteHistory(openMenuIndex);
+                      }}
+                    >
+                      <Trash2 className="h-4 w-4 text-destructive" />
+                      Delete
+                    </button>
+                  </div>
+                )}
+              </div>
             </div>
-          </div>
+          </Tabs>
+        </div>
+      </div >
 
-          {/* Fixed Search Bar at Bottom - Only show on Answer tab */}
-          {activeMainTab === "answer" && (
-            <div className="fixed bottom-0 left-0 right-0 z-30 md:left-64">
+      {/* Fixed Search Bar at Bottom - Only show on Answer tab when conversation is active */}
+      {
+        activeMainTab === "answer" && (showAnswer || isGenerating) && (
+          <div className="fixed bottom-0 left-0 right-0 z-50 md:left-64">
+            <div className="relative">
               {/* Gradient fade to hide content behind */}
-              <div className="h-40 md:h-48 bg-gradient-to-t from-background from-40% via-background/95 via-70% to-transparent" />
-              <div className="px-4 pb-2 md:px-6 md:pb-3 -mt-28 md:-mt-32">
-                <div className="max-w-4xl mx-auto">
-                  <SearchBar
-                    value={question}
-                    onChange={(v) => {
-                      if (viewingHistory) setViewingHistory(false);
-                      setQuestion(v);
-                    }}
-                    placeholder="Ask Stratax AI..."
-                    resetToken={resetToken}
-                    ensureSession={ensureSession}
-                    onUploaded={({ characters, fileName }) => {
-                      toast({ title: "Profile uploaded", description: `${fileName} • ${characters.toLocaleString()} characters indexed.` });
-                    }}
-                    onGenerate={handleGenerateAnswer}
-                    isGenerating={isGenerating}
-                    canGenerate={!viewingHistory}
-                  />
+              <div className="absolute bottom-0 left-0 right-0 h-28 md:h-36 bg-gradient-to-t from-background from-35% via-background/90 via-60% to-transparent pointer-events-none -z-10" />
+
+              {/* Search bar container */}
+              <div className="px-4 pb-4 md:px-6 md:pb-6">
+                {/* Upload Status Indicator - Positioned absolutely above search bar */}
+                {lastUploadedProfile && (
+                  <div className="absolute bottom-full left-0 right-0 pb-2 flex items-center justify-center">
+                    <div className="bg-primary/5 dark:backdrop-blur-sm px-3 py-1 rounded-full border border-primary/10 flex items-center gap-1.5 animate-in fade-in slide-in-from-bottom-2 duration-300">
+                      <Check className="h-3 w-3 text-primary" />
+                      <span className="text-[10px] md:text-xs text-muted-foreground font-medium">
+                        Indexed: <span className="text-foreground">{lastUploadedProfile.name}</span> ({lastUploadedProfile.characters.toLocaleString()} chars)
+                      </span>
+                    </div>
+                  </div>
+                )}
+
+                <div className="max-w-4xl mx-auto flex items-end gap-2 md:gap-3">
+                  {/* Separate Upload Button */}
+                  <Button
+                    variant="outline"
+                    size="icon"
+                    onClick={handleProfileUploadClick}
+                    disabled={isUploadingProfile}
+                    className="mb-1 h-9 w-9 md:h-12 md:w-12 rounded-2xl border-primary/20 bg-background/95 dark:backdrop-blur-xl hover:bg-primary/5 text-primary transition-all shrink-0 shadow-sm"
+                    title="Upload Resume/Profile"
+                  >
+                    {isUploadingProfile ? (
+                      <Loader2 className="h-4 w-4 md:h-5 md:w-5 animate-spin" />
+                    ) : (
+                      <Plus className="h-5 w-5 md:h-6 md:w-6" />
+                    )}
+                  </Button>
+
+                  <div className="flex-1">
+                    <SearchBar
+                      value={question}
+                      onChange={(v) => {
+                        if (viewingHistory) setViewingHistory(false);
+                        setQuestion(v);
+                      }}
+                      placeholder="Ask Stratax AI..."
+                      resetToken={resetToken}
+                      ensureSession={ensureSession}
+                      onGenerate={handleGenerateAnswer}
+                      isGenerating={isGenerating}
+                      canGenerate={!viewingHistory}
+                    />
+                  </div>
                 </div>
-                <p className="text-center text-[10px] text-white/60 mt-1.5 pb-1">
+              </div>
+
+              {/* Footer text - FIXED at bottom - Hidden on mobile */}
+              <div className="hidden md:block px-4 pb-1">
+                <p className="text-center text-[8px] md:text-[10px] text-white/50 leading-tight">
                   Stratax AI can make mistakes. Verify important information and use as a learning aid.
                 </p>
               </div>
             </div>
-          )}
-        </div>
-      </div>
+          </div>
+        )
+      }
 
       <AnimatePresence>
         {showKeyOnboarding && (
@@ -1822,6 +3558,24 @@ export const InterviewAssistant = () => {
           />
         )}
       </AnimatePresence>
-    </div>
+
+      {/* Answer Engine Unlock Dialog */}
+      <UnlockAnswerEngine
+        open={showUnlockAnswerEngine}
+        onClose={() => setShowUnlockAnswerEngine(false)}
+        onUnlock={() => {
+          // Refresh any state that depends on Gemini key
+          setShowUnlockAnswerEngine(false);
+        }}
+      />
+
+      <input
+        ref={profileInputRef}
+        type="file"
+        accept=".pdf,.txt,.doc,.docx"
+        className="hidden"
+        onChange={handleProfileFileChange}
+      />
+    </div >
   );
 };

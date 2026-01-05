@@ -364,6 +364,10 @@ export async function apiDeleteMockInterviewSession(
   console.log("[MockInterviewAPI] Delete response status:", res.status, res.statusText);
 
   if (!res.ok) {
+    if (res.status === 404) {
+      console.log("[MockInterviewAPI] 404 - treating as deleted");
+      return { message: "Session deleted" };
+    }
     const text = await res.text().catch(() => "");
     console.error("[MockInterviewAPI] Delete error response:", text);
     if (res.status === 403) {
@@ -393,6 +397,10 @@ export async function apiDeleteAllMockInterviewSessions(
   console.log("[MockInterviewAPI] Delete all response status:", res.status, res.statusText);
 
   if (!res.ok) {
+    if (res.status === 404) {
+      console.log("[MockInterviewAPI] 404 - treating as deleted");
+      return { message: "All sessions deleted", deleted_count: 0 };
+    }
     const text = await res.text().catch(() => "");
     console.error("[MockInterviewAPI] Delete all error response:", text);
     throw new Error(`Failed to delete all sessions: ${res.status} ${text}`);

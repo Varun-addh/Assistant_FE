@@ -2,10 +2,9 @@ import { useEffect, useMemo, useState, useRef, useCallback } from "react";
 import { listLanguages, submitRun, pollResult, type Judge0Language } from "@/lib/runner";
 import { Button } from "@/components/ui/button";
 import { Link } from "react-router-dom";
-import { ArrowLeft, Clock, StickyNote, Zap, Cpu, HardDrive, Keyboard, ChevronDown, StopCircle, RotateCcw } from "lucide-react";
+import { ArrowLeft, Clock, StickyNote, Zap, Cpu, HardDrive, Keyboard, ChevronDown, StopCircle, RotateCcw, Code2, Play, Terminal } from "lucide-react";
 import { Textarea } from "@/components/ui/textarea";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import MonacoEditor from "@/components/MonacoEditor";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
@@ -18,6 +17,7 @@ import ExecutionVisualizer from "@/components/ExecutionVisualizer";
 import OutputExplanation from "@/components/OutputExplanation";
 import { apiCreateSession } from "@/lib/api";
 import { useSearchParams } from "react-router-dom";
+import { MonacoEditor } from "./MonacoEditor";
 
 const STORAGE_KEYS = {
   CODE_SOURCE: 'code-runner-source',
@@ -70,7 +70,7 @@ export const CodeRunner = () => {
   // Visualization state
   const [traceEvents, setTraceEvents] = useState<any[]>([]);
   const [isTracing, setIsTracing] = useState(false);
-  
+
   // Professional features state
   const [panelWidth, setPanelWidth] = useState(50); // Percentage
   const [showNotes, setShowNotes] = useState(false);
@@ -95,6 +95,7 @@ export const CodeRunner = () => {
   const [showShortcuts, setShowShortcuts] = useState(false);
   const [showTimerDialog, setShowTimerDialog] = useState(false);
   const [timerInput, setTimerInput] = useState({ hours: 0, minutes: 45 });
+  const [mobileView, setMobileView] = useState<'code' | 'output'>('code'); // Mobile toggle between code and output
   const monacoRef = useRef<any>(null);
   const { toast } = useToast();
 
@@ -105,14 +106,28 @@ export const CodeRunner = () => {
     try {
       const stored = window.localStorage.getItem(RUNNER_SESSION_KEY);
       if (stored) setSessionId(stored);
-    } catch {}
-    
+    } catch { }
+
     (async () => {
       try {
         const langs = await listLanguages();
         setLanguages(langs);
-        
-        // Try to restore saved language ID
+
+        // 1. Check for suggested language from Execute button
+        const suggestedLang = localStorage.getItem('code-runner-language-suggest');
+        if (suggestedLang) {
+          localStorage.removeItem('code-runner-language-suggest');
+          const match = langs.find(l =>
+            l.name.toLowerCase().includes(suggestedLang.toLowerCase()) ||
+            suggestedLang.toLowerCase().includes(l.name.toLowerCase().split(' ')[0])
+          );
+          if (match) {
+            setLanguageId(match.id);
+            return;
+          }
+        }
+
+        // 2. Try to restore saved language ID
         try {
           const savedLangId = localStorage.getItem(STORAGE_KEYS.CODE_LANGUAGE);
           if (savedLangId && langs.find(l => l.id === Number(savedLangId))) {
@@ -121,12 +136,12 @@ export const CodeRunner = () => {
             throw new Error('Saved language not found');
           }
         } catch {
-          // Prefer Python 3.11.2 if present, then any Python, else first
+          // 3. Fallback: Prefer Python
           const py311 = langs.find(l => /python/i.test(l.name) && /3\.11(\.2)?/i.test(l.name));
           const py = langs.find(l => /python/i.test(l.name));
           setLanguageId(py311?.id || py?.id || langs[0]?.id || null);
         }
-        
+
       } catch (e) {
         console.error("runner: languages", e);
       }
@@ -140,7 +155,7 @@ export const CodeRunner = () => {
         if (!sessionId) {
           const res = await apiCreateSession();
           setSessionId(res.session_id);
-          try { window.localStorage.setItem(RUNNER_SESSION_KEY, res.session_id); } catch {}
+          try { window.localStorage.setItem(RUNNER_SESSION_KEY, res.session_id); } catch { }
         }
       } catch (e) {
         // Non-fatal: Explain tab will handle retry as well
@@ -169,30 +184,30 @@ export const CodeRunner = () => {
 
   // Save notes to localStorage
   useEffect(() => {
-    try { localStorage.setItem('interview-notes', notes); } catch {}
+    try { localStorage.setItem('interview-notes', notes); } catch { }
   }, [notes]);
 
   // Save source code to localStorage
   useEffect(() => {
-    try { localStorage.setItem(STORAGE_KEYS.CODE_SOURCE, source); } catch {}
+    try { localStorage.setItem(STORAGE_KEYS.CODE_SOURCE, source); } catch { }
   }, [source]);
 
   // Save stdin to localStorage
   useEffect(() => {
-    try { localStorage.setItem(STORAGE_KEYS.CODE_STDIN, stdin); } catch {}
+    try { localStorage.setItem(STORAGE_KEYS.CODE_STDIN, stdin); } catch { }
   }, [stdin]);
 
   // Save result to localStorage
   useEffect(() => {
     if (result) {
-      try { localStorage.setItem(STORAGE_KEYS.CODE_RESULT, JSON.stringify(result)); } catch {}
+      try { localStorage.setItem(STORAGE_KEYS.CODE_RESULT, JSON.stringify(result)); } catch { }
     }
   }, [result]);
 
   // Save explanation to localStorage
   useEffect(() => {
     if (explanation) {
-      try { localStorage.setItem(STORAGE_KEYS.CODE_EXPLANATION, explanation); } catch {}
+      try { localStorage.setItem(STORAGE_KEYS.CODE_EXPLANATION, explanation); } catch { }
     }
   }, [explanation]);
 
@@ -201,13 +216,13 @@ export const CodeRunner = () => {
     try {
       localStorage.setItem(STORAGE_KEYS.TIMER_SECONDS, String(timerSeconds));
       localStorage.setItem(STORAGE_KEYS.TIMER_ACTIVE, String(timerActive));
-    } catch {}
+    } catch { }
   }, [timerSeconds, timerActive]);
 
   // Save language ID to localStorage
   useEffect(() => {
     if (languageId) {
-      try { localStorage.setItem(STORAGE_KEYS.CODE_LANGUAGE, String(languageId)); } catch {}
+      try { localStorage.setItem(STORAGE_KEYS.CODE_LANGUAGE, String(languageId)); } catch { }
     }
   }, [languageId]);
 
@@ -231,19 +246,19 @@ export const CodeRunner = () => {
 
   const onRun = useCallback(async () => {
     if (!languageId && executionMode === 'server') return;
-    
+
     // Clear any previous explanation before a new run starts
-    try { localStorage.removeItem(STORAGE_KEYS.CODE_EXPLANATION); } catch {}
+    try { localStorage.removeItem(STORAGE_KEYS.CODE_EXPLANATION); } catch { }
     setExplanation('');
     // Tracing temporarily removed
-    
+
     const currentLangLabel = languages.find(l => l.id === languageId)?.name || "Language";
     const isPython = currentLangLabel.toLowerCase().includes('python');
     const useClientSide = executionMode === 'client' && isPython && isPyodideSupported();
-    
+
     setIsRunning(true);
     setResult(null);
-    
+
     try {
       if (useClientSide) {
         // Client-side execution with Pyodide
@@ -319,7 +334,7 @@ export const CodeRunner = () => {
       localStorage.removeItem(STORAGE_KEYS.CODE_STDIN);
       localStorage.removeItem(STORAGE_KEYS.CODE_RESULT);
       localStorage.removeItem(STORAGE_KEYS.CODE_EXPLANATION);
-    } catch {}
+    } catch { }
     toast({ title: 'Reset', description: 'Cleared source, input, outputs, explanation, and trace.' });
   }, [toast]);
 
@@ -389,7 +404,7 @@ export const CodeRunner = () => {
       }
     }
   };
-  
+
   // Handle double-click or long-press to set custom time
   const handleTimerSetTime = () => {
     handleTimerDialogOpen();
@@ -407,79 +422,137 @@ export const CodeRunner = () => {
     }, { once: true });
   }, [handleResize]);
 
+  const mapLanguageToMonaco = (langName: string): string => {
+    const name = langName.toLowerCase();
+    if (name.includes('python')) return 'python';
+    if (name.includes('javascript') || name.includes('node.js')) return 'javascript';
+    if (name.includes('typescript')) return 'typescript';
+    if (name.includes('c++') || name.includes('cpp')) return 'cpp';
+    if (name.includes('java')) return 'java';
+    if (name.includes('go')) return 'go';
+    if (name.includes('sql')) return 'sql';
+    if (name.includes('c ')) return 'c';
+    return name.split(' ')[0];
+  };
+
   return (
-    <div className="w-screen max-w-none px-0" style={{ height: 'calc(100vh - 48px)' }}>
-      {/* Top toolbar */}
-      <div className="flex items-center justify-between gap-3 px-4 py-2 border-b bg-background/95">
-        <div className="flex items-center gap-2">
+    <div className="w-screen max-w-none px-0 h-screen md:h-[calc(100vh-48px)]">
+      {/* Top toolbar - Mobile Optimized */}
+      <div className="flex items-center justify-between gap-2 px-2 md:px-4 py-2 border-b bg-background/95">
+        <div className="flex items-center gap-1 md:gap-2">
           <Link to="/" aria-label="Back to Assistant" title="Back">
             <Button variant="ghost" size="icon" className="h-8 w-8">
               <ArrowLeft className="h-4 w-4" />
             </Button>
           </Link>
-          <div className="text-sm font-semibold tracking-wide">Code Runner</div>
+          <div className="text-sm font-semibold tracking-wide hidden sm:block">Code Runner</div>
         </div>
-        <div className="flex items-center gap-2">
-          {/* Timer */}
-          <Button 
-            variant="ghost" 
-            size="sm" 
-            onClick={handleTimerToggle}
-            onContextMenu={(e) => {
-              e.preventDefault();
-              handleTimerDialogOpen();
-            }}
-            className="gap-1.5"
-          >
-            {timerActive ? (
-              <Clock className="h-3.5 w-3.5" />
-            ) : (
-              <StopCircle className="h-3.5 w-3.5 text-destructive" />
+        
+        {/* Mobile: Compact Controls */}
+        <div className="flex items-center gap-1 md:gap-2 flex-1 justify-end">
+          {/* Timer - Compact on mobile */}
+          <div className="flex items-center gap-1">
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={handleTimerToggle}
+              onContextMenu={(e) => {
+                e.preventDefault();
+                handleTimerDialogOpen();
+              }}
+              className="gap-1 px-2 md:px-3"
+            >
+              {timerActive ? (
+                <Clock className="h-3.5 w-3.5" />
+              ) : (
+                <StopCircle className="h-3.5 w-3.5 text-destructive" />
+              )}
+              <span className={`text-xs md:text-sm ${timerSeconds < 300 && timerActive ? "text-destructive font-mono" : "font-mono"}`}>
+                {formatTimer(timerSeconds)}
+              </span>
+            </Button>
+            {timerActive && timerSeconds > 0 && (
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => { setTimerSeconds(0); setTimerActive(false); }}
+                className="gap-1 px-1.5 md:px-2 text-destructive hover:bg-destructive/10"
+                title="Reset timer"
+              >
+                <RotateCcw className="h-3.5 w-3.5" />
+              </Button>
             )}
-            <span className={timerSeconds < 300 && timerActive ? "text-destructive font-mono" : "font-mono"}>
-              {formatTimer(timerSeconds)}
-            </span>
-          </Button>
-          {/* Notes toggle */}
-          <Button variant={showNotes ? "default" : "ghost"} size="sm" onClick={() => setShowNotes(!showNotes)} className="gap-1.5">
+          </div>
+          
+          {/* Notes - Hidden on mobile */}
+          <Button variant={showNotes ? "default" : "ghost"} size="sm" onClick={() => setShowNotes(!showNotes)} className="gap-1.5 hidden md:flex">
             <StickyNote className="h-3.5 w-3.5" />
             <span className="hidden sm:inline">Notes</span>
           </Button>
-          {/* Shortcuts */}
-          <Button variant="ghost" size="sm" onClick={() => setShowShortcuts(!showShortcuts)} className="gap-1.5">
+          
+          {/* Shortcuts - Hidden on mobile */}
+          <Button variant="ghost" size="sm" onClick={() => setShowShortcuts(!showShortcuts)} className="gap-1.5 hidden md:flex">
             <Keyboard className="h-3.5 w-3.5" />
             <span className="hidden sm:inline">Shortcuts</span>
           </Button>
-              <Select value={languageId ? String(languageId) : undefined} onValueChange={(v) => {
-                const id = Number(v);
-                setLanguageId(id);
-                // Clear stale explanation when switching languages
-                try { localStorage.removeItem(STORAGE_KEYS.CODE_EXPLANATION); } catch {}
-                setExplanation('');
-                const label = (languages.find(l => l.id === id)?.name || '').toLowerCase();
-                if (/python/.test(label)) setSource(sampleCode('python'));
-                else if (/node|javascript/.test(label)) setSource(sampleCode('node'));
-                else if (/c\+\+/.test(label)) setSource(sampleCode('cpp'));
-                else if (/\bc\b/.test(label)) setSource(sampleCode('c'));
-                else if (/java\b/.test(label)) setSource(sampleCode('java'));
-                else if (/go\b/.test(label)) setSource(sampleCode('go'));
-                else if (/sql/.test(label)) setSource(sampleCode('sql'));
-              }}>
-                <SelectTrigger className="w-[260px]"><SelectValue placeholder="Select language" /></SelectTrigger>
-                <SelectContent>
-                  {languages.map(l => (
-                    <SelectItem key={l.id} value={String(l.id)}>{l.name}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              <Button onClick={onRun} disabled={!languageId || isRunning} className="shadow-sm gap-1.5">
-                <Zap className="h-3.5 w-3.5" />
-                {isRunning ? 'Running…' : 'Run'}
-              </Button>
+          
+          {/* Language Selector - Compact on mobile */}
+          <Select value={languageId ? String(languageId) : undefined} onValueChange={(v) => {
+            const id = Number(v);
+            setLanguageId(id);
+            try { localStorage.removeItem(STORAGE_KEYS.CODE_EXPLANATION); } catch { }
+            setExplanation('');
+            const label = (languages.find(l => l.id === id)?.name || '').toLowerCase();
+            if (/python/.test(label)) setSource(sampleCode('python'));
+            else if (/node|javascript/.test(label)) setSource(sampleCode('node'));
+            else if (/c\+\+/.test(label)) setSource(sampleCode('cpp'));
+            else if (/\bc\b/.test(label)) setSource(sampleCode('c'));
+            else if (/java\b/.test(label)) setSource(sampleCode('java'));
+            else if (/go\b/.test(label)) setSource(sampleCode('go'));
+            else if (/sql/.test(label)) setSource(sampleCode('sql'));
+          }}>
+            <SelectTrigger className="w-[120px] md:w-[260px] text-xs md:text-sm">
+              <SelectValue placeholder="Language" />
+            </SelectTrigger>
+            <SelectContent>
+              {languages.map(l => (
+                <SelectItem key={l.id} value={String(l.id)}>{l.name}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          
+          {/* Run Button */}
+          <Button onClick={onRun} disabled={!languageId || isRunning} size="sm" className="shadow-sm gap-1 px-2 md:px-3">
+            <Zap className="h-3.5 w-3.5" />
+            <span className="hidden sm:inline">{isRunning ? 'Running…' : 'Run'}</span>
+          </Button>
         </div>
       </div>
-      {/* Main split with resizable panels */}
-      <div className="flex relative" style={{ height: 'calc(100% - 44px)' }}>
+
+      {/* Mobile View Toggle */}
+      <div className="md:hidden flex border-b bg-muted/30">
+        <button
+          onClick={() => setMobileView('code')}
+          className={`flex-1 py-2 text-sm font-medium flex items-center justify-center gap-2 transition-colors ${
+            mobileView === 'code' ? 'bg-background text-primary border-b-2 border-primary' : 'text-muted-foreground'
+          }`}
+        >
+          <Code2 className="h-4 w-4" />
+          Code
+        </button>
+        <button
+          onClick={() => setMobileView('output')}
+          className={`flex-1 py-2 text-sm font-medium flex items-center justify-center gap-2 transition-colors ${
+            mobileView === 'output' ? 'bg-background text-primary border-b-2 border-primary' : 'text-muted-foreground'
+          }`}
+        >
+          <Terminal className="h-4 w-4" />
+          Output
+        </button>
+      </div>
+
+      {/* Main split with resizable panels - Desktop */}
+      <div className="hidden md:flex relative" style={{ height: 'calc(100% - 44px)' }}>
         {/* Left: Code Editor */}
         <div className="bg-background border-r p-2 lg:p-3 overflow-hidden" style={{ width: `${panelWidth}%`, minWidth: '300px' }}>
           <div className="text-xs mb-2 text-muted-foreground flex items-center justify-between">
@@ -492,25 +565,24 @@ export const CodeRunner = () => {
             <span className="font-mono text-[10px]">{source.split('\n').length} lines</span>
           </div>
           <div className="h-[calc(100%-16px)]">
-            <MonacoEditor 
-              value={source} 
-              language={langLabel} 
-              onChange={setSource} 
-              height={'100%'} 
-              className="rounded-md border h-full"
-              onEditorReady={(editor) => { monacoRef.current = editor; }}
+            <MonacoEditor
+              value={source}
+              language={mapLanguageToMonaco(languages.find(l => l.id === languageId)?.name || 'python')}
+              onChange={setSource}
+              onMount={(editor) => { monacoRef.current = editor; }}
+              height="100%"
             />
           </div>
         </div>
         {/* Resize handle */}
-        <div 
+        <div
           onMouseDown={startResize}
           className="w-1 bg-border hover:bg-primary/50 cursor-col-resize transition-colors active:bg-primary"
           style={{ flexShrink: 0 }}
         />
         {/* Right: Output Panel */}
         <div className="bg-background flex-1 p-2 lg:p-3 overflow-hidden flex flex-col" style={{ minWidth: '300px' }}>
-          <Tabs value={activeTab} onValueChange={(v:any)=>setActiveTab(v)} className="w-full flex-1 flex flex-col overflow-hidden">
+          <Tabs value={activeTab} onValueChange={(v: any) => setActiveTab(v)} className="w-full flex-1 flex flex-col overflow-hidden">
             <div className="mb-2 flex-shrink-0 overflow-x-auto scrollbar-professional">
               <TabsList className="inline-flex w-auto min-w-full">
                 <TabsTrigger value="input" className="whitespace-nowrap flex-shrink-0">Input</TabsTrigger>
@@ -527,9 +599,9 @@ export const CodeRunner = () => {
                 <div className="mb-2 text-xs text-muted-foreground">
                   Input Simulator: Provide test cases or stdin input
                 </div>
-                <Textarea 
-                  value={stdin} 
-                  onChange={(e) => setStdin(e.target.value)} 
+                <Textarea
+                  value={stdin}
+                  onChange={(e) => setStdin(e.target.value)}
                   className="font-mono flex-1 min-h-0 resize-none"
                   placeholder="Enter test input here...&#10;Example for Python:&#10;5&#10;1 2 3 4 5"
                 />
@@ -566,7 +638,7 @@ export const CodeRunner = () => {
               </TabsContent>
               <TabsContent value="visualize" className="flex-1 flex flex-col mt-0 data-[state=active]:flex data-[state=inactive]:hidden overflow-hidden">
                 <div className="rounded-lg border p-3 bg-card flex-1 overflow-auto min-h-0 scrollbar-professional">
-                  <ExecutionVisualizer 
+                  <ExecutionVisualizer
                     editor={monacoRef.current}
                     code={source}
                     events={traceEvents as any}
@@ -575,31 +647,31 @@ export const CodeRunner = () => {
                   />
                 </div>
               </TabsContent>
-              
+
               <TabsContent value="debug" className="flex-1 flex flex-col mt-0 data-[state=active]:flex data-[state=inactive]:hidden overflow-hidden">
                 <div className="rounded-lg border p-3 bg-card flex-1 overflow-auto min-h-0 scrollbar-professional">
-                  <MemoryStackView 
-                    frames={[]} 
+                  <MemoryStackView
+                    frames={[]}
                     variables={
-                      result 
-                        ? { 
-                            ...((result as any).variables || {}),
-                            output: result.stdout || 'N/A', 
-                            error: result.stderr || 'N/A' 
-                          } 
+                      result
+                        ? {
+                          ...((result as any).variables || {}),
+                          output: result.stdout || 'N/A',
+                          error: result.stderr || 'N/A'
+                        }
                         : {}
-                    } 
+                    }
                     code={source}
                     output={result?.stdout || ''}
-                    isActive={activeTab === 'debug'} 
+                    isActive={activeTab === 'debug'}
                   />
                 </div>
               </TabsContent>
               <TabsContent value="explain" className="flex-1 flex flex-col mt-0 data-[state=active]:flex data-[state=inactive]:hidden overflow-hidden">
                 <div className="flex-1 overflow-auto scrollbar-professional">
-                  <OutputExplanation 
-                    output={result?.stdout || ''} 
-                    code={source} 
+                  <OutputExplanation
+                    output={result?.stdout || ''}
+                    code={source}
                     language={langLabel}
                     isActive={activeTab === 'explain'}
                     sessionId={sessionId}
@@ -638,15 +710,128 @@ export const CodeRunner = () => {
               </h3>
               <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => setShowNotes(false)}>×</Button>
             </div>
-            <Textarea 
-              value={notes} 
-              onChange={(e) => setNotes(e.target.value)} 
+            <Textarea
+              value={notes}
+              onChange={(e) => setNotes(e.target.value)}
               placeholder="Jot down thoughts, strategies, or observations here..."
               className="flex-1 font-mono text-xs resize-none scrollbar-professional min-h-0"
             />
           </div>
         )}
       </div>
+
+      {/* Mobile Layout - Stacked Panels */}
+      <div className="md:hidden flex flex-col" style={{ height: 'calc(100% - 88px)' }}>
+        {/* Code Editor - Mobile */}
+        {mobileView === 'code' && (
+          <div className="flex-1 bg-background p-2 overflow-hidden flex flex-col">
+            <div className="text-xs mb-2 text-muted-foreground flex items-center justify-between">
+              <span className="flex items-center gap-2">
+                <span>Source</span>
+                <Button size="icon" variant="ghost" className="h-5 w-5" title="Reset" onClick={onResetAll}>
+                  <RotateCcw className="h-3.5 w-3.5" />
+                </Button>
+              </span>
+              <span className="font-mono text-[10px]">{source.split('\n').length} lines</span>
+            </div>
+            <div className="flex-1 min-h-0">
+              <MonacoEditor
+                value={source}
+                language={mapLanguageToMonaco(languages.find(l => l.id === languageId)?.name || 'python')}
+                onChange={setSource}
+                onMount={(editor) => { monacoRef.current = editor; }}
+                height="100%"
+              />
+            </div>
+            {/* Mobile Input Area */}
+            <div className="mt-2 border-t pt-2">
+              <div className="text-xs text-muted-foreground mb-1">Input (stdin)</div>
+              <Textarea
+                value={stdin}
+                onChange={(e) => setStdin(e.target.value)}
+                className="font-mono text-xs h-20 resize-none"
+                placeholder="Enter test input..."
+              />
+            </div>
+          </div>
+        )}
+
+        {/* Output Panel - Mobile */}
+        {mobileView === 'output' && (
+          <div className="flex-1 bg-background p-2 overflow-hidden flex flex-col">
+            <Tabs value={activeTab} onValueChange={(v: any) => setActiveTab(v)} className="w-full flex-1 flex flex-col overflow-hidden">
+              <div className="mb-2 flex-shrink-0 overflow-x-auto scrollbar-professional">
+                <TabsList className="inline-flex w-auto">
+                  <TabsTrigger value="output" className="text-xs px-2">Output</TabsTrigger>
+                  <TabsTrigger value="errors" className="text-xs px-2">Errors</TabsTrigger>
+                  <TabsTrigger value="compile" className="text-xs px-2">Compile</TabsTrigger>
+                  <TabsTrigger value="explain" className="text-xs px-2">Explain</TabsTrigger>
+                </TabsList>
+              </div>
+              <div className="flex-1 flex flex-col overflow-hidden min-h-0">
+                <TabsContent value="output" className="flex-1 flex flex-col mt-0 data-[state=active]:flex data-[state=inactive]:hidden overflow-hidden">
+                  <div className="rounded-lg border p-3 bg-card flex-1 overflow-auto min-h-0 scrollbar-professional">
+                    {result?.stdout ? (
+                      <pre className="text-xs whitespace-pre-wrap font-mono">{result.stdout}</pre>
+                    ) : (
+                      <div className="text-xs text-muted-foreground">No output. Run your code to see results.</div>
+                    )}
+                  </div>
+                </TabsContent>
+                <TabsContent value="errors" className="flex-1 flex flex-col mt-0 data-[state=active]:flex data-[state=inactive]:hidden overflow-hidden">
+                  <div className="rounded-lg border p-3 bg-card flex-1 overflow-auto min-h-0 scrollbar-professional">
+                    {result?.stderr ? (
+                      <pre className="text-xs whitespace-pre-wrap font-mono text-red-600">{result.stderr}</pre>
+                    ) : (
+                      <div className="text-xs text-muted-foreground">No errors</div>
+                    )}
+                  </div>
+                </TabsContent>
+                <TabsContent value="compile" className="flex-1 flex flex-col mt-0 data-[state=active]:flex data-[state=inactive]:hidden overflow-hidden">
+                  <div className="rounded-lg border p-3 bg-card flex-1 overflow-auto min-h-0 scrollbar-professional">
+                    {result?.compile ? (
+                      <pre className="text-xs whitespace-pre-wrap font-mono">{result.compile}</pre>
+                    ) : (
+                      <div className="text-xs text-muted-foreground">No compiler messages</div>
+                    )}
+                  </div>
+                </TabsContent>
+                <TabsContent value="explain" className="flex-1 flex flex-col mt-0 data-[state=active]:flex data-[state=inactive]:hidden overflow-hidden">
+                  <div className="flex-1 overflow-auto scrollbar-professional">
+                    <OutputExplanation
+                      output={result?.stdout || ''}
+                      code={source}
+                      language={langLabel}
+                      isActive={activeTab === 'explain'}
+                      sessionId={sessionId}
+                      explanation={explanation}
+                      onExplanationChange={setExplanation}
+                    />
+                  </div>
+                </TabsContent>
+              </div>
+            </Tabs>
+            {/* Mobile Metrics */}
+            {result && (result.time || typeof result.memory === 'number') && (
+              <div className="mt-2 p-2 bg-muted/30 rounded-lg border flex items-center gap-4 text-xs">
+                {result.time && (
+                  <div className="flex items-center gap-1.5">
+                    <Cpu className="h-3.5 w-3.5 text-muted-foreground" />
+                    <span className="font-mono">{result.time}s</span>
+                  </div>
+                )}
+                {typeof result.memory === 'number' && (
+                  <div className="flex items-center gap-1.5">
+                    <HardDrive className="h-3.5 w-3.5 text-muted-foreground" />
+                    <span className="font-mono">{(result.memory / 1024).toFixed(2)} MB</span>
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+
       {/* Timer Dialog */}
       <Dialog open={showTimerDialog} onOpenChange={setShowTimerDialog}>
         <DialogContent>
@@ -683,9 +868,20 @@ export const CodeRunner = () => {
             <div className="text-xs text-muted-foreground">
               Total: {formatTimer(timerInput.hours * 3600 + timerInput.minutes * 60)}
             </div>
+            {timerActive && timerSeconds > 0 && (
+              <div className="text-xs text-muted-foreground">
+                Current Timer: {formatTimer(timerSeconds)}
+              </div>
+            )}
           </div>
-          <DialogFooter>
+          <DialogFooter className="flex gap-2">
             <Button variant="outline" onClick={() => setShowTimerDialog(false)}>Cancel</Button>
+            {timerActive && timerSeconds > 0 && (
+              <Button variant="destructive" onClick={() => { setTimerSeconds(0); setTimerActive(false); setShowTimerDialog(false); }} className="gap-2">
+                <RotateCcw className="h-4 w-4" />
+                Reset Timer
+              </Button>
+            )}
             <Button onClick={handleTimerSet}>Set Timer</Button>
           </DialogFooter>
         </DialogContent>
@@ -765,7 +961,7 @@ function transformJavaForJudge0(src: string): string {
       const cls = classWithMain[1];
       // Demote any other public top-level types (class/enum/interface) except Main
       out = out
-        .replace(/(^|\n)\s*public\s+class\s+(?!Main\b)([A-Za-z_][A-Za-z0-9_]*)(\s*<[^>{]*>)?/g, ($0, p1, name, gen='') => `${p1}class ${name}${gen || ''}`)
+        .replace(/(^|\n)\s*public\s+class\s+(?!Main\b)([A-Za-z_][A-Za-z0-9_]*)(\s*<[^>{]*>)?/g, ($0, p1, name, gen = '') => `${p1}class ${name}${gen || ''}`)
         .replace(/(^|\n)\s*public\s+enum\s+(?!Main\b)([A-Za-z_][A-Za-z0-9_]*)/g, ($0, p1, name) => `${p1}enum ${name}`)
         .replace(/(^|\n)\s*public\s+interface\s+(?!Main\b)([A-Za-z_][A-Za-z0-9_]*)/g, ($0, p1, name) => `${p1}interface ${name}`);
       // Append a delegating Main wrapper to call the located main

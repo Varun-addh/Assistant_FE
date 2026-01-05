@@ -56,6 +56,7 @@ export interface StartRoundRequest {
   experience_years: number;          // ✅ Top-level field (REQUIRED)
   company_specific?: string;         // Optional
   enable_tts?: boolean;              // Optional
+  question_count?: number;           // Optional - Number of questions (1-15, backend default varies by round)
 }
 
 export interface StartRoundResponse {

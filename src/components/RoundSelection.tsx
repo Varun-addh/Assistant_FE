@@ -13,18 +13,18 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { 
-  Users, 
-  Code2, 
-  Layers, 
-  MessageCircle, 
-  Briefcase, 
-  Brain, 
-  Database, 
-  Smartphone, 
-  Server, 
-  Shield, 
-  Cloud, 
+import {
+  Users,
+  Code2,
+  Layers,
+  MessageCircle,
+  Briefcase,
+  Brain,
+  Database,
+  Smartphone,
+  Server,
+  Shield,
+  Cloud,
   Target,
   Clock,
   TrendingUp,
@@ -121,15 +121,15 @@ const ADVANCED_ROUNDS = [
 // Detect domain category from domain string
 const detectDomainCategory = (domain: string): string => {
   if (!domain) return 'general';
-  
+
   const lowerDomain = domain.toLowerCase();
-  
+
   for (const [category, keywords] of Object.entries(DOMAIN_KEYWORDS)) {
     if (keywords.some(keyword => lowerDomain.includes(keyword))) {
       return category;
     }
   }
-  
+
   return 'general';
 };
 
@@ -146,29 +146,29 @@ const getDomainCategoryName = (category: string): string => {
     fullstack: 'Full Stack Development',
     general: 'General Software Engineering',
   };
-  
+
   return names[category] || 'General';
 };
 
 // Filter rounds based on domain
 const filterRoundsByDomain = (rounds: RoundConfig[], domain: string): RoundConfig[] => {
   const domainCategory = detectDomainCategory(domain);
-  
+
   console.log('🔧 [Filter] Filtering rounds for domain:', domain, '→ category:', domainCategory);
-  
+
   const filtered = rounds.filter(round => {
     // Always show core rounds
     if (CORE_ROUNDS.includes(round.round_type)) {
       console.log('✅ [Filter] Core round:', round.round_type);
       return true;
     }
-    
+
     // Always show advanced rounds
     if (ADVANCED_ROUNDS.includes(round.round_type)) {
       console.log('✅ [Filter] Advanced round:', round.round_type);
       return true;
     }
-    
+
     // Filter specialist rounds based on domain
     let include = false;
     switch (domainCategory) {
@@ -192,8 +192,8 @@ const filterRoundsByDomain = (rounds: RoundConfig[], domain: string): RoundConfi
         break;
       case 'fullstack':
         // Show both frontend and backend for fullstack
-        include = round.round_type === InterviewRound.BACKEND_SPECIALIST || 
-               round.round_type === InterviewRound.FRONTEND_SPECIALIST;
+        include = round.round_type === InterviewRound.BACKEND_SPECIALIST ||
+          round.round_type === InterviewRound.FRONTEND_SPECIALIST;
         break;
       default:
         // For general/unknown domains, hide all specialist rounds
@@ -206,11 +206,11 @@ const filterRoundsByDomain = (rounds: RoundConfig[], domain: string): RoundConfi
           InterviewRound.SECURITY,
         ].includes(round.round_type);
     }
-    
+
     console.log(`${include ? '✅' : '❌'} [Filter] Specialist round:`, round.round_type, '→', include);
     return include;
   });
-  
+
   console.log('🎯 [Filter] Result:', filtered.length, 'of', rounds.length, 'rounds');
   return filtered;
 };
@@ -225,6 +225,7 @@ export default function RoundSelection({ onRoundStart, userProfile }: RoundSelec
   const [companySpecific, setCompanySpecific] = useState('');
   const [domain, setDomain] = useState(userProfile?.domain || '');
   const [experienceYears, setExperienceYears] = useState(userProfile?.experience_years || 0);
+  const [questionCount, setQuestionCount] = useState(0); // 0 = use backend default
   const [starting, setStarting] = useState(false);
   const [view, setView] = useState<'recommended' | 'all'>('recommended');
 
@@ -244,24 +245,24 @@ export default function RoundSelection({ onRoundStart, userProfile }: RoundSelec
     try {
       console.log('🔍 [Round Selection] Fetching rounds...');
       console.log('📊 [Round Selection] User Profile:', userProfile);
-      
+
       const response = await getAvailableRounds(
         experienceYears || userProfile?.experience_years,
         domain || userProfile?.domain
       );
-      
+
       console.log('✅ [Round Selection] API Response:', response);
       console.log('📋 [Round Selection] All Rounds:', response.all_rounds);
       console.log('⭐ [Round Selection] Recommended Rounds:', response.recommended_rounds);
       console.log('📈 [Round Selection] Recommended Sequence:', response.recommended_sequence);
-      
+
       // Backend returns 'rounds' instead of 'all_rounds'
       const allRoundsData = response.all_rounds || response.rounds || [];
       const recommendedRoundsData = response.recommended_rounds || response.rounds || [];
-      
+
       // Apply smart domain filtering
       const currentDomain = domain || userProfile?.domain || '';
-      
+
       console.log('🎯 [Round Selection] Current domain:', currentDomain);
       console.log('🔍 [Round Selection] Domain category:', detectDomainCategory(currentDomain));
       console.log('📊 [Round Selection] Before filtering:', {
@@ -269,8 +270,8 @@ export default function RoundSelection({ onRoundStart, userProfile }: RoundSelec
         recommended: recommendedRoundsData.length,
         allRoundTypes: allRoundsData.map(r => r.round_type),
       });
-      
-      const filteredAllRounds = currentDomain 
+
+      const filteredAllRounds = currentDomain
         ? filterRoundsByDomain(allRoundsData, currentDomain)
         : allRoundsData;
       const filteredRecommendedRounds = currentDomain
@@ -279,19 +280,19 @@ export default function RoundSelection({ onRoundStart, userProfile }: RoundSelec
       const filteredSequence = response.recommended_sequence && currentDomain
         ? filterRoundsByDomain(response.recommended_sequence, currentDomain)
         : (response.recommended_sequence || []);
-      
+
       console.log('✂️ [Round Selection] After filtering:', {
         allRounds: filteredAllRounds.length,
         recommended: filteredRecommendedRounds.length,
         filteredRoundTypes: filteredAllRounds.map(r => r.round_type),
       });
-      
+
       setAllRounds(filteredAllRounds);
       setRecommendedRounds(filteredRecommendedRounds);
       if (filteredSequence.length > 0) {
         setRecommendedSequence(filteredSequence);
       }
-      
+
       console.log('✅ [Round Selection] State updated successfully');
       console.log('📊 [Round Selection] Setting allRounds:', filteredAllRounds.length, 'rounds');
       console.log('⭐ [Round Selection] Setting recommendedRounds:', filteredRecommendedRounds.length, 'rounds');
@@ -326,13 +327,18 @@ export default function RoundSelection({ onRoundStart, userProfile }: RoundSelec
 
     setStarting(true);
     try {
-      const requestData = {
+      const requestData: any = {
         round_type: selectedRound.round_type,
         domain: domain || userProfile?.domain || '',
         experience_years: parseInt(String(experienceYears || userProfile?.experience_years || 0)), // Ensure integer
         company_specific: companySpecific || undefined,
         enable_tts: true,
       };
+
+      // Add question_count if user customized it (not using default)
+      if (questionCount > 0 && questionCount >= 1 && questionCount <= 15) {
+        requestData.question_count = questionCount;
+      }
 
       console.log('🚀 [Round Selection] Starting round with:', requestData);
       console.log('📊 [Round Selection] Request validation:', {
@@ -353,26 +359,26 @@ export default function RoundSelection({ onRoundStart, userProfile }: RoundSelec
 
       // Use round_config from response, or fallback to selectedRound
       const roundConfig = response.round_config || selectedRound;
-      
+
       // Pass TTS audio URL to parent component
       onRoundStart(
-        response.session_id, 
-        roundConfig, 
+        response.session_id,
+        roundConfig,
         response.first_question,
         response.tts_audio_url  // ✅ Pass TTS audio URL
       );
     } catch (error: any) {
       console.error('❌ [Round Selection] Failed to start round:', error);
-      
+
       // Try to parse detailed error information
       let errorMessage = 'Could not start the interview round';
-      
+
       if (error.message) {
         try {
           // Check if it's a validation error with details
           const errorObj = JSON.parse(error.message);
           if (Array.isArray(errorObj.detail)) {
-            errorMessage = errorObj.detail.map((e: any) => 
+            errorMessage = errorObj.detail.map((e: any) =>
               `${e.loc?.join('.')}: ${e.msg}`
             ).join('; ');
           } else if (errorObj.detail) {
@@ -382,9 +388,9 @@ export default function RoundSelection({ onRoundStart, userProfile }: RoundSelec
           errorMessage = error.message;
         }
       }
-      
+
       console.error('📋 [Round Selection] Error details:', errorMessage);
-      
+
       toast({
         title: '❌ Failed to Start Round',
         description: errorMessage,
@@ -403,11 +409,10 @@ export default function RoundSelection({ onRoundStart, userProfile }: RoundSelec
 
     return (
       <Card
-        className={`group cursor-pointer transition-all duration-300 hover:shadow-2xl hover:scale-[1.03] ${
-          isSelected 
-            ? 'ring-2 ring-primary shadow-2xl scale-[1.02] border-primary/50' 
-            : 'hover:border-primary/30'
-        } ${isDomainMissing ? 'opacity-50 cursor-not-allowed' : ''}`}
+        className={`group cursor-pointer transition-all duration-300 hover:shadow-2xl hover:scale-[1.03] ${isSelected
+          ? 'ring-2 ring-primary shadow-2xl scale-[1.02] border-primary/50'
+          : 'hover:border-primary/30'
+          } ${isDomainMissing ? 'opacity-50 cursor-not-allowed' : ''}`}
         onClick={() => {
           if (isDomainMissing) {
             toast({
@@ -420,17 +425,17 @@ export default function RoundSelection({ onRoundStart, userProfile }: RoundSelec
           setSelectedRound(round);
         }}
       >
-        <CardHeader className="pb-4">
-          <div className="flex items-start justify-between gap-3">
-            <div className="flex items-start gap-3 flex-1">
-              <div className={`p-3 rounded-xl bg-gradient-to-br ${colorGradient} shadow-lg group-hover:shadow-xl transition-shadow`}>
-                <Icon className="w-6 h-6 text-white" />
+        <CardHeader className="pb-3 sm:pb-4 px-4 sm:px-6">
+          <div className="flex items-start justify-between gap-2 sm:gap-3">
+            <div className="flex items-start gap-2 sm:gap-3 flex-1">
+              <div className={`p-2 sm:p-3 rounded-xl bg-gradient-to-br ${colorGradient} shadow-lg group-hover:shadow-xl transition-shadow`}>
+                <Icon className="w-5 h-5 sm:w-6 sm:h-6 text-white" />
               </div>
               <div className="flex-1 min-w-0">
-                <CardTitle className="text-lg mb-1 line-clamp-2">{round.name}</CardTitle>
+                <CardTitle className="text-base sm:text-lg mb-0.5 sm:mb-1 line-clamp-2">{round.name}</CardTitle>
                 {isRecommended && (
-                  <Badge variant="outline" className="text-xs border-primary/30 bg-primary/5">
-                    <Sparkles className="w-3 h-3 mr-1" />
+                  <Badge variant="outline" className="text-[10px] sm:text-xs border-primary/30 bg-primary/5 px-1.5 py-0 sm:px-2 sm:py-0.5">
+                    <Sparkles className="w-2.5 h-2.5 sm:w-3 sm:h-3 mr-1" />
                     Recommended
                   </Badge>
                 )}
@@ -438,11 +443,11 @@ export default function RoundSelection({ onRoundStart, userProfile }: RoundSelec
             </div>
             {isSelected && (
               <div className="flex-shrink-0">
-                <CheckCircle2 className="w-6 h-6 text-primary" />
+                <CheckCircle2 className="w-5 h-5 sm:w-6 sm:h-6 text-primary" />
               </div>
             )}
           </div>
-          <CardDescription className="mt-3 text-sm leading-relaxed line-clamp-3">
+          <CardDescription className="mt-2 sm:mt-3 text-xs sm:text-sm leading-relaxed line-clamp-2 sm:line-clamp-3">
             {round.description}
           </CardDescription>
         </CardHeader>
@@ -500,28 +505,28 @@ export default function RoundSelection({ onRoundStart, userProfile }: RoundSelec
 
   return (
     <div className="min-h-screen">
-      <ScrollArea className="h-[calc(100vh-80px)]">
-        <div className="container max-w-7xl mx-auto px-4 py-8 space-y-8">
+      <div className="w-full">
+        <div className="container max-w-7xl mx-auto px-2 sm:px-4 pb-8 pt-10 sm:pt-4 space-y-4 sm:space-y-8">
           {!selectedRound ? (
             <>
               {/* Header - Only Main Title, No Icon, No Subtitle, No Black BG */}
-              <div className="text-center py-4">
-                <h1 className="text-4xl md:text-5xl font-bold bg-gradient-to-r from-purple-600 via-pink-600 to-purple-700 bg-clip-text text-transparent">
+              <div className="text-center py-2 sm:py-4">
+                <h1 className="text-2xl sm:text-3xl md:text-5xl font-extrabold bg-gradient-to-r from-purple-600 via-pink-600 to-purple-700 bg-clip-text text-transparent px-4">
                   Choose Your Interview Round
                 </h1>
               </div>
 
               {/* Profile Setup Card - Redesigned */}
               <Card className="max-w-4xl mx-auto border-2 border-primary/20 shadow-xl bg-transparent">
-                <CardHeader className="pb-4 border-b">
-                  <div className="flex items-center gap-3">
-                    <div className="p-2 rounded-lg bg-primary/10">
-                      <Sparkles className="w-5 h-5 text-primary" />
+                <CardHeader className="pb-3 sm:pb-4 border-b px-4 sm:px-6">
+                  <div className="flex items-center gap-2 sm:gap-3">
+                    <div className="p-1.5 sm:p-2 rounded-lg bg-primary/10">
+                      <Sparkles className="w-4 h-4 sm:w-5 sm:h-5 text-primary" />
                     </div>
                     <div>
-                      <CardTitle className="text-xl">Profile Setup (Required)</CardTitle>
-                      <CardDescription className="mt-1">
-                        Domain is <strong>MANDATORY</strong> for relevant questions. Experience helps personalize difficulty.
+                      <CardTitle className="text-lg sm:text-xl">Profile Setup (Required)</CardTitle>
+                      <CardDescription className="mt-0.5 sm:mt-1 text-[10px] sm:text-sm">
+                        Domain is <strong>MANDATORY</strong> for relevant questions.
                       </CardDescription>
                     </div>
                   </div>
@@ -529,14 +534,14 @@ export default function RoundSelection({ onRoundStart, userProfile }: RoundSelec
                 <CardContent className="pt-6">
                   <div className="grid md:grid-cols-2 gap-6">
                     {/* Domain Selection - MANDATORY */}
-                    <div className="space-y-3">
-                      <Label htmlFor="domain" className="text-sm font-semibold flex items-center gap-2">
+                    <div className="space-y-2 sm:space-y-3">
+                      <Label htmlFor="domain" className="text-xs sm:text-sm font-semibold flex items-center gap-1.5">
                         <span>Domain / Specialization</span>
                         <span className="text-red-500 text-base">*</span>
                       </Label>
                       <Select value={domain} onValueChange={setDomain}>
-                        <SelectTrigger 
-                          id="domain" 
+                        <SelectTrigger
+                          id="domain"
                           className={`h-11 ${!domain ? 'border-red-400 border-2 focus:ring-red-500' : 'border-primary/30'}`}
                         >
                           <SelectValue placeholder="Select your domain..." />
@@ -578,7 +583,7 @@ export default function RoundSelection({ onRoundStart, userProfile }: RoundSelec
 
                     {/* Experience Years */}
                     <div className="space-y-3">
-                      <Label htmlFor="experience" className="text-sm font-semibold">
+                      <Label htmlFor="experience" className="text-xs sm:text-sm font-semibold">
                         Years of Experience
                       </Label>
                       <Input
@@ -590,6 +595,7 @@ export default function RoundSelection({ onRoundStart, userProfile }: RoundSelec
                         onChange={(e) => setExperienceYears(parseInt(e.target.value) || 0)}
                         placeholder="0-30 years"
                         className="h-11"
+                        maxLength={3}
                       />
                       <p className="text-xs text-muted-foreground flex items-center gap-1">
                         <TrendingUp className="w-3 h-3" />
@@ -603,10 +609,10 @@ export default function RoundSelection({ onRoundStart, userProfile }: RoundSelec
                         <Button
                           onClick={loadRounds}
                           variant="outline"
-                          className="w-full h-11 border-primary/30 hover:bg-primary/10"
+                          className="w-full h-10 sm:h-11 border-primary/30 hover:bg-primary/10 text-xs sm:text-sm"
                           disabled={loading || !domain}
                         >
-                          <TrendingUp className="w-4 h-4 mr-2" />
+                          <TrendingUp className="w-3.5 h-3.5 sm:w-4 sm:h-4 mr-2" />
                           Update Recommendations
                         </Button>
                       </div>
@@ -615,273 +621,311 @@ export default function RoundSelection({ onRoundStart, userProfile }: RoundSelec
                 </CardContent>
               </Card>
 
-            {/* Domain Detection Info Banner */}
-            {domain && (
-              <Card className="max-w-4xl mx-auto border border-primary/30 bg-gradient-to-r from-primary/10 via-primary/5 to-primary/10 shadow-md">
-                <CardContent className="py-4">
-                  <div className="flex flex-col md:flex-row items-center justify-center gap-3 text-center md:text-left">
-                    <div className="flex items-center gap-2">
-                      <div className="p-2 rounded-full bg-primary/20">
-                        <Sparkles className="w-4 h-4 text-primary" />
+              {/* Domain Detection Info Banner */}
+              {domain && (
+                <Card className="max-w-4xl mx-auto border border-primary/30 bg-gradient-to-r from-primary/10 via-primary/5 to-primary/10 shadow-md">
+                  <CardContent className="py-4">
+                    <div className="flex flex-col md:flex-row items-center justify-center gap-3 text-center md:text-left">
+                      <div className="flex items-center gap-2">
+                        <div className="p-2 rounded-full bg-primary/20">
+                          <Sparkles className="w-4 h-4 text-primary" />
+                        </div>
+                        <span className="font-semibold text-lg">
+                          {getDomainCategoryName(detectDomainCategory(domain))}
+                        </span>
                       </div>
-                      <span className="font-semibold text-lg">
-                        {getDomainCategoryName(detectDomainCategory(domain))}
-                      </span>
+                      <Separator className="hidden md:block h-6" orientation="vertical" />
+                      <div className="flex items-center gap-2 text-muted-foreground">
+                        <Target className="w-4 h-4" />
+                        <span className="text-sm">{allRounds.length} specialized rounds available</span>
+                      </div>
                     </div>
-                    <Separator className="hidden md:block h-6" orientation="vertical" />
-                    <div className="flex items-center gap-2 text-muted-foreground">
-                      <Target className="w-4 h-4" />
-                      <span className="text-sm">{allRounds.length} specialized rounds available</span>
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
-            )}
+                  </CardContent>
+                </Card>
+              )}
 
-            {/* View Toggle with Modern Design */}
-            <div className="flex justify-center gap-3">
-              <Button
-                variant={view === 'recommended' ? 'default' : 'outline'}
-                onClick={() => setView('recommended')}
-                className={`gap-2 px-6 h-11 transition-all ${
-                  view === 'recommended' 
-                    ? 'shadow-lg shadow-primary/20' 
+              <div className="flex flex-col sm:flex-row justify-center gap-2 sm:gap-3 px-4">
+                <Button
+                  variant={view === 'recommended' ? 'default' : 'outline'}
+                  onClick={() => setView('recommended')}
+                  className={`gap-2 px-4 sm:px-6 h-10 sm:h-11 transition-all text-xs sm:text-sm ${view === 'recommended'
+                    ? 'shadow-lg shadow-primary/20'
                     : 'hover:border-primary/50'
-                }`}
-              >
-                <Sparkles className="w-4 h-4" />
-                Recommended for You
-              </Button>
-              <Button
-                variant={view === 'all' ? 'default' : 'outline'}
-                onClick={() => setView('all')}
-                className={`gap-2 px-6 h-11 transition-all ${
-                  view === 'all' 
-                    ? 'shadow-lg shadow-primary/20' 
+                    }`}
+                >
+                  <Sparkles className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
+                  Recommended
+                </Button>
+                <Button
+                  variant={view === 'all' ? 'default' : 'outline'}
+                  onClick={() => setView('all')}
+                  className={`gap-2 px-4 sm:px-6 h-10 sm:h-11 transition-all text-xs sm:text-sm ${view === 'all'
+                    ? 'shadow-lg shadow-primary/20'
                     : 'hover:border-primary/50'
-                }`}
-              >
-                <Layers className="w-4 h-4" />
-                All Rounds
-              </Button>
-            </div>
+                    }`}
+                >
+                  <Layers className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
+                  All Rounds
+                </Button>
+              </div>
 
-            {/* Recommended Sequence Banner - Enhanced */}
-            {view === 'recommended' && recommendedSequence && recommendedSequence.length > 0 && (
-              <Card className="max-w-5xl mx-auto border-2 border-primary/30 bg-gradient-to-br from-primary/5 via-background to-primary/5 shadow-lg">
-                <CardHeader className="pb-4">
-                  <div className="flex items-center gap-3">
-                    <div className="p-2 rounded-lg bg-primary/10">
-                      <TrendingUp className="w-5 h-5 text-primary" />
+              {/* Recommended Sequence Banner - Enhanced */}
+              {view === 'recommended' && recommendedSequence && recommendedSequence.length > 0 && (
+                <Card className="max-w-5xl mx-auto border-2 border-primary/30 bg-gradient-to-br from-primary/5 via-background to-primary/5 shadow-lg">
+                  <CardHeader className="pb-4">
+                    <div className="flex items-center gap-3">
+                      <div className="p-2 rounded-lg bg-primary/10">
+                        <TrendingUp className="w-5 h-5 text-primary" />
+                      </div>
+                      <div>
+                        <CardTitle className="text-xl">Recommended Interview Sequence</CardTitle>
+                        <CardDescription className="mt-1">
+                          Based on your experience level ({experienceYears} years), follow this sequence for optimal preparation
+                        </CardDescription>
+                      </div>
                     </div>
-                    <div>
-                      <CardTitle className="text-xl">Recommended Interview Sequence</CardTitle>
-                      <CardDescription className="mt-1">
-                        Based on your experience level ({experienceYears} years), follow this sequence for optimal preparation
-                      </CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                    <ScrollArea className="w-full">
+                      <div className="flex items-center gap-3 pb-4">
+                        {recommendedSequence?.map((round, idx) => {
+                          const Icon = ROUND_ICONS[round.round_type];
+                          return (
+                            <div key={round.round_type} className="flex items-center gap-3 flex-shrink-0">
+                              <div className="flex items-center gap-3 px-4 py-3 rounded-xl bg-card border-2 border-primary/20 hover:border-primary/40 transition-all hover:shadow-md min-w-[200px]">
+                                <div className="p-2 rounded-lg bg-primary/10">
+                                  <Icon className="w-5 h-5 text-primary" />
+                                </div>
+                                <div className="flex-1">
+                                  <span className="text-sm font-semibold block">{round.name}</span>
+                                  <span className="text-xs text-muted-foreground">{round.question_count} questions</span>
+                                </div>
+                              </div>
+                              {idx < recommendedSequence.length - 1 && (
+                                <ArrowRight className="w-5 h-5 text-primary flex-shrink-0" />
+                              )}
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </ScrollArea>
+                  </CardContent>
+                </Card>
+              )}
+
+              {/* Rounds Grid - Enhanced Cards */}
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 pb-8">
+                {(view === 'recommended' ? recommendedRounds : allRounds)?.map((round) => (
+                  <RoundCard
+                    key={round.round_type}
+                    round={round}
+                    isRecommended={view === 'recommended'}
+                  />
+                ))}
+              </div>
+
+              {/* No Rounds Message */}
+              {(view === 'recommended' ? recommendedRounds : allRounds)?.length === 0 && (
+                <Card className="max-w-2xl mx-auto border-2 border-dashed border-muted-foreground/30">
+                  <CardContent className="py-12 text-center">
+                    <Target className="w-12 h-12 mx-auto text-muted-foreground/50 mb-4" />
+                    <p className="text-lg font-medium text-muted-foreground mb-2">
+                      No rounds available
+                    </p>
+                    <p className="text-sm text-muted-foreground">
+                      {!domain
+                        ? 'Please select a domain to see available interview rounds'
+                        : 'Try selecting a different domain or view all rounds'}
+                    </p>
+                  </CardContent>
+                </Card>
+              )}
+            </>
+          ) : (
+            /* Selection Confirmation Panel - Redesigned */
+            <div className="max-w-3xl mx-auto pt-8">
+              <Card className="border-2 border-primary/30 shadow-2xl bg-gradient-to-br from-card to-muted/5">
+                <CardHeader className="border-b pb-6">
+                  <div className="flex items-start justify-between gap-4">
+                    <div className="flex items-start gap-4 flex-1">
+                      <div className={`p-3 rounded-xl bg-gradient-to-br ${ROUND_COLORS[selectedRound.round_type]} shadow-lg`}>
+                        {(() => {
+                          const Icon = ROUND_ICONS[selectedRound.round_type];
+                          return <Icon className="w-7 h-7 text-white" />;
+                        })()}
+                      </div>
+                      <div className="flex-1">
+                        <CardTitle className="text-2xl flex items-center gap-2 mb-2">
+                          {selectedRound.name}
+                        </CardTitle>
+                        <CardDescription className="text-base leading-relaxed">
+                          {selectedRound.description}
+                        </CardDescription>
+                      </div>
                     </div>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => setSelectedRound(null)}
+                      disabled={starting}
+                      className="flex-shrink-0"
+                    >
+                      Change
+                    </Button>
                   </div>
                 </CardHeader>
-                <CardContent>
-                  <ScrollArea className="w-full">
-                    <div className="flex items-center gap-3 pb-4">
-                      {recommendedSequence?.map((round, idx) => {
-                        const Icon = ROUND_ICONS[round.round_type];
-                        return (
-                          <div key={round.round_type} className="flex items-center gap-3 flex-shrink-0">
-                            <div className="flex items-center gap-3 px-4 py-3 rounded-xl bg-card border-2 border-primary/20 hover:border-primary/40 transition-all hover:shadow-md min-w-[200px]">
-                              <div className="p-2 rounded-lg bg-primary/10">
-                                <Icon className="w-5 h-5 text-primary" />
-                              </div>
-                              <div className="flex-1">
-                                <span className="text-sm font-semibold block">{round.name}</span>
-                                <span className="text-xs text-muted-foreground">{round.question_count} questions</span>
-                              </div>
-                            </div>
-                            {idx < recommendedSequence.length - 1 && (
-                              <ArrowRight className="w-5 h-5 text-primary flex-shrink-0" />
-                            )}
-                          </div>
-                        );
-                      })}
+                <CardContent className="pt-6 space-y-6">
+                  {/* Round Metrics - Dynamic based on question count */}
+                  <div className="grid grid-cols-3 gap-4">
+                    <div className="flex flex-col items-center justify-center p-4 rounded-xl bg-muted/50 border">
+                      <Clock className="w-5 h-5 text-primary mb-2" />
+                      <span className="text-2xl font-bold">
+                        {questionCount > 0
+                          ? Math.round((questionCount / selectedRound.question_count) * selectedRound.duration_minutes)
+                          : selectedRound.duration_minutes
+                        }
+                      </span>
+                      <span className="text-xs text-muted-foreground mt-1">Minutes</span>
                     </div>
-                  </ScrollArea>
-                </CardContent>
-              </Card>
-            )}
+                    <div className="flex flex-col items-center justify-center p-4 rounded-xl bg-muted/50 border">
+                      <Target className="w-5 h-5 text-primary mb-2" />
+                      <span className="text-2xl font-bold">
+                        {questionCount > 0 ? questionCount : selectedRound.question_count}
+                      </span>
+                      <span className="text-xs text-muted-foreground mt-1">Questions</span>
+                    </div>
+                    <div className="flex flex-col items-center justify-center p-4 rounded-xl bg-muted/50 border">
+                      <TrendingUp className="w-5 h-5 text-primary mb-2" />
+                      <span className="text-lg font-bold capitalize">{selectedRound.difficulty}</span>
+                      <span className="text-xs text-muted-foreground mt-1">Difficulty</span>
+                    </div>
+                  </div>
 
-            {/* Rounds Grid - Enhanced Cards */}
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 pb-8">
-              {(view === 'recommended' ? recommendedRounds : allRounds)?.map((round) => (
-                <RoundCard
-                  key={round.round_type}
-                  round={round}
-                  isRecommended={view === 'recommended'}
-                />
-              ))}
-            </div>
+                  <Separator />
 
-            {/* No Rounds Message */}
-            {(view === 'recommended' ? recommendedRounds : allRounds)?.length === 0 && (
-              <Card className="max-w-2xl mx-auto border-2 border-dashed border-muted-foreground/30">
-                <CardContent className="py-12 text-center">
-                  <Target className="w-12 h-12 mx-auto text-muted-foreground/50 mb-4" />
-                  <p className="text-lg font-medium text-muted-foreground mb-2">
-                    No rounds available
-                  </p>
-                  <p className="text-sm text-muted-foreground">
-                    {!domain 
-                      ? 'Please select a domain to see available interview rounds'
-                      : 'Try selecting a different domain or view all rounds'}
-                  </p>
-                </CardContent>
-              </Card>
-            )}
-          </>
-        ) : (
-          /* Selection Confirmation Panel - Redesigned */
-          <div className="max-w-3xl mx-auto pt-8">
-            <Card className="border-2 border-primary/30 shadow-2xl bg-gradient-to-br from-card to-muted/5">
-              <CardHeader className="border-b pb-6">
-                <div className="flex items-start justify-between gap-4">
-                  <div className="flex items-start gap-4 flex-1">
-                    <div className={`p-3 rounded-xl bg-gradient-to-br ${ROUND_COLORS[selectedRound.round_type]} shadow-lg`}>
-                      {(() => {
-                        const Icon = ROUND_ICONS[selectedRound.round_type];
-                        return <Icon className="w-7 h-7 text-white" />;
-                      })()}
+                  {/* Profile Summary */}
+                  <div className="space-y-3 p-4 rounded-xl bg-primary/5 border border-primary/20">
+                    <div className="flex items-center gap-2 mb-3">
+                      <div className="p-1.5 rounded-md bg-primary/10">
+                        <Sparkles className="w-4 h-4 text-primary" />
+                      </div>
+                      <span className="font-semibold">Your Profile</span>
                     </div>
-                    <div className="flex-1">
-                      <CardTitle className="text-2xl flex items-center gap-2 mb-2">
-                        {selectedRound.name}
-                      </CardTitle>
-                      <CardDescription className="text-base leading-relaxed">
-                        {selectedRound.description}
-                      </CardDescription>
+                    <div className="grid md:grid-cols-2 gap-3">
+                      <div className="flex items-center justify-between p-3 rounded-lg bg-background/80">
+                        <span className="text-sm text-muted-foreground">Domain:</span>
+                        <span className="text-sm font-semibold">{domain || userProfile?.domain || '❌ Not Selected'}</span>
+                      </div>
+                      <div className="flex items-center justify-between p-3 rounded-lg bg-background/80">
+                        <span className="text-sm text-muted-foreground">Experience:</span>
+                        <span className="text-sm font-semibold">{experienceYears || userProfile?.experience_years || 0} years</span>
+                      </div>
                     </div>
+                    {(!domain && !userProfile?.domain) && (
+                      <div className="flex items-center gap-2 p-3 mt-2 rounded-lg bg-red-50 dark:bg-red-950/20 border border-red-200 dark:border-red-900">
+                        <Target className="w-4 h-4 text-red-500" />
+                        <p className="text-sm text-red-600 dark:text-red-400 font-medium">
+                          Go back and select your domain to start
+                        </p>
+                      </div>
+                    )}
                   </div>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => setSelectedRound(null)}
-                    disabled={starting}
-                    className="flex-shrink-0"
-                  >
-                    Change
-                  </Button>
-                </div>
-              </CardHeader>
-              <CardContent className="pt-6 space-y-6">
-                {/* Round Metrics */}
-                <div className="grid grid-cols-3 gap-4">
-                  <div className="flex flex-col items-center justify-center p-4 rounded-xl bg-muted/50 border">
-                    <Clock className="w-5 h-5 text-primary mb-2" />
-                    <span className="text-2xl font-bold">{selectedRound.duration_minutes}</span>
-                    <span className="text-xs text-muted-foreground mt-1">Minutes</span>
-                  </div>
-                  <div className="flex flex-col items-center justify-center p-4 rounded-xl bg-muted/50 border">
-                    <Target className="w-5 h-5 text-primary mb-2" />
-                    <span className="text-2xl font-bold">{selectedRound.question_count}</span>
-                    <span className="text-xs text-muted-foreground mt-1">Questions</span>
-                  </div>
-                  <div className="flex flex-col items-center justify-center p-4 rounded-xl bg-muted/50 border">
-                    <TrendingUp className="w-5 h-5 text-primary mb-2" />
-                    <span className="text-lg font-bold capitalize">{selectedRound.difficulty}</span>
-                    <span className="text-xs text-muted-foreground mt-1">Difficulty</span>
-                  </div>
-                </div>
 
-                <Separator />
+                  {/* Company-Specific Input */}
+                  <div className="space-y-3">
+                    <Label htmlFor="company" className="text-sm font-semibold flex items-center gap-2">
+                      <Briefcase className="w-4 h-4" />
+                      Company-Specific Preparation (Optional)
+                    </Label>
+                    <Input
+                      id="company"
+                      placeholder="e.g., Google, Meta, Amazon, Netflix, Microsoft..."
+                      value={companySpecific}
+                      onChange={(e) => setCompanySpecific(e.target.value)}
+                      className="h-11"
+                    />
+                    <p className="text-xs text-muted-foreground flex items-center gap-1">
+                      <Sparkles className="w-3 h-3" />
+                      Get questions tailored to specific companies' interview styles
+                    </p>
+                  </div>
 
-                {/* Profile Summary */}
-                <div className="space-y-3 p-4 rounded-xl bg-primary/5 border border-primary/20">
-                  <div className="flex items-center gap-2 mb-3">
-                    <div className="p-1.5 rounded-md bg-primary/10">
-                      <Sparkles className="w-4 h-4 text-primary" />
-                    </div>
-                    <span className="font-semibold">Your Profile</span>
-                  </div>
-                  <div className="grid md:grid-cols-2 gap-3">
-                    <div className="flex items-center justify-between p-3 rounded-lg bg-background/80">
-                      <span className="text-sm text-muted-foreground">Domain:</span>
-                      <span className="text-sm font-semibold">{domain || userProfile?.domain || '❌ Not Selected'}</span>
-                    </div>
-                    <div className="flex items-center justify-between p-3 rounded-lg bg-background/80">
-                      <span className="text-sm text-muted-foreground">Experience:</span>
-                      <span className="text-sm font-semibold">{experienceYears || userProfile?.experience_years || 0} years</span>
-                    </div>
-                  </div>
-                  {(!domain && !userProfile?.domain) && (
-                    <div className="flex items-center gap-2 p-3 mt-2 rounded-lg bg-red-50 dark:bg-red-950/20 border border-red-200 dark:border-red-900">
-                      <Target className="w-4 h-4 text-red-500" />
-                      <p className="text-sm text-red-600 dark:text-red-400 font-medium">
-                        Go back and select your domain to start
+                  {/* Question Count Selector - NEW */}
+                  <div className="space-y-3">
+                    <Label htmlFor="questionCount" className="text-sm font-semibold flex items-center gap-2">
+                      <Target className="w-4 h-4" />
+                      Number of Questions
+                    </Label>
+                    <div className="space-y-2">
+                      <div className="flex items-center justify-between">
+                        <span className="text-sm text-muted-foreground">
+                          {questionCount === 0 ? `Default (${selectedRound.question_count})` : questionCount}
+                        </span>
+                        <span className="text-xs text-muted-foreground">
+                          1-15 questions
+                        </span>
+                      </div>
+                      <input
+                        id="questionCount"
+                        type="range"
+                        min="0"
+                        max="15"
+                        value={questionCount}
+                        onChange={(e) => setQuestionCount(parseInt(e.target.value))}
+                        className="w-full h-2 bg-muted rounded-lg appearance-none cursor-pointer accent-primary"
+                      />
+                      <p className="text-xs text-muted-foreground flex items-center gap-1">
+                        <Sparkles className="w-3 h-3" />
+                        {questionCount === 0
+                          ? 'Using default count for this round type'
+                          : `Custom: ${questionCount} question${questionCount !== 1 ? 's' : ''}`
+                        }
                       </p>
                     </div>
-                  )}
-                </div>
+                  </div>
 
-                {/* Company-Specific Input */}
-                <div className="space-y-3">
-                  <Label htmlFor="company" className="text-sm font-semibold flex items-center gap-2">
-                    <Briefcase className="w-4 h-4" />
-                    Company-Specific Preparation (Optional)
-                  </Label>
-                  <Input
-                    id="company"
-                    placeholder="e.g., Google, Meta, Amazon, Netflix, Microsoft..."
-                    value={companySpecific}
-                    onChange={(e) => setCompanySpecific(e.target.value)}
-                    className="h-11"
-                  />
-                  <p className="text-xs text-muted-foreground flex items-center gap-1">
-                    <Sparkles className="w-3 h-3" />
-                    Get questions tailored to specific companies' interview styles
-                  </p>
-                </div>
-
-                {/* Action Buttons */}
-                <div className="flex flex-col-reverse sm:flex-row gap-3 pt-4">
-                  <Button
-                    variant="outline"
-                    onClick={() => setSelectedRound(null)}
-                    disabled={starting}
-                    size="lg"
-                    className="sm:flex-1 h-12"
-                  >
-                    <ArrowRight className="w-4 h-4 mr-2 rotate-180" />
-                    Back to Selection
-                  </Button>
-                  <Button
-                    onClick={handleStartRound}
-                    disabled={starting || (!domain && !userProfile?.domain)}
-                    className="sm:flex-1 h-12 bg-gradient-to-r from-primary to-primary/90 hover:from-primary/90 hover:to-primary shadow-lg shadow-primary/20"
-                    size="lg"
-                  >
-                    {starting ? (
-                      <>
-                        <Loader2 className="w-5 h-5 mr-2 animate-spin" />
-                        Starting Interview...
-                      </>
-                    ) : (!domain && !userProfile?.domain) ? (
-                      <>
-                        <Target className="w-5 h-5 mr-2" />
-                        Select Domain First
-                      </>
-                    ) : (
-                      <>
-                        <Zap className="w-5 h-5 mr-2" />
-                        Start Interview Round
-                      </>
-                    )}
-                  </Button>
-                </div>
-              </CardContent>
-            </Card>
-          </div>
-        )}
+                  {/* Action Buttons */}
+                  <div className="flex flex-col-reverse sm:flex-row gap-3 pt-4">
+                    <Button
+                      variant="outline"
+                      onClick={() => setSelectedRound(null)}
+                      disabled={starting}
+                      size="lg"
+                      className="sm:flex-1 h-12"
+                    >
+                      <ArrowRight className="w-4 h-4 mr-2 rotate-180" />
+                      Back to Selection
+                    </Button>
+                    <Button
+                      onClick={handleStartRound}
+                      disabled={starting || (!domain && !userProfile?.domain)}
+                      className="sm:flex-1 h-12 bg-gradient-to-r from-primary to-primary/90 hover:from-primary/90 hover:to-primary shadow-lg shadow-primary/20"
+                      size="lg"
+                    >
+                      {starting ? (
+                        <>
+                          <Loader2 className="w-5 h-5 mr-2 animate-spin" />
+                          Starting Interview...
+                        </>
+                      ) : (!domain && !userProfile?.domain) ? (
+                        <>
+                          <Target className="w-5 h-5 mr-2" />
+                          Select Domain First
+                        </>
+                      ) : (
+                        <>
+                          <Zap className="w-5 h-5 mr-2" />
+                          Start Interview Round
+                        </>
+                      )}
+                    </Button>
+                  </div>
+                </CardContent>
+              </Card>
+            </div>
+          )}
         </div>
-      </ScrollArea>
+      </div>
     </div>
   );
 }

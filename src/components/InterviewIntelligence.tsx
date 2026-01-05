@@ -487,6 +487,8 @@ export const InterviewIntelligence = ({
   >('idle');
   const [statusSources, setStatusSources] = useState<Array<{ name: string; status: 'pending' | 'searching' | 'complete' | 'failed'; count?: number }>>([]);
   const statusTimersRef = useRef<number[]>([]);
+  // Ref to track active WebSocket connection for proper cleanup
+  const activeWsRef = useRef<WebSocket | null>(null);
   // Advanced controls hidden by default to reduce UI clutter
   const [showAdvancedControls, setShowAdvancedControls] = useState<boolean>(false);
   const [companies, setCompanies] = useState<CompanyInfo[]>([]);
@@ -513,6 +515,15 @@ export const InterviewIntelligence = ({
         console.warn("[Intelligence] Failed to load companies", e);
       }
     })();
+    
+    // Cleanup WebSocket on unmount
+    return () => {
+      if (activeWsRef.current) {
+        console.log('[Intelligence] Cleaning up WebSocket on unmount');
+        activeWsRef.current.close();
+        activeWsRef.current = null;
+      }
+    };
   }, []);
 
   const loadHistoryTabs = useCallback(async (opts?: { silent?: boolean }) => {
@@ -524,6 +535,16 @@ export const InterviewIntelligence = ({
   const [historyClearingAll, setHistoryClearingAll] = useState<boolean>(false);
 
   const handleLoadHistoryTab = useCallback((tab: HistoryTabSummary) => {
+    // CRITICAL: Close any active WebSocket to prevent results from mixing
+    if (activeWsRef.current) {
+      console.log('[Intelligence] Closing active WebSocket before loading history');
+      activeWsRef.current.close();
+      activeWsRef.current = null;
+    }
+    // Reset search state
+    setSearchLoading(false);
+    setSearchStatus('idle');
+    
     setSearchQuery(tab.query);
     setLastSubmittedQuery(tab.query);
     setSearchResults((tab.questions as unknown as InterviewQuestion[]) || []);
@@ -639,6 +660,13 @@ export const InterviewIntelligence = ({
 
   const handleSearchWithWebSocket = useCallback((query: string, forceRefresh: boolean, saveToHistory: boolean = true) => {
     try {
+      // Close any existing WebSocket before starting a new search
+      if (activeWsRef.current) {
+        console.log('[Intelligence] Closing previous WebSocket before new search');
+        activeWsRef.current.close();
+        activeWsRef.current = null;
+      }
+      
       setSearchLoading(true);
       setSearchStatus('analyzing');
       setStatusSources([]); // Will be populated dynamically from source_update messages
@@ -651,6 +679,7 @@ export const InterviewIntelligence = ({
       const wsUrl = apiUrl.replace(/^http/, 'ws') + '/api/intelligence/ws/search';
 
       const ws = new WebSocket(wsUrl);
+      activeWsRef.current = ws; // Store reference for cleanup
 
       ws.onopen = () => {
         console.log('[Intelligence] WebSocket connected');
@@ -754,6 +783,7 @@ export const InterviewIntelligence = ({
             }
 
             ws.close();
+            activeWsRef.current = null;
             setSearchLoading(false);
           } else if (msg.type === 'error') {
             console.error('[Intelligence] WebSocket error:', msg.message);
@@ -765,6 +795,7 @@ export const InterviewIntelligence = ({
             setSearchStatus('error');
             setStatusSources(prev => prev.map(s => ({ ...s, status: 'failed' })));
             ws.close();
+            activeWsRef.current = null;
             setSearchLoading(false);
           }
         } catch (err) {
@@ -781,12 +812,14 @@ export const InterviewIntelligence = ({
         });
         setSearchStatus('error');
         ws.close();
+        activeWsRef.current = null;
         // Fallback to HTTP
         handleSearchWithHTTP(query, forceRefresh);
       };
 
       ws.onclose = () => {
         console.log('[Intelligence] WebSocket closed');
+        activeWsRef.current = null;
       };
 
     } catch (err: any) {
@@ -946,139 +979,133 @@ export const InterviewIntelligence = ({
   }, [externalHistorySelection, handleLoadHistoryTab, onExternalHistorySelectionConsumed]);
 
   return (
-    <div className="flex flex-col h-full gap-4">
+    <div className="flex flex-col h-full gap-4 px-4 md:px-0">
       {/* Header with Search */}
-      <div className="flex-shrink-0 space-y-3">
+      <div className="flex-shrink-0 space-y-3 py-1">
         {/* Search Bar Row */}
-        <div className="flex items-center gap-2">
-          <div className="flex-1 relative">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-            <Input
-              placeholder="Search interview questions..."
-              value={searchQuery}
-              onChange={(e) => {
-                setSearchQuery(e.target.value);
-              }}
-              onKeyDown={(e) => {
-                if (e.key === "Enter") {
-                  // Always fetch fresh results first
-                  handleSearch(searchQuery, true);
-                }
-              }}
-              className="pl-9 pr-8"
-            />
-            {searchQuery && (
-              <Button
-                variant="ghost"
-                size="icon"
-                className="absolute right-1 top-1/2 -translate-y-1/2 h-7 w-7"
-                onClick={() => {
-                  setSearchQuery("");
-                  setSelectedQuestion(null);
+        <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
+          <div className="flex-1 flex gap-2">
+            <div className="flex-1 relative group">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground transition-colors group-focus-within:text-primary" />
+              <Input
+                placeholder="Search topics or questions..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") handleSearch(searchQuery, true);
                 }}
-                title="Clear search"
-              >
-                <X className="h-3 w-3" />
-              </Button>
-            )}
-          </div>
+                maxLength={512}
+                className="pl-9 pr-8 bg-card/50 backdrop-blur-sm focus-visible:ring-0 focus-visible:ring-offset-0"
+              />
+              {searchQuery && (
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="absolute right-1 top-1/2 -translate-y-1/2 h-7 w-7 hover:bg-transparent"
+                  onClick={() => {
+                    setSearchQuery("");
+                    setSelectedQuestion(null);
+                  }}
+                >
+                  <X className="h-3.5 w-3.5 text-muted-foreground" />
+                </Button>
+              )}
+            </div>
 
-          <Button
-            variant="default"
-            size="sm"
-            onClick={() => handleSearch(searchQuery, true)}
-            disabled={!searchQuery.trim()}
-            title="Send search"
-            className="shrink-0"
-          >
-            {searchLoading ? (
-              <Loader2 className="h-4 w-4 animate-spin" />
-            ) : (
-              <>
-                <Search className="h-4 w-4 mr-1" />
-                Send
-              </>
-            )}
-          </Button>
+            <Button
+              variant="default"
+              size="sm"
+              onClick={() => handleSearch(searchQuery, true)}
+              disabled={!searchQuery.trim()}
+              className="shrink-0 h-10 px-4 md:px-3 bg-primary hover:bg-primary/90 transition-all shadow-lg shadow-primary/20"
+            >
+              {searchLoading ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <>
+                  <Search className="h-4 w-4 sm:mr-1.5" />
+                  <span className="hidden sm:inline">Send</span>
+                </>
+              )}
+            </Button>
+          </div>
 
           <Button
             variant="outline"
             size="icon"
             onClick={handleTriggerUpdate}
             title="Trigger database update"
-            className="shrink-0"
+            className="shrink-0 h-10 w-10 border-border/50 bg-card/30 hidden sm:flex"
           >
             <RefreshCw className="h-4 w-4" />
           </Button>
         </div>
 
         {/* Controls Row */}
-        <div className="flex items-center gap-3 flex-wrap">
+        <div className="flex items-center gap-1.5 sm:gap-2 flex-wrap pb-1">
           {/* Enhanced mode toggle */}
-          <div className="flex items-center gap-2">
-            <span className="text-xs text-muted-foreground">Enhanced</span>
-            <Switch
-              checked={enhanced}
-              onCheckedChange={(checked) => {
-                if (checked !== enhanced) {
-                  const confirmed = window.confirm(
-                    'Enhanced Search uses verified sources and advanced filters to improve result quality. Continue?'
-                  );
-                  if (!confirmed) return;
-                }
-                setEnhanced(checked);
-              }}
-              disabled={searchLoading}
-            />
-          </div>
+          <button
+            onClick={() => {
+              if (!enhanced) {
+                const confirmed = window.confirm(
+                  'Enhanced Search uses verified sources and advanced filters to improve result quality. Continue?'
+                );
+                if (!confirmed) return;
+              }
+              setEnhanced(!enhanced);
+            }}
+            disabled={searchLoading}
+            className={`group flex items-center gap-1.5 h-5 px-1.5 rounded-md border transition-all duration-300 ${enhanced
+              ? 'bg-primary/10 border-primary/50 text-primary shadow-[0_0_8px_-3px_rgba(var(--primary),0.3)]'
+              : 'bg-transparent border-border/20 text-muted-foreground hover:border-border/40'
+              }`}
+          >
+            <div className={`w-1 h-1 rounded-full transition-all duration-300 ${enhanced ? 'bg-primary shadow-[0_0_4px_rgba(var(--primary),1)]' : 'bg-muted-foreground/30'}`} />
+            <span className="text-[9px] font-black uppercase tracking-tight">Enhanced</span>
+          </button>
 
           {/* Limit selector */}
-          <div className="flex items-center gap-2">
-            <span className="text-xs text-muted-foreground">Limit</span>
-            <Input
+          <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-card/40 border border-border/30">
+            <span className="text-[9px] sm:text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">Limit</span>
+            <input
               type="number"
               min="1"
               max="100"
-              value={limit}
+              value={limit === null ? '' : limit}
               onChange={(e) => {
-                const value = e.target.value;
-                // Allow empty string for manual typing
-                if (value === '') {
-                  setLimit(1);
-                  return;
-                }
-                const num = parseInt(value, 10);
-                if (!isNaN(num) && num >= 1 && num <= 100) {
-                  setLimit(num);
+                // Allow empty string for editing
+                if (e.target.value === '') setLimit(null);
+                else {
+                  const num = parseInt(e.target.value, 10);
+                  if (!isNaN(num) && num >= 1 && num <= 100) setLimit(num);
                 }
               }}
               onBlur={(e) => {
-                // Ensure valid value on blur
-                const value = e.target.value;
-                if (value === '' || parseInt(value, 10) < 1) {
-                  setLimit(1);
-                } else if (parseInt(value, 10) > 100) {
-                  setLimit(100);
-                }
+                // If left empty, reset to 1
+                if (e.target.value === '' || isNaN(Number(e.target.value))) setLimit(1);
               }}
-              className="h-9 w-[80px] text-center [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
-              placeholder="1-100"
+              className="bg-transparent border-none text-[10px] sm:text-xs font-bold w-7 sm:w-8 focus:outline-none text-center text-foreground [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
             />
           </div>
 
           {/* Enhanced filters - show when enhanced mode is on */}
           {enhanced && (
-            <>
-              {/* Verified only */}
-              <div className="flex items-center gap-2">
-                <Switch checked={verifiedOnly} onCheckedChange={setVerifiedOnly} />
-                <span className="text-xs">Verified only</span>
-              </div>
+            <div className="flex flex-wrap items-center gap-1.5 sm:gap-2">
+              <button
+                onClick={() => setVerifiedOnly(!verifiedOnly)}
+                className={`group flex items-center gap-1.5 h-5 px-1.5 rounded-md border transition-all duration-300 ${verifiedOnly
+                  ? 'bg-primary/10 border-primary/50 text-primary shadow-[0_0_8px_-3px_rgba(var(--primary),0.3)]'
+                  : 'bg-transparent border-border/20 text-muted-foreground hover:border-border/40'
+                  }`}
+              >
+                <div className={`w-1 h-1 rounded-full transition-all duration-300 ${verifiedOnly ? 'bg-primary shadow-[0_0_4px_rgba(var(--primary),1)]' : 'bg-muted-foreground/30'}`} />
+                <span className="text-[9px] font-black uppercase tracking-tight">Verified</span>
+              </button>
 
-              {/* Min credibility slider */}
-              <div className="flex items-center gap-2">
-                <span className="text-xs text-muted-foreground">Min credibility</span>
-                <div className="w-32">
+              {/* Min credibility slider - more compact on mobile */}
+              <div className="flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-card/30 border border-border/20">
+                <span className="text-[8px] sm:text-[10px] font-bold uppercase tracking-wider text-muted-foreground hidden sm:inline">Cred</span>
+                <div className="w-10 sm:w-16">
                   <Slider
                     min={0}
                     max={1}
@@ -1087,7 +1114,7 @@ export const InterviewIntelligence = ({
                     onValueChange={(v) => setMinCred(Math.max(0, Math.min(1, v?.[0] ?? 0)))}
                   />
                 </div>
-                <span className="text-xs tabular-nums w-8">{minCred.toFixed(1)}</span>
+                <span className="text-[8px] font-bold tabular-nums text-foreground">{minCred.toFixed(1)}</span>
               </div>
 
               {/* Company select */}
@@ -1095,14 +1122,14 @@ export const InterviewIntelligence = ({
                 value={company ?? "_any"}
                 onValueChange={(v) => setCompany(v === "_any" ? null : v)}
               >
-                <SelectTrigger className="h-9 w-[160px]">
-                  <SelectValue placeholder="Any company" />
+                <SelectTrigger className="h-6 sm:h-7 w-[85px] sm:w-[120px] rounded-md text-[9px] sm:text-[10px] bg-card/40 border-border/30 font-semibold">
+                  <SelectValue placeholder="Company" />
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="_any">Any company</SelectItem>
                   {companies.map((c) => (
-                    <SelectItem key={c.slug} value={c.slug}>
-                      {c.name}{c.question_count ? ` (${c.question_count})` : ""}
+                    <SelectItem key={c.slug} value={c.slug} className="text-xs">
+                      {c.name}
                     </SelectItem>
                   ))}
                 </SelectContent>
@@ -1111,33 +1138,51 @@ export const InterviewIntelligence = ({
               {/* Show advanced toggle */}
               <button
                 type="button"
-                className="text-xs text-muted-foreground hover:text-foreground underline transition-colors"
+                className="px-2 py-1 text-[9px] font-bold uppercase tracking-wider text-primary hover:bg-primary/10 rounded-md transition-all"
                 onClick={() => setShowAdvancedControls((s) => !s)}
               >
-                {showAdvancedControls ? 'Hide advanced' : 'Show advanced'}
+                {showAdvancedControls ? 'Less' : 'More'}
               </button>
-            </>
+            </div>
           )}
         </div>
 
         {/* Advanced controls - show when enabled */}
         {enhanced && showAdvancedControls && (
-          <div className="flex items-center gap-3 flex-wrap">
-            <div className="flex items-center gap-2">
-              <Switch checked={refreshEnhanced} onCheckedChange={setRefreshEnhanced} />
-              <span className="text-xs">Refresh</span>
-            </div>
+          <div className="flex items-center gap-1.5 sm:gap-2 flex-wrap pt-0.5">
+            <button
+              onClick={() => setRefreshEnhanced(!refreshEnhanced)}
+              className={`group flex items-center gap-1.5 h-5 px-1.5 rounded-md border transition-all duration-300 ${refreshEnhanced
+                ? 'bg-primary/10 border-primary/50 text-primary shadow-[0_0_8px_-3px_rgba(var(--primary),0.3)]'
+                : 'bg-transparent border-border/20 text-muted-foreground hover:border-border/40'
+                }`}
+            >
+              <div className={`w-1 h-1 rounded-full transition-all duration-300 ${refreshEnhanced ? 'bg-primary shadow-[0_0_4px_rgba(var(--primary),1)]' : 'bg-muted-foreground/30'}`} />
+              <span className="text-[9px] font-black uppercase tracking-tight">Refresh</span>
+            </button>
             {featureGates.reranking && (
-              <div className="flex items-center gap-2">
-                <Switch checked={enableReranking} onCheckedChange={setEnableReranking} />
-                <span className="text-xs">Rerank</span>
-              </div>
+              <button
+                onClick={() => setEnableReranking(!enableReranking)}
+                className={`group flex items-center gap-1.5 h-5 px-1.5 rounded-md border transition-all duration-300 ${enableReranking
+                  ? 'bg-primary/10 border-primary/50 text-primary shadow-[0_0_8px_-3px_rgba(var(--primary),0.3)]'
+                  : 'bg-transparent border-border/20 text-muted-foreground hover:border-border/40'
+                  }`}
+              >
+                <div className={`w-1 h-1 rounded-full transition-all duration-300 ${enableReranking ? 'bg-primary shadow-[0_0_4px_rgba(var(--primary),1)]' : 'bg-muted-foreground/30'}`} />
+                <span className="text-[9px] font-black uppercase tracking-tight">Rerank</span>
+              </button>
             )}
             {featureGates.queryExpansion && (
-              <div className="flex items-center gap-2">
-                <Switch checked={enableQueryExpansion} onCheckedChange={setEnableQueryExpansion} />
-                <span className="text-xs">Query expansion</span>
-              </div>
+              <button
+                onClick={() => setEnableQueryExpansion(!enableQueryExpansion)}
+                className={`group flex items-center gap-1.5 h-5 px-1.5 rounded-md border transition-all duration-300 ${enableQueryExpansion
+                  ? 'bg-primary/10 border-primary/50 text-primary shadow-[0_0_8px_-3px_rgba(var(--primary),0.3)]'
+                  : 'bg-transparent border-border/20 text-muted-foreground hover:border-border/40'
+                  }`}
+              >
+                <div className={`w-1 h-1 rounded-full transition-all duration-300 ${enableQueryExpansion ? 'bg-primary shadow-[0_0_4px_rgba(var(--primary),1)]' : 'bg-muted-foreground/30'}`} />
+                <span className="text-[9px] font-black uppercase tracking-tight whitespace-nowrap">Query Exp.</span>
+              </button>
             )}
           </div>
         )}
@@ -1163,12 +1208,12 @@ export const InterviewIntelligence = ({
 
         {/* Topics Pills */}
         {topics.length > 0 && (
-          <div className="flex flex-wrap gap-2">
+          <div className="flex flex-nowrap sm:flex-wrap gap-2 overflow-x-auto pb-1 scrollbar-hide">
             {topics.map((topic) => (
               <Badge
                 key={topic}
                 variant={selectedTopic === topic ? "default" : "outline"}
-                className="cursor-pointer hover:bg-primary/10 transition-colors"
+                className="cursor-pointer hover:bg-primary/10 transition-colors whitespace-nowrap px-3 py-1 text-[10px] sm:text-xs rounded-full"
                 onClick={() => loadQuestionsByTopic(topic)}
               >
                 {topic}
@@ -1179,8 +1224,8 @@ export const InterviewIntelligence = ({
       </div>
 
       {/* Content Area */}
-      <div className="flex-1 min-h-0 flex gap-4 overflow-hidden">
-        <div className="flex-1 min-w-0 flex flex-col gap-4 overflow-hidden">
+      <div className="flex-1 min-h-0 flex flex-col md:flex-row gap-4 overflow-hidden">
+        <div className={`flex-1 min-w-0 flex flex-col gap-4 overflow-hidden ${selectedQuestion ? 'hidden md:flex' : 'flex'}`}>
           {/* Questions List */}
           <Card className="flex-1 min-w-0 flex flex-col overflow-hidden">
             <CardHeader className="pb-3 flex-shrink-0">
@@ -1228,7 +1273,7 @@ export const InterviewIntelligence = ({
                     </p>
                   </div>
                 ) : (
-                  <div className="space-y-2 p-3">
+                  <div className="space-y-2 p-3 md:p-3">
                     {currentQuestions.map((q, idx) => (
                       <Card
                         key={idx}
@@ -1276,10 +1321,71 @@ export const InterviewIntelligence = ({
           </Card>
         </div>
 
-        {/* Selected Question Answer */}
+        {/* Selected Question Answer - Mobile optimized view */}
         {selectedQuestion && (
-          <>
-            <Card className="w-[50%] min-w-[400px] flex flex-col overflow-hidden">
+          <div className="flex md:hidden flex-1 flex-col overflow-hidden animate-in slide-in-from-right duration-300">
+            <Card className="flex-1 flex flex-col overflow-hidden border-primary/20 bg-card/50 backdrop-blur-xl">
+              <CardHeader className="pb-3 flex-shrink-0 border-b border-border/10">
+                <div className="flex items-center justify-between">
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => setSelectedQuestion(null)}
+                    className="h-8 px-2 -ml-2 text-primary gap-1"
+                  >
+                    <X className="h-4 w-4" />
+                    Back
+                  </Button>
+                  <Badge variant="outline" className="text-[10px] uppercase font-bold tracking-tighter">Answer View</Badge>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-8 w-8 text-muted-foreground"
+                    onClick={() => setIsAnswerExpanded(true)}
+                  >
+                    <Maximize2 className="h-4 w-4" />
+                  </Button>
+                </div>
+              </CardHeader>
+              <CardContent className="flex-1 min-h-0 p-0">
+                <ScrollArea className="h-full">
+                  <div className="p-4 space-y-6 pb-20">
+                    <div>
+                      <h3 className="text-[10px] font-black uppercase tracking-[0.2em] text-primary/70 mb-2">Question</h3>
+                      <p className="text-base font-medium text-foreground leading-snug">{selectedQuestion.question}</p>
+                    </div>
+                    <div className="border-t border-border/30 pt-4">
+                      <h3 className="text-[10px] font-black uppercase tracking-[0.2em] text-primary/70 mb-3">Model Answer</h3>
+                      <div
+                        className="text-sm text-foreground leading-relaxed prose prose-sm max-w-none dark:prose-invert"
+                        dangerouslySetInnerHTML={{
+                          __html: formatAnswerMarkdown(selectedQuestion.answer || '')
+                        }}
+                      />
+                    </div>
+                    {/* Display code_solution if available */}
+                    {(selectedQuestion as any).code_solution && (
+                      <div className="border-t border-border/30 pt-4">
+                        <h3 className="text-[10px] font-black uppercase tracking-[0.2em] text-primary/70 mb-3">Code Implementation</h3>
+                        <div
+                          className="text-sm text-foreground leading-relaxed prose prose-sm max-w-none dark:prose-invert"
+                          dangerouslySetInnerHTML={{
+                            __html: formatAnswerMarkdown((selectedQuestion as any).code_solution)
+                          }}
+                        />
+                      </div>
+                    )}
+                  </div>
+                </ScrollArea>
+              </CardContent>
+            </Card>
+          </div>
+        )}
+
+        {/* Selected Question Answer - Desktop view */}
+        {selectedQuestion && (
+          <div className="md:flex w-[50%] min-w-[400px] flex flex-col overflow-hidden animate-in fade-in duration-500">
+            <Card className="flex-1 flex flex-col overflow-hidden bg-card/30 backdrop-blur-sm border-border/50">
               <CardHeader className="pb-3 flex-shrink-0">
                 <div className="flex items-center justify-between">
                   <CardTitle className="text-sm font-semibold">Answer</CardTitle>
@@ -1336,7 +1442,7 @@ export const InterviewIntelligence = ({
 
             {/* Expanded Answer Dialog */}
             <Dialog open={isAnswerExpanded} onOpenChange={setIsAnswerExpanded}>
-              <DialogContent className="max-w-4xl max-h-[90vh] flex flex-col p-0">
+              <DialogContent className="w-[calc(100vw-2rem)] sm:max-w-4xl max-h-[90vh] flex flex-col p-0 border-none bg-background/95 backdrop-blur-xl">
                 <DialogHeader className="px-6 pt-6 pb-4">
                   <DialogTitle className="text-lg font-semibold pr-8">Question & Answer</DialogTitle>
                 </DialogHeader>
@@ -1386,7 +1492,7 @@ export const InterviewIntelligence = ({
                 </div>
               </DialogContent>
             </Dialog>
-          </>
+          </div>
         )}
       </div>
     </div>

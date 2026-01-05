@@ -56,6 +56,7 @@ import {
   Brain,
   Sparkles,
   ArrowRight,
+  ChevronLeft,
   RotateCcw,
   AlertCircle,
   Trophy,
@@ -118,6 +119,10 @@ export const PracticeMode = () => {
   const [codeTestResults, setCodeTestResults] = useState<CodeTestResult[] | null>(null);
   const [codeEvaluation, setCodeEvaluation] = useState<CodeEvaluationFeedback | null>(null);
   const [isSubmittingCode, setIsSubmittingCode] = useState(false);
+
+  // Scroll state for back button
+  const [showBackButton, setShowBackButton] = useState(true);
+  const scrollContainerRef = useRef<HTMLDivElement>(null);
 
   // Recording timer
   const recordingTimerRef = useRef<NodeJS.Timeout | null>(null);
@@ -918,117 +923,125 @@ export const PracticeMode = () => {
     return (
       <div className="max-w-4xl mx-auto w-full px-4">
         <Card className="w-full border-2 shadow-lg">
-          <CardHeader className="text-center space-y-2 pb-3">
-            <div className="mx-auto w-14 h-14 bg-gradient-to-br from-purple-500 to-pink-500 rounded-2xl flex items-center justify-center">
-              <Mic className="w-7 h-7 text-white" />
+          <CardHeader className="text-center space-y-2 pb-3 pt-6 px-4">
+            <div className="mx-auto w-12 h-12 md:w-14 md:h-14 bg-gradient-to-br from-purple-500 to-pink-500 rounded-2xl flex items-center justify-center shadow-lg shadow-purple-500/20">
+              <Mic className="w-6 h-6 md:w-7 md:h-7 text-white" />
             </div>
             <div>
-              <CardTitle className="text-2xl font-bold bg-gradient-to-r from-purple-600 to-pink-600 bg-clip-text text-transparent">
+              <CardTitle className="text-xl md:text-2xl font-bold bg-gradient-to-r from-purple-600 to-pink-600 bg-clip-text text-transparent">
                 AI Interview Practice
               </CardTitle>
-              <CardDescription className="text-sm mt-1">
+              <CardDescription className="text-[11px] md:text-sm mt-1 max-w-[250px] md:max-w-none mx-auto">
                 Practice real interview questions with AI-powered voice analysis
               </CardDescription>
             </div>
           </CardHeader>
 
-          <CardContent className="space-y-3 pb-4">
-            {/* Quick Start / Full Control / Round-Based Toggle */}
-            <div className="flex gap-2 p-1 bg-muted rounded-lg">
+          <CardContent className="space-y-4 pb-6">
+            {/* Navigation Toggle - More compact for mobile */}
+            <div className="grid grid-cols-3 gap-1 p-1 bg-muted/40 rounded-xl border border-border/50">
               <Button
                 variant={!useQuickStart && phase === 'welcome' ? 'default' : 'ghost'}
-                className="flex-1 text-xs h-8"
+                className="text-[9px] xs:text-[10px] md:text-xs h-8 px-0.5 transition-all duration-300 rounded-lg shadow-sm"
                 onClick={() => setUseQuickStart(false)}
               >
-                <Zap className="w-3 h-3 mr-1" />
-                Quick Start
+                <Zap className="w-2.5 h-2.5 mr-1 shrink-0 hidden xs:block" />
+                Instant
               </Button>
               <Button
                 variant="ghost"
-                className="flex-1 text-xs h-8"
+                className="text-[9px] xs:text-[10px] md:text-xs h-8 px-0.5 transition-all duration-300 rounded-lg"
                 onClick={() => setPhase('round-selection')}
               >
-                <Target className="w-3 h-3 mr-1" />
-                Round-Based
+                <Target className="w-2.5 h-2.5 mr-1 shrink-0 hidden xs:block" />
+                Rounds
               </Button>
               <Button
                 variant={useQuickStart ? 'default' : 'ghost'}
-                className="flex-1 text-xs h-8"
+                className="text-[9px] xs:text-[10px] md:text-xs h-8 px-0.5 transition-all duration-300 rounded-lg"
                 onClick={() => setUseQuickStart(true)}
               >
-                🎛️ Full Control
+                <Sparkles className="w-2.5 h-2.5 mr-1 shrink-0 hidden xs:block" />
+                Manual
               </Button>
             </div>
 
             {!useQuickStart ? (
               // Quick Start Mode - ONE FIELD ONLY, AI decides everything
-              <>
-                <div className="space-y-2">
-                  <div className="flex items-center gap-2 p-3 bg-gradient-to-r from-purple-500/10 to-pink-500/10 rounded-lg border border-purple-500/20">
-                    <Sparkles className="w-5 h-5 text-purple-500 flex-shrink-0" />
+              <div className="space-y-3 animate-in fade-in slide-in-from-bottom-2 duration-500">
+                <div className="space-y-3">
+                  <div className="flex items-start gap-3 p-3 bg-gradient-to-br from-purple-500/10 via-purple-500/5 to-pink-500/10 rounded-2xl border border-purple-500/20 shadow-inner">
+                    <div className="p-1.5 rounded-xl bg-purple-500/20 text-purple-500">
+                      <Sparkles className="w-4 h-4 flex-shrink-0" />
+                    </div>
                     <div className="flex-1">
-                      <h3 className="font-semibold text-sm">🚀 AI-Powered Quick Start</h3>
-                      <p className="text-xs text-muted-foreground">
-                        Tell me your role, company, and experience - AI decides difficulty, question count, and everything else!
+                      <h3 className="font-bold text-[13px] text-foreground">AI Prep</h3>
+                      <p className="text-[10px] text-muted-foreground leading-snug mt-0.5">
+                        Role & company - I'll handle difficulty, questions and settings.
                       </p>
                     </div>
                   </div>
 
                   <div className="space-y-2">
-                    <Label className="text-xs">What are you preparing for?</Label>
-                    <Input
-                      placeholder='e.g., "5 questions for Senior SWE at Netflix" or "8 hard questions at Google, system design"'
-                      value={quickStartInput}
-                      onChange={(e) => setQuickStartInput(e.target.value)}
-                      onKeyDown={(e) => {
-                        if (e.key === 'Enter' && !quickStartLoading) {
-                          handleQuickStart();
-                        }
-                      }}
-                      className="text-sm"
-                    />
-                    <p className="text-xs text-muted-foreground">
-                      💡 Specify company, question count, difficulty - AI understands it all! Works with ANY company worldwide.
-                    </p>
+                    <div className="flex items-center justify-between px-1">
+                      <Label className="text-[9px] font-black uppercase tracking-wider text-muted-foreground/70">What are you preparing for?</Label>
+                    </div>
+                    <div className="relative group">
+                      <Input
+                        placeholder='e.g., "Senior React role at Google"'
+                        value={quickStartInput}
+                        onChange={(e) => setQuickStartInput(e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter' && !quickStartLoading) {
+                            handleQuickStart();
+                          }
+                        }}
+                        maxLength={512}
+                        className="text-xs h-10 bg-background/50 border-muted-foreground/20 rounded-xl pl-3 pr-9 focus:ring-primary/20 transition-all"
+                      />
+                      <div className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground/30 group-focus-within:text-primary/50 transition-colors">
+                        <MessageSquare className="w-3.5 h-3.5" />
+                      </div>
+                    </div>
                   </div>
 
                   {aiMessage && (
-                    <div className="p-3 bg-green-500/10 border border-green-500/20 rounded-lg">
-                      <p className="text-sm text-green-700 dark:text-green-400">
-                        🤖 {aiMessage}
+                    <div className="p-2.5 bg-green-500/10 border border-green-500/20 rounded-xl flex items-start gap-2 shadow-sm animate-in zoom-in-95 duration-300">
+                      <CheckCircle2 className="w-3.5 h-3.5 text-green-500 mt-0.5 shrink-0" />
+                      <p className="text-[11px] text-green-700 dark:text-green-400 font-medium leading-tight">
+                        {aiMessage}
                       </p>
                     </div>
                   )}
                 </div>
 
-                <div className="flex items-center justify-between p-2 bg-muted/30 rounded-lg">
-                  <div className="flex items-center gap-2">
-                    <Volume2 className="w-4 h-4 text-muted-foreground" />
+                <div className="flex items-center justify-between p-2.5 bg-muted/40 rounded-xl border border-border/50">
+                  <div className="flex items-center gap-2.5">
+                    <div className="p-1.5 rounded-lg bg-muted text-muted-foreground">
+                      <Volume2 className="w-3.5 h-3.5" />
+                    </div>
                     <div>
-                      <p className="font-medium text-xs">Text-to-Speech</p>
-                      <p className="text-[10px] text-muted-foreground">Hear questions read aloud</p>
+                      <p className="font-bold text-[11px] text-foreground">Voice Assistant</p>
+                      <p className="text-[9px] text-muted-foreground">Hear questions read aloud</p>
                     </div>
                   </div>
-                  <Button
-                    variant={enableTTS ? 'default' : 'outline'}
-                    size="sm"
-                    className="h-7 text-xs"
-                    onClick={() => setEnableTTS(!enableTTS)}
-                  >
-                    {enableTTS ? 'Enabled' : 'Disabled'}
-                  </Button>
+                  <Switch
+                    checked={enableTTS}
+                    onCheckedChange={setEnableTTS}
+                    className="scale-[0.6] md:scale-75 origin-right data-[state=checked]:bg-primary"
+                  />
                 </div>
 
                 <Button
                   size="lg"
-                  className="w-full h-10 bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700 text-sm"
+                  className="w-full h-12 bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700 text-sm font-bold shadow-xl shadow-purple-500/20 transition-all hover:scale-[1.01] active:scale-[0.98] rounded-2xl"
                   onClick={handleQuickStart}
                   disabled={quickStartLoading || !quickStartInput.trim()}
                 >
                   {quickStartLoading ? (
                     <>
                       <Loader2 className="mr-2 w-4 h-4 animate-spin" />
-                      AI is Setting Up...
+                      Setting Up Interview...
                     </>
                   ) : (
                     <>
@@ -1037,7 +1050,7 @@ export const PracticeMode = () => {
                     </>
                   )}
                 </Button>
-              </>
+              </div>
             ) : (
               // Traditional Setup Mode
               <>
@@ -1074,6 +1087,7 @@ export const PracticeMode = () => {
                       placeholder="e.g., Software Engineer, Data Scientist, Product Manager, DevOps..."
                       value={selectedRole}
                       onChange={(e) => setSelectedRole(e.target.value)}
+                      maxLength={512}
                       className="text-sm"
                       list="role-suggestions"
                     />
@@ -1140,6 +1154,7 @@ export const PracticeMode = () => {
                           setQuestionCount(val);
                         }
                       }}
+                      maxLength={3}
                       className="w-16 h-7 text-xs text-center"
                     />
                   </div>
@@ -1225,21 +1240,38 @@ export const PracticeMode = () => {
     } : undefined;
 
     return (
-      <div className="max-w-7xl mx-auto w-full px-4">
-        <div className="mb-4">
+      <div className="w-full h-full flex flex-col relative overflow-hidden">
+        {/* Compact Back Button - Leftmost Edge, Hides on Scroll */}
+        <div
+          className={`absolute top-3 left-2 z-[60] transition-all duration-300 ${showBackButton ? 'opacity-100 translate-y-0' : 'opacity-0 -translate-y-4 pointer-events-none'
+            }`}
+        >
           <Button
             variant="ghost"
             onClick={() => setPhase('welcome')}
-            className="gap-2"
+            className="group flex items-center gap-2 h-9 px-3 rounded-xl bg-background/60 backdrop-blur-md border border-white/10 hover:bg-background/80 hover:border-white/20 text-muted-foreground hover:text-foreground transition-all duration-300 shadow-lg"
           >
-            <ArrowRight className="w-4 h-4 rotate-180" />
-            Back
+            <ChevronLeft className="w-4 h-4 group-hover:-translate-x-0.5 transition-transform" />
+            <span className="text-[13px] font-medium tracking-tight">Back</span>
           </Button>
         </div>
-        <RoundSelection
-          onRoundStart={handleRoundStart}
-          userProfile={userProfile}
-        />
+
+        {/* Scrollable Content Container */}
+        <div
+          ref={scrollContainerRef}
+          className="flex-1 overflow-y-auto scrollbar-hide"
+          onScroll={(e) => {
+            const scrollTop = e.currentTarget.scrollTop;
+            setShowBackButton(scrollTop < 50);
+          }}
+        >
+          <div className="max-w-7xl mx-auto w-full px-4">
+            <RoundSelection
+              onRoundStart={handleRoundStart}
+              userProfile={userProfile}
+            />
+          </div>
+        </div>
       </div>
     );
   }
@@ -1272,6 +1304,7 @@ export const PracticeMode = () => {
                       placeholder="e.g., Python Backend Development"
                       value={profileDomain}
                       onChange={(e) => setProfileDomain(e.target.value)}
+                      maxLength={512}
                     />
                     <p className="text-[10px] text-muted-foreground">Your primary technical domain</p>
                   </div>
@@ -1287,6 +1320,7 @@ export const PracticeMode = () => {
                       placeholder="e.g., 5"
                       value={profileExperience || ''}
                       onChange={(e) => setProfileExperience(parseInt(e.target.value) || 0)}
+                      maxLength={3}
                     />
                   </div>
 
@@ -1298,6 +1332,7 @@ export const PracticeMode = () => {
                       placeholder="e.g., Python, Django, AWS"
                       value={profileSkills}
                       onChange={(e) => setProfileSkills(e.target.value)}
+                      maxLength={512}
                     />
                     <p className="text-[10px] text-muted-foreground">Comma-separated skills</p>
                   </div>
@@ -1314,6 +1349,7 @@ export const PracticeMode = () => {
                         placeholder="Senior Engineer"
                         value={profileJobRole}
                         onChange={(e) => setProfileJobRole(e.target.value)}
+                        maxLength={512}
                       />
                     </div>
 
@@ -1325,6 +1361,7 @@ export const PracticeMode = () => {
                         placeholder="FAANG, Startup"
                         value={profileCompany}
                         onChange={(e) => setProfileCompany(e.target.value)}
+                        maxLength={512}
                       />
                     </div>
                   </div>
@@ -1337,6 +1374,7 @@ export const PracticeMode = () => {
                       placeholder="System Design, API Design"
                       value={profileFocus}
                       onChange={(e) => setProfileFocus(e.target.value)}
+                      maxLength={512}
                     />
                     <p className="text-[10px] text-muted-foreground">Comma-separated topics</p>
                   </div>
@@ -1650,89 +1688,90 @@ export const PracticeMode = () => {
 
   if (phase === 'feedback') {
     return (
-      <div className="max-w-4xl mx-auto w-full px-4 flex flex-col space-y-4">
-        <div className="flex items-center justify-between">
-          <h2 className="text-2xl font-bold">Answer Feedback</h2>
-          <Badge variant="outline">
+      <div className="max-w-4xl mx-auto w-full px-3 sm:px-4 flex flex-col space-y-3 sm:space-y-4 pb-6">
+        {/* Header */}
+        <div className="flex items-center justify-between pt-2">
+          <h2 className="text-lg sm:text-2xl font-bold">Answer Feedback</h2>
+          <Badge variant="outline" className="text-xs sm:text-sm">
             Question {currentQuestionNumber} / {totalQuestions}
           </Badge>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          <Card>
-            <CardHeader className="pb-3">
-              <CardTitle className="text-sm font-medium text-muted-foreground">
-                Speaking Speed
+        {/* Speech Metrics - Compact Mobile Grid */}
+        <div className="grid grid-cols-3 gap-2 sm:gap-4">
+          <Card className="border-muted overflow-hidden">
+            <CardHeader className="pb-2 px-2 sm:px-6 pt-3 sm:pt-6">
+              <CardTitle className="text-[10px] sm:text-sm font-medium text-muted-foreground uppercase tracking-wide truncate">
+                Speed
               </CardTitle>
             </CardHeader>
-            <CardContent>
-              <div className="text-3xl font-bold">{speechMetrics?.wpm || 0}</div>
-              <p className="text-xs text-muted-foreground mt-1">words per minute</p>
+            <CardContent className="px-2 sm:px-6 pb-3 sm:pb-6">
+              <div className="text-xl sm:text-3xl font-bold truncate">{speechMetrics?.wpm || 0}</div>
+              <p className="text-[9px] sm:text-xs text-muted-foreground mt-0.5 sm:mt-1 truncate">wpm</p>
             </CardContent>
           </Card>
 
-          <Card>
-            <CardHeader className="pb-3">
-              <CardTitle className="text-sm font-medium text-muted-foreground">
+          <Card className="border-muted overflow-hidden">
+            <CardHeader className="pb-2 px-2 sm:px-6 pt-3 sm:pt-6">
+              <CardTitle className="text-[10px] sm:text-sm font-medium text-muted-foreground uppercase tracking-wide truncate">
                 Confidence
               </CardTitle>
             </CardHeader>
-            <CardContent>
-              <div className="text-3xl font-bold">
+            <CardContent className="px-2 sm:px-6 pb-3 sm:pb-6">
+              <div className="text-xl sm:text-3xl font-bold truncate">
                 {((speechMetrics?.confidence_score || 0) * 100).toFixed(0)}%
               </div>
-              <p className="text-xs text-muted-foreground mt-1">confidence score</p>
+              <p className="text-[9px] sm:text-xs text-muted-foreground mt-0.5 sm:mt-1 truncate">score</p>
             </CardContent>
           </Card>
 
-          <Card>
-            <CardHeader className="pb-3">
-              <CardTitle className="text-sm font-medium text-muted-foreground">
-                Filler Words
+          <Card className="border-muted overflow-hidden">
+            <CardHeader className="pb-2 px-2 sm:px-6 pt-3 sm:pt-6">
+              <CardTitle className="text-[10px] sm:text-sm font-medium text-muted-foreground uppercase tracking-wide truncate">
+                Fillers
               </CardTitle>
             </CardHeader>
-            <CardContent>
-              <div className="text-3xl font-bold">{speechMetrics?.filler_count || 0}</div>
-              <p className="text-xs text-muted-foreground mt-1">um, uh, like, etc.</p>
+            <CardContent className="px-2 sm:px-6 pb-3 sm:pb-6">
+              <div className="text-xl sm:text-3xl font-bold truncate">{speechMetrics?.filler_count || 0}</div>
+              <p className="text-[9px] sm:text-xs text-muted-foreground mt-0.5 sm:mt-1 truncate">um, uh</p>
             </CardContent>
           </Card>
         </div>
 
-        {/* VAD Silence Removal Metric - NEW */}
+        {/* VAD Silence Removal - Compact Mobile Version */}
         {speechMetrics?.silence_removed && speechMetrics.silence_removed > 0 && (
-          <Card className="border-yellow-200 dark:border-yellow-900 bg-yellow-50/50 dark:bg-yellow-950/20">
-            <CardContent className="pt-6">
-              <div className="flex items-start gap-4">
-                <div className="p-3 bg-yellow-100 dark:bg-yellow-900/30 rounded-full">
-                  <Clock className="w-6 h-6 text-yellow-600 dark:text-yellow-500" />
+          <Card className="border-yellow-500/30 bg-gradient-to-br from-yellow-50/50 to-orange-50/30 dark:from-yellow-950/20 dark:to-orange-950/10">
+            <CardContent className="pt-4 sm:pt-6 px-3 sm:px-6 pb-4 sm:pb-6">
+              <div className="flex items-start gap-3 sm:gap-4">
+                <div className="p-2 sm:p-3 bg-yellow-100 dark:bg-yellow-900/30 rounded-full shrink-0">
+                  <Clock className="w-4 h-4 sm:w-6 sm:h-6 text-yellow-600 dark:text-yellow-500" />
                 </div>
-                <div className="flex-1">
-                  <div className="flex items-baseline gap-2 mb-2">
-                    <span className="text-3xl font-bold text-yellow-700 dark:text-yellow-400">
+                <div className="flex-1 min-w-0">
+                  <div className="flex flex-wrap items-baseline gap-2 mb-2">
+                    <span className="text-2xl sm:text-3xl font-bold text-yellow-700 dark:text-yellow-400">
                       {speechMetrics.silence_removed.toFixed(1)}s
                     </span>
-                    <span className="text-sm text-muted-foreground">of silence removed</span>
+                    <span className="text-xs sm:text-sm text-muted-foreground">of silence removed</span>
                   </div>
-                  <p className="text-sm text-muted-foreground mb-3">
-                    ⏸️ Long pauses were detected and removed by Voice Activity Detection (VAD).
-                    Practice speaking more continuously to reduce dead air.
+                  <p className="text-xs sm:text-sm text-muted-foreground mb-3 leading-relaxed">
+                    ⏸️ Long pauses were detected and removed by Voice Activity Detection (VAD). Practice speaking more continuously to reduce dead air.
                   </p>
 
-                  {/* Speaking Time Breakdown */}
-                  <div className="bg-white dark:bg-gray-800 rounded-lg p-3 space-y-2 mb-2">
-                    <div className="flex justify-between items-center text-sm">
+                  {/* Compact Time Breakdown */}
+                  <div className="bg-white/60 dark:bg-gray-800/60 rounded-lg p-2 sm:p-3 space-y-1.5 sm:space-y-2 mb-2">
+                    <div className="flex justify-between items-center text-xs sm:text-sm">
                       <span className="text-muted-foreground">Actual Speaking Time:</span>
                       <span className="font-semibold text-green-600 dark:text-green-400">
                         {((speechMetrics.duration || 0) - speechMetrics.silence_removed).toFixed(1)}s
                       </span>
                     </div>
-                    <div className="flex justify-between items-center text-sm">
+                    <div className="flex justify-between items-center text-xs sm:text-sm">
                       <span className="text-muted-foreground">Silence Removed:</span>
                       <span className="font-semibold text-yellow-600 dark:text-yellow-400">
                         {speechMetrics.silence_removed.toFixed(1)}s
                       </span>
                     </div>
-                    <div className="flex justify-between items-center text-sm border-t pt-2">
+                    <div className="flex justify-between items-center text-xs sm:text-sm border-t pt-1.5 sm:pt-2">
                       <span className="text-muted-foreground font-medium">Total Recording:</span>
                       <span className="font-semibold">
                         {(speechMetrics.duration || 0).toFixed(1)}s
@@ -1743,9 +1782,9 @@ export const PracticeMode = () => {
                   <div className="mt-2">
                     <Progress
                       value={Math.min(100, (speechMetrics.silence_removed / (speechMetrics.duration || 1)) * 100)}
-                      className="h-2 bg-yellow-200 dark:bg-yellow-900/30"
+                      className="h-1.5 sm:h-2 bg-yellow-200 dark:bg-yellow-900/30"
                     />
-                    <p className="text-xs text-muted-foreground mt-1">
+                    <p className="text-[10px] sm:text-xs text-muted-foreground mt-1">
                       {((speechMetrics.silence_removed / (speechMetrics.duration || 1)) * 100).toFixed(1)}% of your recording was silence
                     </p>
                   </div>
@@ -1755,13 +1794,14 @@ export const PracticeMode = () => {
           </Card>
         )}
 
+        {/* Your Answer & Feedback */}
         <Card className="flex-1">
-          <CardHeader>
-            <CardTitle>Your Answer</CardTitle>
+          <CardHeader className="px-3 sm:px-6 pt-4 sm:pt-6 pb-3">
+            <CardTitle className="text-base sm:text-lg">Your Answer</CardTitle>
           </CardHeader>
-          <CardContent className="space-y-4">
-            <ScrollArea className="h-32">
-              <p className="text-sm leading-relaxed">{transcription}</p>
+          <CardContent className="space-y-3 sm:space-y-4 px-3 sm:px-6 pb-4 sm:pb-6">
+            <ScrollArea className="h-24 sm:h-32">
+              <p className="text-xs sm:text-sm leading-relaxed text-muted-foreground">{transcription}</p>
             </ScrollArea>
 
             <Separator />
@@ -1769,23 +1809,23 @@ export const PracticeMode = () => {
             {/* Answer Correctness Section - NEW */}
             {microFeedback?.correctness_score !== undefined && (
               <>
-                <div className="space-y-4 p-4 bg-muted/50 rounded-lg border">
-                  <div className="flex items-center justify-between">
-                    <h4 className="font-semibold flex items-center gap-2">
-                      <Target className="w-4 h-4" />
+                <div className="space-y-3 sm:space-y-4 p-3 sm:p-4 bg-muted/50 rounded-lg border">
+                  <div className="flex items-center justify-between gap-2">
+                    <h4 className="font-semibold flex items-center gap-2 text-sm sm:text-base">
+                      <Target className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
                       Answer Correctness
                     </h4>
-                    <div className="flex items-center gap-3">
+                    <div className="flex items-center gap-2 sm:gap-3">
                       {microFeedback.is_correct ? (
-                        <span className="text-green-600 dark:text-green-400 text-2xl">✅</span>
+                        <span className="text-green-600 dark:text-green-400 text-lg sm:text-2xl">✅</span>
                       ) : (
-                        <span className="text-red-600 dark:text-red-400 text-2xl">❌</span>
+                        <span className="text-red-600 dark:text-red-400 text-lg sm:text-2xl">❌</span>
                       )}
-                      <span className="text-2xl font-bold text-primary">
+                      <span className="text-xl sm:text-2xl font-bold text-primary">
                         {microFeedback.correctness_score}%
                       </span>
                       {microFeedback.technical_accuracy && (
-                        <span className={`px-3 py-1 rounded-full text-xs font-medium ${microFeedback.technical_accuracy === 'Excellent' ? 'bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400' :
+                        <span className={`px-2 sm:px-3 py-0.5 sm:py-1 rounded-full text-[10px] sm:text-xs font-medium ${microFeedback.technical_accuracy === 'Excellent' ? 'bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400' :
                           microFeedback.technical_accuracy === 'Good' ? 'bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-400' :
                             microFeedback.technical_accuracy === 'Fair' ? 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-400' :
                               'bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400'
@@ -1799,14 +1839,14 @@ export const PracticeMode = () => {
                   {/* Key Points Covered */}
                   {microFeedback.key_points_covered && microFeedback.key_points_covered.length > 0 && (
                     <div>
-                      <h5 className="text-sm font-semibold mb-2 text-green-600 dark:text-green-400">
+                      <h5 className="text-xs sm:text-sm font-semibold mb-1.5 sm:mb-2 text-green-600 dark:text-green-400">
                         ✅ Key Points Covered
                       </h5>
-                      <ul className="text-sm space-y-1">
+                      <ul className="text-xs sm:text-sm space-y-1">
                         {microFeedback.key_points_covered.map((point, idx) => (
                           <li key={idx} className="flex items-start gap-2">
-                            <span className="text-green-600 dark:text-green-400 mt-0.5">✓</span>
-                            <span>{point}</span>
+                            <span className="text-green-600 dark:text-green-400 mt-0.5 shrink-0">✓</span>
+                            <span className="leading-relaxed">{point}</span>
                           </li>
                         ))}
                       </ul>
@@ -1816,14 +1856,14 @@ export const PracticeMode = () => {
                   {/* Key Points Missed */}
                   {microFeedback.key_points_missed && microFeedback.key_points_missed.length > 0 && (
                     <div>
-                      <h5 className="text-sm font-semibold mb-2 text-red-600 dark:text-red-400">
+                      <h5 className="text-xs sm:text-sm font-semibold mb-1.5 sm:mb-2 text-red-600 dark:text-red-400">
                         ❌ Key Points Missed
                       </h5>
-                      <ul className="text-sm space-y-1">
+                      <ul className="text-xs sm:text-sm space-y-1">
                         {microFeedback.key_points_missed.map((point, idx) => (
                           <li key={idx} className="flex items-start gap-2">
-                            <span className="text-red-600 dark:text-red-400 mt-0.5">✗</span>
-                            <span>{point}</span>
+                            <span className="text-red-600 dark:text-red-400 mt-0.5 shrink-0">✗</span>
+                            <span className="leading-relaxed">{point}</span>
                           </li>
                         ))}
                       </ul>
@@ -1833,14 +1873,14 @@ export const PracticeMode = () => {
                   {/* Strengths */}
                   {microFeedback.strengths && microFeedback.strengths.length > 0 && (
                     <div>
-                      <h5 className="text-sm font-semibold mb-2 text-blue-600 dark:text-blue-400">
+                      <h5 className="text-xs sm:text-sm font-semibold mb-1.5 sm:mb-2 text-blue-600 dark:text-blue-400">
                         💪 Strengths
                       </h5>
-                      <ul className="text-sm space-y-1">
+                      <ul className="text-xs sm:text-sm space-y-1">
                         {microFeedback.strengths.map((strength, idx) => (
                           <li key={idx} className="flex items-start gap-2">
-                            <span className="text-blue-600 dark:text-blue-400 mt-0.5">•</span>
-                            <span>{strength}</span>
+                            <span className="text-blue-600 dark:text-blue-400 mt-0.5 shrink-0">•</span>
+                            <span className="leading-relaxed">{strength}</span>
                           </li>
                         ))}
                       </ul>
@@ -1850,14 +1890,14 @@ export const PracticeMode = () => {
                   {/* Improvement Areas */}
                   {microFeedback.improvement_areas && microFeedback.improvement_areas.length > 0 && (
                     <div>
-                      <h5 className="text-sm font-semibold mb-2 text-orange-600 dark:text-orange-400">
+                      <h5 className="text-xs sm:text-sm font-semibold mb-1.5 sm:mb-2 text-orange-600 dark:text-orange-400">
                         📈 Areas to Improve
                       </h5>
-                      <ul className="text-sm space-y-1">
+                      <ul className="text-xs sm:text-sm space-y-1">
                         {microFeedback.improvement_areas.map((area, idx) => (
                           <li key={idx} className="flex items-start gap-2">
-                            <span className="text-orange-600 dark:text-orange-400 mt-0.5">↗</span>
-                            <span>{area}</span>
+                            <span className="text-orange-600 dark:text-orange-400 mt-0.5 shrink-0">↗</span>
+                            <span className="leading-relaxed">{area}</span>
                           </li>
                         ))}
                       </ul>
@@ -1867,14 +1907,14 @@ export const PracticeMode = () => {
                   {/* Actionable Suggestions */}
                   {microFeedback.actionable_suggestions && microFeedback.actionable_suggestions.length > 0 && (
                     <div>
-                      <h5 className="text-sm font-semibold mb-2 text-purple-600 dark:text-purple-400">
+                      <h5 className="text-xs sm:text-sm font-semibold mb-1.5 sm:mb-2 text-purple-600 dark:text-purple-400">
                         🎯 Next Steps
                       </h5>
-                      <ul className="text-sm space-y-1">
+                      <ul className="text-xs sm:text-sm space-y-1">
                         {microFeedback.actionable_suggestions.map((suggestion, idx) => (
                           <li key={idx} className="flex items-start gap-2">
-                            <span className="text-purple-600 dark:text-purple-400 mt-0.5">→</span>
-                            <span>{suggestion}</span>
+                            <span className="text-purple-600 dark:text-purple-400 mt-0.5 shrink-0">→</span>
+                            <span className="leading-relaxed">{suggestion}</span>
                           </li>
                         ))}
                       </ul>
@@ -1885,25 +1925,24 @@ export const PracticeMode = () => {
               </>
             )}
 
-            {/* Delivery Feedback Section - ENHANCED with VAD highlighting */}
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            {/* Delivery Feedback - Compact Mobile Layout */}
+            <div className="grid grid-cols-1 gap-3 sm:gap-4">
               <div>
-                <h4 className="font-semibold mb-2 flex items-center gap-2">
-                  <MessageSquare className="w-4 h-4" />
+                <h4 className="font-semibold mb-2 flex items-center gap-2 text-sm sm:text-base">
+                  <MessageSquare className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
                   Delivery Tips
                 </h4>
-                <ul className="text-sm space-y-2">
+                <ul className="text-xs sm:text-sm space-y-1.5 sm:space-y-2">
                   {microFeedback?.delivery_tips && microFeedback.delivery_tips.length > 0 ? (
                     microFeedback.delivery_tips.map((tip, idx) => {
-                      // Check if this is a VAD-related tip (mentions silence/pauses)
                       const isVadTip = tip.toLowerCase().includes('silence') ||
                         tip.toLowerCase().includes('pause') ||
                         tip.includes('⏸️');
 
                       return (
-                        <li key={idx} className={`flex items-start gap-2 p-2 rounded ${isVadTip ? 'bg-yellow-50 dark:bg-yellow-950/20 border-l-2 border-yellow-500' : ''
+                        <li key={idx} className={`flex items-start gap-2 p-2 rounded leading-relaxed ${isVadTip ? 'bg-yellow-50 dark:bg-yellow-950/20 border-l-2 border-yellow-500' : ''
                           }`}>
-                          <span className={`mt-0.5 ${isVadTip ? 'text-yellow-600 dark:text-yellow-500' : 'text-primary'}`}>
+                          <span className={`mt-0.5 shrink-0 ${isVadTip ? 'text-yellow-600 dark:text-yellow-500' : 'text-primary'}`}>
                             {isVadTip ? '⏸️' : '•'}
                           </span>
                           <span className={isVadTip ? 'text-yellow-700 dark:text-yellow-400 font-medium' : 'text-muted-foreground'}>
@@ -1918,11 +1957,11 @@ export const PracticeMode = () => {
                 </ul>
               </div>
               <div>
-                <h4 className="font-semibold mb-2 flex items-center gap-2">
-                  <Target className="w-4 h-4" />
+                <h4 className="font-semibold mb-2 flex items-center gap-2 text-sm sm:text-base">
+                  <Target className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
                   Overall Note
                 </h4>
-                <p className="text-sm text-muted-foreground">
+                <p className="text-xs sm:text-sm text-muted-foreground leading-relaxed">
                   {microFeedback?.overall_note || microFeedback?.content_relevance || 'N/A'}
                 </p>
               </div>

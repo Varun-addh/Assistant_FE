@@ -1,12 +1,20 @@
 import { useState, useEffect, useRef } from "react";
-
-// Keep a module-level cache so that answers marked as "seen" survive
-// component unmounts/remounts (history opens often unmount/mount the card).
-const seenAnswersGlobal = new Set<string>();
+import { useNavigate } from "react-router-dom";
+import { createPortal } from "react-dom";
 import { apiRenderMermaid } from "@/lib/api";
 import { Copy, Check, MessageSquare, Edit3, ChevronLeft, ChevronRight, Send, Share, X, Play, Edit, Download, Expand } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { startEvaluationOverlay } from "@/overlayHost";
+
+// Keep a module-level cache so that answers marked as "seen" survive
+// component unmounts/remounts (history opens often unmount/mount the card).
+const seenAnswersGlobal = new Set<string>();
+
+// Expose on window for clearing when starting new chat
+if (typeof window !== 'undefined') {
+  (window as any).__seenAnswersCache = seenAnswersGlobal;
+}
+
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { useToast } from "@/hooks/use-toast";
@@ -33,9 +41,11 @@ interface AnswerCardProps {
   isGenerating?: boolean;
   versionIndex?: number; // 1-based index
   versionTotal?: number;
+  onShowUpgrade?: () => void; // Callback when upgrade is suggested
+  id?: string; // Unique identifier for the answer (e.g. timestamp or UUID) to enable correct caching
 }
 
-export const AnswerCard = ({ answer, question, streaming = true, onEdit, onSubmitEdit, canPrev, canNext, onPrev, onNext, versionLabel, isGenerating, versionIndex, versionTotal, evaluationAllowed = null, evaluationReason = null }: AnswerCardProps) => {
+export const AnswerCard = ({ answer, question, streaming = true, onEdit, onSubmitEdit, canPrev, canNext, onPrev, onNext, versionLabel, isGenerating, versionIndex, versionTotal, evaluationAllowed = null, evaluationReason = null, onShowUpgrade, id }: AnswerCardProps) => {
   const [copied, setCopied] = useState(false);
   const [isDetailed] = useState(true);
   const [typedText, setTypedText] = useState("");
@@ -44,6 +54,15 @@ export const AnswerCard = ({ answer, question, streaming = true, onEdit, onSubmi
   const typingTimerRef = useRef<any>(null);
   const lastAnswerRef = useRef<string>("");
   const lastStreamingRef = useRef<boolean>(streaming);
+  const targetTextRef = useRef("");
+  const displayedTextRef = useRef("");
+  const isGeneratingRef = useRef(isGenerating);
+  const lastIdRef = useRef<string>(id);
+  const navigate = useNavigate();
+
+  useEffect(() => {
+    isGeneratingRef.current = isGenerating;
+  }, [isGenerating]);
   // NOTE: `seenAnswersGlobal` (module-level) is used below to persist
   // which answers were rendered fully across component unmounts.
   const [isEditing, setIsEditing] = useState(false);
@@ -61,6 +80,7 @@ export const AnswerCard = ({ answer, question, streaming = true, onEdit, onSubmi
   const [expandedLoading, setExpandedLoading] = useState<boolean>(false);
   const [responseComplete, setResponseComplete] = useState<boolean>(false);
   const [isTypingAnimation, setIsTypingAnimation] = useState<boolean>(false);
+  const [isHovered, setIsHovered] = useState(false);
   const contentRef = useRef<HTMLDivElement | null>(null);
 
   // Track when response is complete - only when typing animation finishes AND not generating
@@ -93,9 +113,10 @@ export const AnswerCard = ({ answer, question, streaming = true, onEdit, onSubmi
   // Close expanded diagram when clicking outside
   useEffect(() => {
     if (expandedDiagram) {
+      document.body.style.overflow = 'hidden';
       const handleClickOutside = (e: MouseEvent) => {
         const target = e.target as HTMLElement;
-        if (!target.closest('.expanded-diagram') && !target.closest('.diagram-action-btn')) {
+        if (!target.closest('.expanded-content-wrapper') && !target.closest('.diagram-action-btn')) {
           setExpandedDiagram(null);
         }
       };
@@ -107,6 +128,7 @@ export const AnswerCard = ({ answer, question, streaming = true, onEdit, onSubmi
       document.addEventListener('click', handleClickOutside);
       document.addEventListener('keydown', handleEscape);
       return () => {
+        document.body.style.overflow = '';
         document.removeEventListener('click', handleClickOutside);
         document.removeEventListener('keydown', handleEscape);
       };
@@ -123,14 +145,13 @@ export const AnswerCard = ({ answer, question, streaming = true, onEdit, onSubmi
 
   // Restore normal Mermaid diagrams when closing expanded view
   useEffect(() => {
-    if (!expandedDiagram) {
+    if (!expandedDiagram && contentRef.current) {
       const timer = setTimeout(() => {
-        // Force re-render of all normal Mermaid diagrams using backend API only
-        const normalMermaidElements = document.querySelectorAll('.mermaid:not(.expanded-content-wrapper .mermaid)');
-        normalMermaidElements.forEach(async (element) => {
+        // Force re-render of all normal Mermaid diagrams in THIS card using backend API only
+        const normalMermaidElements = contentRef.current?.querySelectorAll('.mermaid:not(.expanded-content-wrapper .mermaid)');
+        normalMermaidElements?.forEach(async (element) => {
           const content = element.textContent || '';
-          if (content && !element.querySelector('svg')) {
-            // Use backend API to re-render instead of client-side Mermaid
+          if (content && !element.querySelector('svg') && !(element as any).dataset.mermaidFailed) {
             try {
               const svg = await apiRenderMermaid({
                 code: content,
@@ -143,7 +164,6 @@ export const AnswerCard = ({ answer, question, streaming = true, onEdit, onSubmi
               }
             } catch (error) {
               console.error('Failed to re-render Mermaid diagram:', error);
-              // Keep original content as fallback
             }
           }
         });
@@ -193,18 +213,72 @@ export const AnswerCard = ({ answer, question, streaming = true, onEdit, onSubmi
     applyScale(container);
   };
 
-  // Utility function to clean SVG content and remove attributes that might cause false positive error detection
+  // Utility function to clean SVG content and ensure text is visible
   const cleanSvgContent = (svgContent: string): string => {
     let cleaned = svgContent
       .replace(/aria-roledescription="[^"]*"/g, '') // Remove aria-roledescription attributes
       .replace(/role="graphics-document[^"]*"/g, '') // Remove problematic role attributes
-      .replace(/\s+/g, ' ') // Normalize whitespace
-      .replace(/\s*=\s*/g, '=') // Remove spaces around equals signs
       .trim();
 
     // Additional cleanup for any remaining problematic attributes
     cleaned = cleaned.replace(/aria-roledescription\s*=\s*"[^"]*"/g, '');
     cleaned = cleaned.replace(/role\s*=\s*"graphics-document[^"]*"/g, '');
+
+    // CRITICAL: Ensure text elements have visible fill color
+    // This fixes the empty boxes issue in PDFs by ensuring text has proper color
+    const parser = new DOMParser();
+    const doc = parser.parseFromString(cleaned, 'image/svg+xml');
+    const svgEl = doc.querySelector('svg');
+
+    if (svgEl) {
+      // Ensure all text elements have visible fill
+      svgEl.querySelectorAll('text').forEach(text => {
+        const fill = text.getAttribute('fill');
+        if (!fill || fill === 'none' || fill === 'transparent' || fill === '') {
+          text.setAttribute('fill', '#1e293b');
+        }
+        // Ensure font-family is set for consistent rendering
+        if (!text.getAttribute('font-family')) {
+          text.setAttribute('font-family', 'Arial, Helvetica, sans-serif');
+        }
+      });
+
+      // Ensure foreignObject inner divs have visible text
+      svgEl.querySelectorAll('foreignObject div, foreignObject span').forEach(el => {
+        const htmlEl = el as HTMLElement;
+        const color = htmlEl.style.color;
+        if (!color || color === 'transparent' || color === '') {
+          htmlEl.style.color = '#1e293b';
+        }
+        // Set font family
+        if (!htmlEl.style.fontFamily) {
+          htmlEl.style.fontFamily = 'Arial, Helvetica, sans-serif';
+        }
+      });
+
+      // Add a style block to ensure text visibility (backup approach)
+      const existingStyle = svgEl.querySelector('style');
+      const textStyleRule = `
+        .nodeLabel, .label, .edgeLabel, .cluster-label { 
+          fill: #1e293b !important; 
+          color: #1e293b !important;
+          font-family: Arial, Helvetica, sans-serif !important;
+        }
+        text { fill: #1e293b; }
+        foreignObject div, foreignObject span { color: #1e293b !important; }
+      `;
+
+      if (existingStyle) {
+        existingStyle.textContent = (existingStyle.textContent || '') + textStyleRule;
+      } else {
+        const styleEl = document.createElementNS('http://www.w3.org/2000/svg', 'style');
+        styleEl.textContent = textStyleRule;
+        svgEl.insertBefore(styleEl, svgEl.firstChild);
+      }
+
+      const serializer = new XMLSerializer();
+      cleaned = serializer.serializeToString(svgEl);
+    }
 
     return cleaned;
   };
@@ -281,75 +355,60 @@ export const AnswerCard = ({ answer, question, streaming = true, onEdit, onSubmi
 
   const handleDownloadPdf = async () => {
     try {
-      // Try to prepare diagram if it exists, but don't block export if it doesn't
-      try {
-        await waitForSvgInDiagram(800);
-      } catch (_) {
-        // No diagram detected within the timeout — proceed with export anyway
+      // Quick check - if actively processing, wait max 500ms
+      if (mermaidProcessingRef.current) {
+        await new Promise(resolve => setTimeout(resolve, 500));
+      }
+
+      // FIRST: Collect all mermaid source codes BEFORE cloning
+      // This is critical because the SVG rendering may have replaced the original text content
+      const mermaidSources: Map<number, string> = new Map();
+      if (contentRef.current) {
+        contentRef.current.querySelectorAll('[data-mermaid-source]').forEach((el, idx) => {
+          const source = el.getAttribute('data-mermaid-source');
+          if (source) {
+            mermaidSources.set(idx, source);
+            console.log(`[PDF] Found mermaid source ${idx}:`, source.substring(0, 50) + '...');
+          }
+        });
       }
 
       // Work on a cloned tree so we do NOT mutate the on-screen UI
       const root = (contentRef.current?.cloneNode(true) as HTMLElement) || null;
       if (root) {
-        // 1) Convert diagram SVG to IMG inside the clone (if present)
-        const diagramContainer = root.querySelector('.diagram-container') as HTMLElement | null;
-        const svg = diagramContainer?.querySelector('svg') as SVGElement | null;
-        if (svg && diagramContainer) {
-          const img = await svgElementToPngImage(svg, (svg as any).clientWidth || 800, (svg as any).clientHeight || 400);
-          img.style.maxWidth = "100%";
-          img.style.height = "auto";
-          diagramContainer.innerHTML = "";
-          diagramContainer.appendChild(img);
-        }
+        // Re-attach mermaid sources to cloned elements (in case they were lost)
+        root.querySelectorAll('.diagram-container, .mermaid, .mermaid-rendered').forEach((el, idx) => {
+          const source = mermaidSources.get(idx);
+          if (source && !el.getAttribute('data-mermaid-source')) {
+            el.setAttribute('data-mermaid-source', source);
+            console.log(`[PDF] Re-attached mermaid source to cloned element ${idx}`);
+          }
+        });
 
-        // 2) Force white text in all tables and bold first column cells (PDF-only)
-        const sanitizeInlineColor = (el: HTMLElement) => {
-          const style = el.getAttribute('style') || '';
-          const cleaned = style.replace(/color\s*:[^;]+;?/gi, '').trim();
-          el.setAttribute('style', (cleaned ? cleaned + '; ' : '') + 'color:#fff !important;');
-        };
+        // Remove ALL UI-only elements (buttons, icons, action bars) from the clone
+        root.querySelectorAll('.diagram-action-btn, button, .lucide, [class*="copy-"]').forEach(el => el.remove());
 
         root.querySelectorAll('table').forEach((table) => {
           const t = table as HTMLElement;
-          sanitizeInlineColor(t);
           t.style.borderCollapse = 'collapse';
-          t.querySelectorAll('th, td').forEach((cell) => {
-            const c = cell as HTMLElement;
-            sanitizeInlineColor(c);
-            if (!c.style.padding) c.style.padding = '8px';
-          });
-          // First column bold
-          t.querySelectorAll('tr').forEach((tr) => {
-            const first = tr.querySelector('td, th') as HTMLElement | null;
-            if (first) {
-              first.style.fontWeight = '600';
-              sanitizeInlineColor(first);
-            }
-          });
-          // Replace bold tags with spans that carry explicit white + bold
-          t.querySelectorAll('strong, b').forEach((el) => {
-            const e = el as HTMLElement;
-            const span = document.createElement('span');
-            span.setAttribute('style', 'color:#fff !important; font-weight:700;');
-            span.innerHTML = e.innerHTML;
-            e.replaceWith(span);
-          });
-          // Force ALL descendants to white (handles remaining spans inside cells)
-          t.querySelectorAll('*').forEach((el) => {
-            const node = el as HTMLElement;
-            // strip classes to avoid Tailwind/prose overrides
-            node.removeAttribute('class');
-            // remove any existing color then set white with !important
-            const s = node.getAttribute('style') || '';
-            const cleaned = s.replace(/color\s*:[^;]+;?/gi, '').trim();
-            node.setAttribute('style', (cleaned ? cleaned + '; ' : '') + 'color:#fff !important;');
-          });
+          t.style.width = '100%';
+          // Ensure table does not have overflow or height constraints in PDF
+          t.style.overflow = 'visible';
+          t.style.height = 'auto';
         });
       }
 
       const html = root ? root.innerHTML : (contentRef.current?.innerHTML || "");
-      await downloadAnswerPdf({ question, answerHtml: html, fileName: `Stratax-AI-${new Date().toISOString().slice(0, 10)}.pdf` });
+
+      // Pass mermaid sources separately for guaranteed availability
+      await downloadAnswerPdf({
+        question,
+        answerHtml: html,
+        fileName: `Stratax-AI-${new Date().toISOString().slice(0, 10)}.pdf`,
+        mermaidSources: Array.from(mermaidSources.values())
+      });
     } catch (e) {
+      console.error('[PDF] Download failed:', e);
       toast({
         title: "Download failed",
         description: "We couldn't generate the PDF. Please try again.",
@@ -495,6 +554,44 @@ export const AnswerCard = ({ answer, question, streaming = true, onEdit, onSubmi
 
   const containsSubgraph = (s: string): boolean => /(^|\n)\s*subgraph\b/.test(s);
 
+  // 🛡️ SANITIZE: Strip CSS/HTML markup from Mermaid code
+  const sanitizeMermaidCode = (code: string): string => {
+    let sanitized = code.trim();
+    
+    // Remove HTML tags
+    sanitized = sanitized.replace(/<[^>]+>/g, '');
+    
+    // Remove CSS style blocks
+    sanitized = sanitized.replace(/style\s*=\s*["'][^"']*["']/gi, '');
+    sanitized = sanitized.replace(/<style[^>]*>[\s\S]*?<\/style>/gi, '');
+    
+    // Remove CSS class declarations that aren't Mermaid classDef
+    sanitized = sanitized.replace(/\.[\w-]+\s*\{[^}]*\}/g, '');
+    
+    // Remove inline CSS comments (/* ... */)
+    sanitized = sanitized.replace(/\/\*[\s\S]*?\*\//g, '');
+    
+    // Remove CSS @rules
+    sanitized = sanitized.replace(/@[\w-]+[^{]*\{[^}]*\}/g, '');
+    
+    // Decode HTML entities
+    sanitized = sanitized
+      .replace(/&lt;/g, '<')
+      .replace(/&gt;/g, '>')
+      .replace(/&amp;/g, '&')
+      .replace(/&quot;/g, '"')
+      .replace(/&#39;/g, "'");
+    
+    // Remove excessive whitespace but preserve structure
+    sanitized = sanitized
+      .split('\n')
+      .map(line => line.trim())
+      .filter(line => line.length > 0)
+      .join('\n');
+    
+    return sanitized;
+  };
+
   // PROACTIVE APPROACH: Comprehensive Mermaid syntax validation and correction
   const validateAndFixMermaidSyntax = (mermaidCode: string): { isValid: boolean; fixedCode: string; errors: string[] } => {
     const errors: string[] = [];
@@ -604,11 +701,46 @@ export const AnswerCard = ({ answer, question, streaming = true, onEdit, onSubmi
     // Check for classDef statements that might have formatting issues
     const classDefFormatLines = fixed.split('\n').filter(line => line.trim().startsWith('classDef'));
     classDefFormatLines.forEach((line, index) => {
-      // Check for missing spaces or formatting issues in classDef
-      if (!line.includes('fill:') || !line.includes('stroke:')) {
-        errors.push(`classDef line ${index + 1} might have formatting issues`);
+    });
+
+    // Deduplicate classDef statements
+    const uniqueClassDefs = new Map<string, string>();
+    fixed.split('\n').forEach(line => {
+      const trimmed = line.trim();
+      if (trimmed.startsWith('classDef ')) {
+        const parts = trimmed.split(/\s+/);
+        if (parts.length > 1) {
+          const name = parts[1];
+          uniqueClassDefs.set(name, trimmed);
+        }
       }
     });
+
+    if (uniqueClassDefs.size > 0 && classDefLines.length > uniqueClassDefs.size) {
+      errors.push(`Deduplicated ${classDefLines.length - uniqueClassDefs.size} classDef statements`);
+      const otherLines = fixed.split('\n').filter(line => !line.trim().startsWith('classDef '));
+      fixed = otherLines.join('\n') + '\n' + Array.from(uniqueClassDefs.values()).join('\n');
+    }
+
+    // Deduplicate linkStyle statements
+    const linkStyleLines = fixed.split('\n').filter(line => line.trim().startsWith('linkStyle '));
+    const uniqueLinkStyles = new Map<string, string>();
+    fixed.split('\n').forEach(line => {
+      const trimmed = line.trim();
+      if (trimmed.startsWith('linkStyle ')) {
+        const parts = trimmed.split(/\s+/);
+        if (parts.length > 1) {
+          const index = parts[1];
+          uniqueLinkStyles.set(index, trimmed);
+        }
+      }
+    });
+
+    if (uniqueLinkStyles.size > 0 && linkStyleLines.length > uniqueLinkStyles.size) {
+      errors.push(`Deduplicated ${linkStyleLines.length - uniqueLinkStyles.size} linkStyle statements`);
+      const otherLines = fixed.split('\n').filter(line => !line.trim().startsWith('linkStyle '));
+      fixed = otherLines.join('\n') + '\n' + Array.from(uniqueLinkStyles.values()).join('\n');
+    }
 
     // Validation 10: Ensure proper line breaks between classDef statements
     const classDefSection = fixed.split('\n').filter(line => line.trim().startsWith('classDef'));
@@ -680,65 +812,32 @@ export const AnswerCard = ({ answer, question, streaming = true, onEdit, onSubmi
     return { isValid, fixedCode: fixed, errors };
   };
 
-  // NUCLEAR OPTION: Completely bypass Mermaid library for SVG rendering
+  // SAFELY set content without destroying global mermaid
   const setSvgContentSafely = (element: HTMLElement, svgContent: string) => {
-    console.log('NUCLEAR OPTION: Bypassing Mermaid library entirely');
+    console.log('[AnswerCard] Setting SVG content safely for', element);
 
     // Remove mermaid class and add rendered class
     element.classList.remove('mermaid');
     element.classList.add('mermaid-rendered');
+    element.classList.remove('mermaid-failed');
 
     // Mark as processed with multiple flags to prevent re-processing
     (element as any).dataset.processed = '1';
     (element as any).dataset.mermaidProcessed = 'true';
     (element as any).dataset.mermaidRendered = 'true';
     (element as any).dataset.mermaidBypassed = 'true';
+    delete (element as any).dataset.mermaidFailed;
 
-    // COMPLETELY DISABLE MERMAID LIBRARY GLOBALLY TO PREVENT CONFLICTS
-    const originalMermaid = (window as any).mermaid;
-    const originalInitialize = (window as any).mermaid?.initialize;
-    const originalRender = (window as any).mermaid?.render;
-    const originalParse = (window as any).mermaid?.parse;
-    const originalInit = (window as any).mermaid?.init;
-
-    // Disable ALL Mermaid functionality globally
-    (window as any).mermaid = null;
-    (window as any).mermaid = undefined;
-
-    // Override any Mermaid methods that might be called
-    if (originalMermaid) {
-      (window as any).mermaid = {
-        init: () => { throw new Error('Mermaid client-side rendering disabled'); },
-        render: () => { throw new Error('Mermaid client-side rendering disabled'); },
-        initialize: () => { throw new Error('Mermaid client-side rendering disabled'); },
-        parse: () => { throw new Error('Mermaid client-side rendering disabled'); }
-      };
-    }
-
-    // Disable any Mermaid event listeners
-    const mermaidElements = document.querySelectorAll('.mermaid');
-    mermaidElements.forEach(el => {
-      if (el !== element) {
-        el.classList.remove('mermaid');
-        el.classList.add('mermaid-disabled');
-      }
-    });
-
-    // Set the cleaned SVG content DIRECTLY without any Mermaid processing
+    // Set the cleaned SVG content DIRECTLY
     element.innerHTML = svgContent;
-    // Ensure consistent sizing regardless of diagram complexity
+
     try {
       const container = element.closest('.diagram-container') as HTMLElement | null;
       if (container) {
-        // Reset user zoom to default when new svg is set
         currentScaleRef.current = 1.0;
         adjustSvgScale(container);
       }
     } catch { }
-
-    // NEVER restore Mermaid library for this element
-    // This element is now completely independent of Mermaid library
-    console.log('NUCLEAR OPTION: SVG set directly, Mermaid library bypassed permanently');
   };
 
   const startLongPress = () => {
@@ -769,394 +868,385 @@ export const AnswerCard = ({ answer, question, streaming = true, onEdit, onSubmi
     return () => document.removeEventListener('click', onDocClick, { capture: true } as any);
   }, [showQuickActions]);
 
-  // Re-run Mermaid on block updates (frontend render of diagrams)
+  // Re-run Mermaid on block updates (scoped to this component)
   useEffect(() => {
-    // Add a small delay to ensure DOM is ready
-    const timeoutId = setTimeout(() => {
-      try {
-        // Prevent multiple simultaneous processing
-        if (mermaidProcessingRef.current) {
-          console.log('Mermaid processing already in progress, skipping');
-          return;
+    if (!contentRef.current) return;
+
+    // Define retry handler at useEffect scope for proper cleanup
+    const handleRetry = (e: MouseEvent) => {
+      const btn = (e.target as HTMLElement).closest('.retry-mermaid-btn');
+      if (btn && contentRef.current) {
+        const container = btn.closest('.mermaid') as HTMLElement;
+        if (container) {
+          console.log('Manually retrying Mermaid render...');
+          delete (container as any).dataset.mermaidFailed;
+          delete (container as any).dataset.mermaidProcessed;
+          container.classList.remove('mermaid-failed');
+          const source = (container as any).dataset.mermaidSource || container.textContent || '';
+          container.innerHTML = source;
+          // Re-trigger rendering
+          triggerRender();
         }
+      }
+    };
 
-        const mm: any = (window as any)?.mermaid;
-        const now = Date.now();
-        if (now - mermaidRanRef.current < 200) return; // Increased throttle time
-        mermaidRanRef.current = now;
+    contentRef.current.addEventListener('click', handleRetry);
 
-        // More specific selector to avoid re-processing - EXCLUDE bypassed elements
-        const nodes = Array.from(document.querySelectorAll('.mermaid:not(.mermaid-rendered):not(.mermaid-disabled):not([data-mermaid-processed="true"]):not([data-mermaid-rendered="true"]):not([data-mermaid-bypassed="true"])')) as HTMLElement[];
-        console.log('Mermaid processing: found', nodes.length, 'unprocessed nodes');
-        if (!nodes.length) return;
+    let timeoutId: any = null;
 
-        // Set processing flag
-        mermaidProcessingRef.current = true;
-        const normalizeMermaid = (src: string): string => {
-          let t = (src || '').trim();
+    const triggerRender = () => {
+      if (timeoutId) clearTimeout(timeoutId);
 
-          // For complex diagrams with subgraphs, classDef, etc., return as-is
-          if (t.includes('subgraph') || t.includes('classDef') || t.includes('class ') || t.includes(':::')) {
-            console.log('Complex diagram detected, using original syntax');
-            return t;
-          }
+      timeoutId = setTimeout(() => {
+        try {
+          if (mermaidProcessingRef.current || !contentRef.current) return;
 
-          const newlineCount = (t.match(/\n/g) || []).length;
-          if (newlineCount >= 3) return t;
+          const mm: any = (window as any)?.mermaid;
+          const now = Date.now();
+          if (now - mermaidRanRef.current < 200) return;
+          mermaidRanRef.current = now;
 
-          // Only apply normalization to simple diagrams
-          console.log('Simple diagram detected, applying normalization');
-          const lines: string[] = [];
-          let currentLine = '';
+          const unprocessedNodes = Array.from(contentRef.current.querySelectorAll('.mermaid:not(.mermaid-rendered):not(.mermaid-disabled):not([data-mermaid-processed="true"]):not([data-mermaid-rendered="true"]):not([data-mermaid-bypassed="true"]):not([data-mermaid-failed="true"])')) as HTMLElement[];
 
-          // Split by major delimiters first
-          const parts = t.split(/(\s+subgraph\s+|\s+end\s+|\s+classDef\s+|\s+-->\s+)/);
+          if (unprocessedNodes.length === 0) return;
 
-          for (let i = 0; i < parts.length; i++) {
-            const part = parts[i].trim();
-            if (!part) continue;
+          mermaidProcessingRef.current = true;
 
-            if (part.startsWith('flowchart')) {
-              lines.push(part);
-            } else if (part.startsWith('subgraph')) {
-              lines.push(`  ${part}`);
-            } else if (part === 'end') {
-              lines.push('  end');
-            } else if (part.startsWith('classDef')) {
-              lines.push(`    ${part}`);
-            } else if (part.includes('-->')) {
-              lines.push(`    ${part}`);
-            } else if (part.includes('[') && part.includes(']')) {
-              // Node definition
-              lines.push(`    ${part}`);
-            } else if (part.includes(':::')) {
-              // Node with class
-              lines.push(`    ${part}`);
-            } else {
-              // Regular content
-              if (currentLine) {
-                currentLine += ' ' + part;
+          const normalizeMermaid = (src: string): string => {
+            let t = (src || '').trim();
+            if (t.includes('subgraph') || t.includes('classDef') || t.includes('class ') || t.includes(':::')) return t;
+            const newlineCount = (t.match(/\n/g) || []).length;
+            if (newlineCount >= 3) return t;
+            const lines: string[] = [];
+            let currentLine = '';
+            const parts = t.split(/(\s+subgraph\s+|\s+end\s+|\s+classDef\s+|\s+-->\s+)/);
+            for (let j = 0; j < parts.length; j++) {
+              const part = parts[j].trim();
+              if (!part) continue;
+              if (part.startsWith('flowchart') || part.startsWith('subgraph') || part === 'end' || part.startsWith('classDef') || part.includes('-->') || (part.includes('[') && part.includes(']')) || part.includes(':::')) {
+                lines.push(part);
               } else {
-                currentLine = part;
+                if (currentLine) currentLine += ' ' + part;
+                else currentLine = part;
               }
             }
-          }
+            if (currentLine) lines.push(currentLine);
+            return lines.join('\n');
+          };
 
-          if (currentLine) {
-            lines.push(currentLine);
-          }
+          const tryRender = async (el: HTMLElement, i: number) => {
+            if ((el as any).dataset.mermaidProcessed === 'true') return;
+            (el as any).dataset.mermaidProcessed = 'true';
 
-          return lines.join('\n');
-        };
-        const tryRender = async (el: HTMLElement, i: number) => {
-          if ((el as any).dataset.processed === '1' || (el as any).dataset.mermaidProcessed === 'true') return;
+            try {
+              const srcRaw = el.textContent || '';
 
-          // Mark as being processed to prevent race conditions
-          (el as any).dataset.mermaidProcessed = 'true';
+              // 🛡️ SANITIZE: Remove CSS/HTML markup before processing
+              const sanitizedSrc = sanitizeMermaidCode(srcRaw);
 
-          const srcRaw = el.textContent || '';
-          console.log('Processing Mermaid node', i, ':', srcRaw.substring(0, 100) + '...');
+              // CRITICAL: Store original source for PDF export BEFORE any processing
+              if (!el.getAttribute('data-mermaid-source')) {
+                el.setAttribute('data-mermaid-source', sanitizedSrc.trim());
+              }
 
-          // If the diagram contains subgraphs, send the RAW source verbatim to the backend.
-          // This avoids any normalization/validation that could collapse whitespace or
-          // move lines and accidentally convert layer subgraphs into plain nodes.
-          const containsSubgraph = /\bsubgraph\b/.test(srcRaw);
-          let fixedSrc = srcRaw;
-          if (!containsSubgraph) {
-            // For simple diagrams (no subgraphs), keep lightweight normalization/validation.
-            let src = normalizeMermaid(srcRaw);
-            // Convert ER crow's-foot to erDiagram early
-            src = crowFootToErDiagram(src);
-            const validation = validateAndFixMermaidSyntax(src);
-            fixedSrc = validation.fixedCode;
-            if (!validation.isValid) {
-              console.warn('Mermaid syntax issues detected; proceeding with normalized code without fallback. Errors:', validation.errors);
-            }
-            if (fixedSrc !== srcRaw) {
-              el.textContent = fixedSrc;
-            }
-          }
+              const containsSubgraph = /\bsubgraph\b/.test(sanitizedSrc);
+              let fixedSrc = sanitizedSrc;
 
-          // Harmonize subgraph titles: ensure they end with " Layer" for clarity
-          if (containsSubgraph) {
-            // Case 1: subgraph ID with bracketed label: subgraph X[Label]
-            fixedSrc = fixedSrc.replace(/(^|\n)\s*subgraph\s+([A-Za-z0-9_-]+)\s*\[(.*?)\]/g, (_m, lead, id, label) => {
-              const needsLayer = !/layer$/i.test(String(label).trim());
-              const newLabel = needsLayer ? `${label} Layer` : label;
-              return `${lead}subgraph ${id}[${newLabel}]`;
-            });
-            // Case 2: subgraph with plain title: subgraph Client
-            fixedSrc = fixedSrc.replace(/(^|\n)\s*subgraph\s+([A-Za-z0-9_-]+)\s*$/gm, (_m, lead, id) => {
-              const title = id.replace(/_/g, ' ');
-              const needsLayer = !/layer$/i.test(title);
-              const label = needsLayer ? `${title} Layer` : title;
-              return `${lead}subgraph ${id}[${label}]`;
-            });
-          }
+              if (!containsSubgraph) {
+                let src = normalizeMermaid(sanitizedSrc);
+                src = crowFootToErDiagram(src);
+                const validation = validateAndFixMermaidSyntax(src);
+                fixedSrc = validation.fixedCode;
+                if (fixedSrc !== sanitizedSrc) el.textContent = fixedSrc;
+              }
 
-          // Fix common edge syntax errors before adding init directive
-          fixedSrc = fixCommonMermaidEdgeSyntax(fixedSrc);
+              if (containsSubgraph) {
+                fixedSrc = fixedSrc.replace(/(^|\n)\s*subgraph\s+([A-Za-z0-9_-]+)\s*\[(.*?)\]/g, (_m, lead, id, label) => {
+                  const needsLayer = !/layer$/i.test(String(label).trim());
+                  return `${lead}subgraph ${id}[${needsLayer ? `${label} Layer` : label}]`;
+                });
+                fixedSrc = fixedSrc.replace(/(^|\n)\s*subgraph\s+([A-Za-z0-9_-]+)\s*$/gm, (_m, lead, id) => {
+                  const title = id.replace(/_/g, ' ');
+                  const needsLayer = !/layer$/i.test(title);
+                  return `${lead}subgraph ${id}[${needsLayer ? `${title} Layer` : title}]`;
+                });
+              }
 
-          // Add sequential connection numbers to show workflow steps
-          const originalSrc = fixedSrc;
-          fixedSrc = addConnectionNumbers(fixedSrc);
+              fixedSrc = fixCommonMermaidEdgeSyntax(fixedSrc);
+              fixedSrc = addConnectionNumbers(fixedSrc);
 
-          // Debug logging to help troubleshoot
-          if (originalSrc !== fixedSrc) {
-            console.log('Connection numbering applied:', {
-              original: originalSrc.substring(0, 200) + '...',
-              modified: fixedSrc.substring(0, 200) + '...'
-            });
-          }
+              const hasInitDirective = /^%%\{\s*init:/m.test(fixedSrc);
+              if (!hasInitDirective) {
+                // Use htmlLabels: false for better PDF compatibility - native SVG text renders more reliably
+                // Also explicitly set text colors to ensure visibility
+                const initDirective = "%%{init: { 'theme': 'neutral', 'flowchart': { 'useMaxWidth': true, 'htmlLabels': false, 'nodeSpacing': 80, 'rankSpacing': 120, 'padding': 16, 'curve': 'basis' }, 'themeVariables': { 'fontFamily': 'Arial, Helvetica, sans-serif', 'fontSize': '14px', 'primaryColor': '#eef2ff', 'primaryBorderColor': '#a5b4fc', 'primaryTextColor': '#1e293b', 'secondaryTextColor': '#334155', 'tertiaryTextColor': '#475569', 'lineColor': '#94a3b8', 'textColor': '#1e293b', 'mainBkg': '#ffffff', 'nodeBorder': '#94a3b8', 'clusterBkg': '#f8fafc', 'clusterBorder': '#cbd5e1', 'nodeTextColor': '#1e293b' } }}%%\n";
+                fixedSrc = initDirective + fixedSrc;
+              }
 
-          // Always enforce a modern, balanced layout via Mermaid init directive unless the source already defines one
-          const hasInitDirective = /^%%\{\s*init:/m.test(fixedSrc);
-          if (!hasInitDirective) {
-            const initDirective =
-              "%%{init: {" +
-              " 'theme': 'neutral'," +
-              " 'flowchart': { 'useMaxWidth': true, 'htmlLabels': true, 'nodeSpacing': 80, 'rankSpacing': 120, 'padding': 16, 'curve': 'basis' }," +
-              " 'themeVariables': {" +
-              "   'fontFamily': 'Inter, ui-sans-serif, system-ui, -apple-system'," +
-              "   'fontSize': '16px'," +
-              "   'primaryColor': '#eef2ff'," +
-              "   'primaryBorderColor': '#a5b4fc'," +
-              "   'lineColor': '#94a3b8'," +
-              "   'clusterBkg': '#f8fafc'," +
-              "   'clusterBorder': '#cbd5e1'" +
-              " }" +
-              "}}%%\n";
-            fixedSrc = initDirective + fixedSrc;
-          }
-
-          // Primary: your backend renderer
-          try {
-            const responseText = await apiRenderMermaid({ code: fixedSrc, theme: 'neutral', style: 'modern', size: 'medium' });
-            console.log('Backend response:', responseText.substring(0, 200) + '...');
-
-            // Check if response is SVG (starts with <svg) or raw Mermaid
-            if (responseText.trim().startsWith('<svg')) {
-              // Detect if the backend-rendered SVG is actually an error page
-              const looksLikeErrorSvg = /aria-roledescription\s*=\s*["']?error|Syntax error in text|Syntax error/i.test(responseText) || responseText.includes('class="error"');
-              console.log('Original SVG contains aria-roledescription:', responseText.includes('aria-roledescription'));
-              console.log('Backend SVG looks like error:', looksLikeErrorSvg);
-
-              if (looksLikeErrorSvg) {
-                // Try a quick retry with the raw, original source (srcRaw) to avoid the transformations
-                console.warn('Backend returned an error SVG; retrying render with original source');
-                try {
-                  const retry = await apiRenderMermaid({ code: (el.textContent || '').trim() || fixedSrc, theme: 'neutral', style: 'modern', size: 'medium' });
-                  if (retry && retry.trim().startsWith('<svg') && !/Syntax error/i.test(retry) && !/aria-roledescription\s*=\s*["']?error/i.test(retry)) {
-                    const cleanedRetry = cleanSvgContent(retry);
-                    console.log('Retry succeeded with cleaned SVG preview:', cleanedRetry.substring(0, 300) + '...');
-                    setSvgContentSafely(el, cleanedRetry);
+              // Primary: Backend
+              try {
+                const responseText = await apiRenderMermaid({ code: fixedSrc, theme: 'neutral', style: 'modern', size: 'medium' });
+                if (responseText.trim().startsWith('<svg')) {
+                  const looksLikeError = /aria-roledescription\s*=\s*["']?error|Syntax error in text|Syntax error/i.test(responseText) || responseText.includes('class="error"');
+                  if (looksLikeError) {
+                    try {
+                      const retry = await apiRenderMermaid({ code: (el.textContent || '').trim() || fixedSrc, theme: 'neutral', style: 'modern', size: 'medium' });
+                      if (retry && retry.trim().startsWith('<svg') && !/Syntax error/i.test(retry)) {
+                        setSvgContentSafely(el, cleanSvgContent(retry));
+                        return;
+                      }
+                    } catch { }
+                  } else {
+                    setSvgContentSafely(el, cleanSvgContent(responseText));
                     return;
                   }
-                  console.warn('Retry did not produce a valid SVG, falling back to client/Kroki');
-                } catch (e) {
-                  console.warn('Retry render with original source failed:', e);
                 }
-                // fall through to client-side/Kroki fallback below
+              } catch { }
+
+              // Fallback: Client
+              if (mm && typeof mm.render === 'function') {
+                try {
+                  const out = await mm.render(`mmd-${Date.now()}-${i}`, fixedSrc);
+                  if (out && out.svg) {
+                    setSvgContentSafely(el, cleanSvgContent(out.svg as string));
+                    return;
+                  }
+                } catch { }
               }
 
-              // Clean the SVG to remove attributes that might cause false positive error detection
-              const cleanedSvg = cleanSvgContent(responseText);
-              console.log('Cleaned SVG contains aria-roledescription:', cleanedSvg.includes('aria-roledescription'));
-              console.log('Cleaned SVG preview:', cleanedSvg.substring(0, 300) + '...');
+              // Fallback: Kroki
+              try {
+                const resp = await fetch('https://kroki.io/mermaid/svg', { method: 'POST', headers: { 'Content-Type': 'text/plain' }, body: fixedSrc });
+                if (resp.ok) {
+                  const svg = await resp.text();
+                  setSvgContentSafely(el, cleanSvgContent(svg));
+                  return;
+                }
+              } catch { }
 
-              // If the cleaned SVG still contains an obvious error message, don't set it directly
-              if (/Syntax error in text|Syntax error|aria-roledescription\s*=\s*["']?error/i.test(cleanedSvg)) {
-                console.warn('Cleaned backend SVG still appears to be an error; skipping direct set and falling back');
-              } else {
-                // Use the safe SVG setting function
-                setSvgContentSafely(el, cleanedSvg);
-                return;
-              }
-            } else {
-              console.warn('Backend returned Mermaid code instead of SVG, using client fallback');
-            }
-          } catch (error) {
-            console.warn('Backend render failed for complex diagram, using client fallback:', error);
-            // For complex diagrams, the backend might fail, so we'll try client-side rendering
-          }
+              throw new Error('All render attempts failed');
 
-          // Fallback: in-browser Mermaid
-          if (mm && typeof mm.render === 'function') {
-            try {
-              const id = `mmd-${Date.now()}-${i}`;
-              console.log('Attempting client-side Mermaid render for complex diagram');
-              const out = await mm.render(id, fixedSrc);
-              if (out && out.svg) {
-                // Clean the SVG to remove attributes that might cause false positive error detection
-                const cleanedSvg = cleanSvgContent(out.svg as string);
-                console.log('Client-side Mermaid SVG cleaned, contains aria-roledescription:', cleanedSvg.includes('aria-roledescription'));
-
-                // Use the safe SVG setting function
-                setSvgContentSafely(el, cleanedSvg);
-
-                return;
-              } else {
-                console.warn('Client-side Mermaid render returned no SVG');
-              }
             } catch (error) {
-              console.warn('Client-side Mermaid render failed for complex diagram:', error);
-              // If client-side also fails, we'll try Kroki as final fallback
+              console.warn('Mermaid render failed permanently for node:', error);
+              (el as any).dataset.mermaidFailed = 'true';
+              el.classList.add('mermaid-failed');
+              el.innerHTML = `
+                <div class="mermaid-error-container p-6 border border-destructive/20 rounded-xl bg-destructive/5 flex flex-col items-center justify-center gap-3 text-center my-4">
+                  <div class="h-10 w-10 rounded-full bg-destructive/10 flex items-center justify-center text-destructive">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+                  </div>
+                  <div>
+                    <h4 class="text-sm font-semibold text-foreground">Diagram Render Failed</h4>
+                    <p class="text-xs text-muted-foreground mt-1 max-w-[240px]">The diagram syntax is complex or the renderer timed out.</p>
+                  </div>
+                  <button type="button" class="retry-mermaid-btn flex items-center gap-2 px-4 py-1.5 bg-background border border-border rounded-full text-xs font-medium hover:bg-accent transition-colors">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/><path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"/><path d="M3 21v-5h5"/></svg>
+                    Manual Retry
+                  </button>
+                </div>
+              `;
             }
-          }
+          };
 
-          // Final fallback: direct Kroki
-          try {
-            console.log('Attempting Kroki fallback for complex diagram');
-            const resp = await fetch('https://kroki.io/mermaid/svg', { method: 'POST', headers: { 'Content-Type': 'text/plain' }, body: fixedSrc });
-            if (resp.ok) {
-              const svg = await resp.text();
-              // Clean the SVG to remove attributes that might cause false positive error detection
-              const cleanedSvg = cleanSvgContent(svg);
-              console.log('Kroki SVG cleaned, contains aria-roledescription:', cleanedSvg.includes('aria-roledescription'));
-
-              // Use the safe SVG setting function
-              setSvgContentSafely(el, cleanedSvg);
-            } else {
-              console.warn('Kroki fallback failed with status:', resp.status);
-            }
-          } catch (error) {
-            console.warn('Kroki fallback failed:', error);
-          }
-
-          // NUCLEAR OPTION: NEVER restore Mermaid library for processed elements
-          // This ensures that the Mermaid library cannot interfere with our cleaned SVG
-          console.log('NUCLEAR OPTION: Mermaid library permanently disabled for processed elements');
-          mermaidProcessingRef.current = false;
-        };
-
-        // Process nodes sequentially to prevent race conditions
-        const processNodes = async () => {
-          for (let i = 0; i < nodes.length; i++) {
-            try {
-              await tryRender(nodes[i], i);
-              // Small delay between nodes to prevent race conditions
+          const processAll = async () => {
+            for (let i = 0; i < unprocessedNodes.length; i++) {
+              await tryRender(unprocessedNodes[i], i);
               await new Promise(resolve => setTimeout(resolve, 50));
-            } catch (error) {
-              console.error(`Error processing Mermaid node ${i}:`, error);
             }
-          }
-          // Mark complete to allow future runs on changes
+            mermaidProcessingRef.current = false;
+          };
+
+          processAll();
+        } catch (error) {
+          console.error('Global Mermaid processing error:', error);
           mermaidProcessingRef.current = false;
-        };
+        }
+      }, 50);
+    };
 
-        processNodes();
-      } catch (error) {
-        console.error('Mermaid processing error:', error);
-        mermaidProcessingRef.current = false;
+    triggerRender();
+
+    return () => {
+      if (timeoutId) clearTimeout(timeoutId);
+      if (contentRef.current) {
+        contentRef.current.removeEventListener('click', handleRetry);
       }
-    }, 50); // Small delay to ensure DOM is ready
-
-    // Cleanup timeout on unmount
-    return () => clearTimeout(timeoutId);
+    };
   }, [displayedBlocks]);
 
   // Typewriter effect for progressive reveal with real-time formatting
+  // Robust typewriter effect for progressive reveal
   useEffect(() => {
-    const answerChanged = lastAnswerRef.current !== answer;
-    const streamingChanged = lastStreamingRef.current !== streaming;
+    const cacheKey = id || answer;
 
-    // Check streaming prop FIRST to avoid unnecessary animation triggers
-    if (!streaming) {
-      // Update refs
-      lastStreamingRef.current = streaming;
-
-      // Only update if answer content actually changed (prevent re-renders on streaming prop change)
-      if (answerChanged) {
+    // 1. Handle Loading State
+    const isLoadingMessage = answer.includes("Analyzing your question");
+    if (!answer || isLoadingMessage) {
+      if (isLoadingMessage) {
         lastAnswerRef.current = answer;
-        if (typingTimerRef.current) clearInterval(typingTimerRef.current);
-        setTypedText("");
-        setIsTypingAnimation(false); // No typing animation for non-streaming content
-        try {
-          const blocks = parseContent(answer);
-          setDisplayedBlocks(blocks);
-          // Mark this answer as seen so we don't animate it later
-          try { seenAnswersGlobal.add(answer); } catch { }
-        } catch {
-          setDisplayedBlocks([{ type: 'p', content: answer } as any]);
-          try { seenAnswersGlobal.add(answer); } catch { }
-        }
-      } else if (streamingChanged && lastAnswerRef.current === answer) {
-        // Streaming changed to false but answer is the same - ensure displayed
+        setTypedText(answer);
+        setIsTypingAnimation(false);
+        displayedTextRef.current = answer;
+        targetTextRef.current = answer;
+        // DO NOT update lastIdRef here, wait for real answer or static render
+      }
+      return;
+    }
+
+    // 2. Handle Streaming Disabled
+    if (!streaming) {
+      lastStreamingRef.current = streaming;
+      if (lastAnswerRef.current !== answer || (id && id !== lastIdRef.current)) {
+        lastAnswerRef.current = answer;
+        if (id) lastIdRef.current = id;
         if (typingTimerRef.current) clearInterval(typingTimerRef.current);
         setTypedText("");
         setIsTypingAnimation(false);
-        if (displayedBlocks.length === 0) {
-          try {
-            const blocks = parseContent(answer);
-            setDisplayedBlocks(blocks);
-            try { seenAnswersGlobal.add(answer); } catch { }
-          } catch {
-            setDisplayedBlocks([{ type: 'p', content: answer } as any]);
-            try { seenAnswersGlobal.add(answer); } catch { }
-          }
+        try {
+          const blocks = parseContent(answer);
+          setDisplayedBlocks(blocks);
+          seenAnswersGlobal.add(cacheKey);
+        } catch {
+          setDisplayedBlocks([{ type: 'p', content: answer } as any]);
+          seenAnswersGlobal.add(cacheKey);
         }
       }
       return;
     }
 
-    // Update streaming ref
+    // 3. Handle Streaming Enabled
     lastStreamingRef.current = streaming;
+    targetTextRef.current = answer;
 
-    // Only trigger animation if answer actually changed AND streaming is enabled
-    if (answerChanged) {
-      // If we've already rendered this exact answer before, skip animation
-      if (seenAnswersGlobal.has(answer)) {
+    // CRITICAL: Check if this answer was already fully rendered (prevents re-streaming on tab switch)
+    if (seenAnswersGlobal.has(cacheKey) && !isGenerating) {
+      // Already rendered this answer before - show it instantly without re-animation
+      if (lastAnswerRef.current !== answer) {
         lastAnswerRef.current = answer;
+        if (id) lastIdRef.current = id;
+        if (typingTimerRef.current) {
+          clearInterval(typingTimerRef.current);
+          typingTimerRef.current = null;
+        }
         setTypedText("");
         setIsTypingAnimation(false);
+        displayedTextRef.current = answer;
         try {
           const blocks = parseContent(answer);
           setDisplayedBlocks(blocks);
         } catch {
           setDisplayedBlocks([{ type: 'p', content: answer } as any]);
         }
-        return;
       }
-      lastAnswerRef.current = answer;
+      return;
+    }
 
+    // Reset if target diverged (e.g. content changed significantly or completely new response)
+    // We strictly check if 'answer' starts with 'displayed'. If not, it's a new context.
+    // We ALSO check if the ID changed (new question), forcing a reset even if text overlaps.
+    const idChanged = id !== lastIdRef.current;
+
+    if (idChanged || (!answer.startsWith(displayedTextRef.current) && displayedTextRef.current.length > 0)) {
+      displayedTextRef.current = "";
       setTypedText("");
       setDisplayedBlocks([]);
-      if (typingTimerRef.current) clearInterval(typingTimerRef.current);
+      if (idChanged) lastIdRef.current = id;
+    }
 
-      // Stream word-by-word to avoid flashing of partial markdown tokens like '**'
-      const tokens = answer.match(/\S+\s*/g) || [answer];
-      let idx = 0;
-      const intervalMs = 24; // word cadence
-      setIsTypingAnimation(true); // Start typing animation
+    // Identify if we need to start the loop
+    if (!typingTimerRef.current) {
+      setIsTypingAnimation(true);
+      // Clear blocks while animating
+      setDisplayedBlocks([]);
+
       typingTimerRef.current = setInterval(() => {
-        if (idx >= tokens.length) {
+        const current = displayedTextRef.current;
+        const target = targetTextRef.current;
+
+        // Case 1: Caught up
+        if (current.length >= target.length) {
+          // If we are still generating, we wait for more data.
+          if (isGeneratingRef.current) {
+            return;
+          }
+
+          // If we are done generating, we are finished.
           clearInterval(typingTimerRef.current);
           typingTimerRef.current = null;
-          setIsTypingAnimation(false); // End typing animation
-          // When typing completes, render full content blocks and hide the streaming cursor
+          setIsTypingAnimation(false);
+
+          // Parse and show blocks
           try {
-            const blocks = parseContent(answer);
+            const blocks = parseContent(target);
             setDisplayedBlocks(blocks);
-            // Cache this answer as rendered so future mounts don't re-type it
-            try { seenAnswersGlobal.add(answer); } catch { }
+            seenAnswersGlobal.add(cacheKey);
           } catch {
-            // Fallback: show raw text if parsing fails
-            setDisplayedBlocks([{ type: 'p', content: answer } as any]);
-            try { seenAnswersGlobal.add(answer); } catch { }
+            setDisplayedBlocks([{ type: 'p', content: target } as any]);
+            seenAnswersGlobal.add(cacheKey);
           }
+
+          // Keep typedText empty as we switched to blocks
           setTypedText("");
+
+          // Update lastAnswerRef to prevent re-triggering "non-streaming" logic if prop flips
+          lastAnswerRef.current = target;
           return;
         }
-        const next = tokens[idx];
-        setTypedText(prev => prev + next);
-        idx++;
-      }, intervalMs);
+
+        // Case 2: Need to append text (Animation)
+        const remaining = target.slice(current.length);
+
+        let nextChunk = "";
+        // Multi-tier chunking for natural streaming (mimicking ChatGPT smoothness)
+        if (remaining.length > 600) {
+          nextChunk = remaining.slice(0, 40); // Fast initial progress
+        } else if (remaining.length > 150) {
+          nextChunk = remaining.slice(0, 20); // Steady flow
+        } else {
+          // Natural word streaming near the end
+          const match = remaining.match(/^(\s*\S+\s*)/);
+          nextChunk = match ? match[1] : remaining.charAt(0);
+
+          // Clamp extremely long tokens
+          if (nextChunk.length > 25) {
+            nextChunk = nextChunk.slice(0, 15);
+          }
+        }
+
+        displayedTextRef.current += nextChunk;
+        setTypedText(displayedTextRef.current);
+
+      }, 35); // 35ms update rate - optimal balance of premium feel and speed
     }
 
     return () => {
+      if (typingTimerRef.current) {
+        console.log('[AnswerCard] Timer Cleanup', { id });
+        clearInterval(typingTimerRef.current);
+        typingTimerRef.current = null;
+      }
+    };
+  }, [answer, streaming, id, isGenerating]); // Dependencies: answer updates target. isGenerating tracked via Ref.
+
+  // Debug state changes
+  useEffect(() => {
+    console.log('[AnswerCard] State Update', {
+      id,
+      streaming,
+      isGenerating,
+      isTyping: isTypingAnimation,
+      displayedTextLen: displayedTextRef.current.length,
+      answerLen: answer.length,
+      hasBlocks: displayedBlocks.length > 0
+    });
+  }, [id, streaming, isGenerating, isTypingAnimation, answer, displayedBlocks]);
+
+  // Cleanup on unmount
+  useEffect(() => {
+    return () => {
       if (typingTimerRef.current) clearInterval(typingTimerRef.current);
     };
-  }, [answer, streaming]);
+  }, []);
 
   // Real-time formatting function for streaming text
   const sanitizeIncoming = (raw: string) => {
@@ -2021,7 +2111,9 @@ export const AnswerCard = ({ answer, question, streaming = true, onEdit, onSubmi
                 tokenizedAfter += applyHighlighting(tok, ttype);
                 k = j;
               }
-              highlightedLine = `${escBefore}${OPEN}<span class="code-string">${escInner}</span>${CLOSE}` + tokenizedAfter;
+              // Fix: Added space before span to prevent parser issues
+              // Fix: Added space before span to prevent parser issues
+              highlightedLine = `${escBefore}${OPEN} <span class="code-string">${escInner}</span>${CLOSE}` + tokenizedAfter;
               highlightedLines.push(highlightedLine);
               continue;
             } else {
@@ -2313,6 +2405,14 @@ export const AnswerCard = ({ answer, question, streaming = true, onEdit, onSubmi
         variant: "destructive",
       });
     }
+  };
+
+  const handleExecute = (code: string, lang?: string) => {
+    localStorage.setItem('code-runner-source', code);
+    if (lang) {
+      localStorage.setItem('code-runner-language-suggest', lang);
+    }
+    navigate('/run');
   };
 
   const handleShare = async (text: string) => {
@@ -2623,13 +2723,14 @@ export const AnswerCard = ({ answer, question, streaming = true, onEdit, onSubmi
   };
 
   return (
-    <Card className="w-full border-0 bg-transparent shadow-none hover:shadow-none mx-0 md:mx-0 answer-card-mobile">
-      <CardHeader className="pb-1 md:pb-3 px-3 md:px-6">
+    <Card
+      className="w-full border-0 bg-transparent shadow-none hover:shadow-none mx-0 md:mx-0 answer-card-mobile group transition-all duration-300 overflow-x-hidden"
+      onMouseEnter={() => setIsHovered(true)}
+      onMouseLeave={() => setIsHovered(false)}
+    >
+      <CardHeader className="py-1 px-3 md:px-6">
         <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-2 md:gap-3">
-          <div className="flex items-start space-x-2 md:space-x-3 flex-1 min-w-0">
-            <div className="hidden md:flex p-2 bg-gradient-to-br from-primary/20 to-primary/10 rounded-xl shadow-lg flex-shrink-0">
-              <MessageSquare className="h-5 w-5 text-primary" />
-            </div>
+          <div className="flex items-start flex-1 min-w-0">
             <div className="min-w-0 flex-1">
               <div
                 className="relative flex items-center gap-2 min-w-0 justify-end md:justify-between"
@@ -2674,21 +2775,7 @@ export const AnswerCard = ({ answer, question, streaming = true, onEdit, onSubmi
                 ) : (
                   <>
                     <div className="flex items-start gap-2 ml-6 sm:ml-0">
-                      <div className="flex-1 text-sm font-medium md:text-base text-foreground text-left select-none bg-muted/70 dark:bg-muted/40 md:bg-transparent md:border-0 md:shadow-none md:rounded-none md:px-0 md:py-0 rounded-xl px-3 py-2 shadow-sm border border-border/60 whitespace-pre-wrap break-words" title={question}>
-                        {question}
-                      </div>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setEditedQuestion(question);
-                          setIsEditing(true);
-                          onEdit && onEdit();
-                        }}
-                        className="hidden md:inline-flex shrink-0 items-center justify-center h-6 w-6 rounded-md border border-border text-foreground bg-transparent hover:bg-muted/60 active:bg-muted/60 focus:outline-none focus:ring-0"
-                        title="Edit prompt"
-                      >
-                        <Edit3 className="h-3.5 w-3.5" />
-                      </button>
+                      {/* Removed redundant question text since it's displayed in a separate bubble now */}
                     </div>
                     {/* Mobile-only quick copy button to avoid right-side overlap */}
                     <button
@@ -2748,10 +2835,7 @@ export const AnswerCard = ({ answer, question, streaming = true, onEdit, onSubmi
                   </>
                 )}
               </div>
-              <div className="text-xs text-muted-foreground mt-0.5 hidden sm:flex items-center gap-2">
-                <span>AI generated response</span>
-                {versionLabel ? <span className="px-1.5 py-0.5 rounded bg-muted text-foreground/80">{versionLabel}</span> : null}
-              </div>
+              {/* Removed generated response label for a cleaner minimal look */}
             </div>
           </div>
           <div className="hidden md:flex items-center gap-1 sm:self-auto self-end">
@@ -2782,36 +2866,9 @@ export const AnswerCard = ({ answer, question, streaming = true, onEdit, onSubmi
                 </button>
               </div>
             ) : null}
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => handleCopy(displayAnswer)}
-              className="hidden sm:inline-flex h-8 px-3 text-xs bg-gradient-to-r from-primary/10 to-primary/5 text-primary hover:from-primary/20 hover:to-primary/10 border border-primary/20 shadow-md hover:shadow-lg transition-all duration-300 font-medium touch-manipulation"
-            >
-              {copied ? (
-                <>
-                  <Check className="h-3 w-3 mr-1.5 flex-shrink-0" />
-                  <span className="hidden sm:inline">Copied!</span>
-                  <span className="sm:hidden">✓</span>
-                </>
-              ) : (
-                <>
-                  <Copy className="h-3 w-3 mr-1.5 flex-shrink-0" />
-                  <span className="hidden sm:inline">Copy</span>
-                </>
-              )}
-            </Button>
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={handleDownloadPdf}
-              className={`h-8 px-3 text-xs ${responseComplete ? 'hover:bg-muted' : 'opacity-50 cursor-not-allowed'}`}
-              title={!responseComplete ? 'Please wait for response to complete' : 'Download as PDF'}
-              disabled={!responseComplete}
-            >
-              <Download className="h-3.5 w-3.5 mr-1" />
-            </Button>
-            <span title={evaluateTitle} className="inline-block">
+            {/* Removed Copy/Download from card - now at tab level */}
+
+            <span title={evaluateTitle} className={`inline-block transition-opacity duration-300 ${isHovered ? 'opacity-100' : 'opacity-0'}`}>
               <Button
                 variant="default"
                 size="sm"
@@ -2820,7 +2877,7 @@ export const AnswerCard = ({ answer, question, streaming = true, onEdit, onSubmi
                   ? 'bg-muted text-muted-foreground opacity-50 cursor-not-allowed'
                   : 'bg-primary text-primary-foreground hover:bg-primary/90'
                   }`}
-                disabled={evaluateDisabled}
+                disabled={evaluateDisabled || !responseComplete}
               >
                 <Play className="h-3.5 w-3.5 mr-1" />
                 Evaluate
@@ -2829,225 +2886,273 @@ export const AnswerCard = ({ answer, question, streaming = true, onEdit, onSubmi
             {/* When evaluation is disallowed we rely on the Evaluate button's title/tooltip
                 to show the reason on hover; avoid rendering the reason inline. */}
           </div>
-        </div>
-      </CardHeader>
+        </div >
+      </CardHeader >
 
-      <CardContent className="px-3 md:px-6 pt-2 md:pt-0">
-        <div ref={contentRef} className="space-y-1 streaming-content answer-content">
-          {/* Display completed blocks */}
-          {displayedBlocks.map((block, index) => (
-            <div key={index} className="streaming-content">
-              {block.type === 'code' ? (
-                <div className="my-1">
-                  <div className="flex items-center justify-between bg-[#161b22] px-4 py-2 rounded-t-lg border border-b-0 border-border">
-                    <span className="typography-caption">
-                      {block.lang ? `${block.lang.charAt(0).toUpperCase() + block.lang.slice(1)} ${block.lang === 'mermaid' ? 'Diagram' : 'Code'}` : 'Code'}
-                    </span>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => handleCopy(block.content)}
-                      className="h-6 px-2 text-xs hover:bg-muted"
-                    >
-                      <Copy className="h-3 w-3 mr-1" />
-                      Copy {block.lang === 'mermaid' ? 'source' : 'code'}
-                    </Button>
-                  </div>
-                  {block.lang === 'mermaid' ? (
-                    <div className={`rounded-b-lg border border-t-0 border-border bg-card relative transition-all duration-300 ${expandedDiagram === block.content ? 'p-1' : 'p-3'
-                      }`}>
-                      <div className={`diagram-container transition-all duration-300 ${expandedDiagram === block.content ? 'expanded-diagram' : ''
-                        }`} style={{
-                          ...(expandedDiagram === block.content ? {
-                            position: 'fixed',
-                            top: 0,
-                            left: 0,
-                            right: 0,
-                            bottom: 0,
-                            zIndex: 9998,
-                            background: 'rgba(0, 0, 0, 0.9)',
-                            display: 'flex',
-                            alignItems: 'center',
-                            justifyContent: 'center',
-                            padding: '2rem'
-                          } : {})
-                        }}>
-                        <div className="absolute top-2 right-2 z-[9999] flex gap-2">
-                          {expandedDiagram === block.content ? (
-                            <button
-                              type="button"
-                              className="diagram-action-btn fixed top-4 right-4 z-[10000] bg-destructive text-destructive-foreground hover:bg-destructive/90 border border-destructive shadow-lg w-10 h-10 rounded-lg flex items-center justify-center"
-                              title="Close Expanded View"
-                              onClick={() => setExpandedDiagram(null)}
-                            >
-                              <X className="h-5 w-5" />
-                            </button>
-                          ) : (
-                            <>
-                              <button
-                                type="button"
-                                className="diagram-action-btn"
-                                title="Download Architecture"
-                                onClick={() => handleDownloadDiagram(block.content)}
-                              >
-                                <Download className="h-3.5 w-3.5" />
-                              </button>
-                              <button
-                                type="button"
-                                className="diagram-action-btn"
-                                title="Expand Diagram"
-                                onClick={() => handleExpandDiagram(block.content)}
-                              >
-                                <Expand className="h-3.5 w-3.5" />
-                              </button>
-                            </>
-                          )}
-                        </div>
-                        {expandedDiagram === block.content ? (
-                          <div className="expanded-content-wrapper">
-                            {expandedLoading ? (
-                              <div className="flex items-center justify-center p-8">
-                                <div className="h-8 w-8 rounded-full border-2 border-white/30 border-t-white animate-spin" aria-label="Loading" />
-                              </div>
-                            ) : expandedSvgHtml ? (
-                              <div className="expanded-svg" dangerouslySetInnerHTML={{ __html: expandedSvgHtml }} />
-                            ) : (
-                              <div className="text-sm text-muted-foreground">Preparing diagram…</div>
-                            )}
-                          </div>
-                        ) : (
-                          <div
-                            className="mermaid mmd-grab"
-                            style={{ overflowX: 'auto' }}
-                            onMouseDown={(e) => {
-                              const container = (e.currentTarget.closest('.diagram-container') as HTMLElement) || undefined;
-                              if (!container) return;
-                              // mark dragging state for cursor only; pan logic handled in MermaidEditor preview
-                              container.classList.add('mmd-grabbing');
-                            }}
-                            onMouseUp={(e) => {
-                              const container = (e.currentTarget.closest('.diagram-container') as HTMLElement) || undefined;
-                              if (!container) return;
-                              container.classList.remove('mmd-grabbing');
-                            }}
+      <CardContent className="pl-2 pr-3 md:px-6 py-2 overflow-x-hidden">
+        {(!answer || answer.includes("Analyzing your question")) && isGenerating ? (
+          <div className="space-y-3 py-2 animate-in fade-in duration-500">
+            <div className="h-4 bg-muted/40 rounded-full w-3/4 animate-pulse" />
+            <div className="h-4 bg-muted/40 rounded-full w-1/2 animate-pulse" />
+            <div className="h-4 bg-muted/30 rounded-full w-2/3 animate-pulse" />
+          </div>
+        ) : (
+          <div ref={contentRef} className="space-y-1 streaming-content answer-content overflow-x-hidden">
+            {/* Display completed blocks */}
+            {displayedBlocks.map((block, index) => (
+              <div key={index} className="streaming-content">
+                {block.type === 'code' ? (
+                  <div className="my-1">
+                    <div className="flex items-center justify-between bg-[#161b22] px-4 py-2 rounded-t-lg border border-b-0 border-border">
+                      <span className="typography-caption">
+                        {block.lang ? `${block.lang.charAt(0).toUpperCase() + block.lang.slice(1)} ${block.lang === 'mermaid' ? 'Diagram' : 'Code'}` : 'Code'}
+                      </span>
+                      <div className="flex items-center gap-2">
+                        {block.lang !== 'mermaid' && (
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => handleExecute(block.content, block.lang)}
+                            className="h-6 px-2 text-xs hover:bg-muted text-primary hover:text-primary/80"
                           >
-                            {block.content}
-                          </div>
+                            <Play className="h-3 w-3 mr-1 fill-current" />
+                            Execute
+                          </Button>
                         )}
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => handleCopy(block.content)}
+                          className="h-6 px-2 text-xs text-primary hover:text-primary/80 hover:bg-muted"
+                        >
+                          <Copy className="h-3 w-3 mr-1" />
+                          Copy {block.lang === 'mermaid' ? 'source' : 'code'}
+                        </Button>
                       </div>
                     </div>
-                  ) : (
-                    <pre className="overflow-auto rounded-b-lg bg-[#0b1020] text-[#e6edf3] p-4 border border-t-0 border-border">
-                      <code
-                        className="font-mono"
-                        dangerouslySetInnerHTML={{ __html: highlightCode(block.content, block.lang || '') }}
-                      />
-                    </pre>
-                  )}
-                </div>
-              ) : block.type === 'table' ? (
-                <div className="my-1">
-                  <div className="flex items-center justify-between bg-muted/30 px-4 py-2 rounded-t-lg border border-b-0 border-border">
-                    <span className="typography-caption">
-                      Data Table
-                    </span>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => handleCopy(block.content)}
-                      className="h-6 px-2 text-xs hover:bg-muted"
-                    >
-                      <Copy className="h-3 w-3 mr-1" />
-                      Copy table
-                    </Button>
+                    {block.lang === 'mermaid' ? (
+                      <div className={`rounded-b-lg border border-t-0 border-border bg-card relative transition-all duration-300 ${expandedDiagram === block.content ? 'p-1' : 'p-3'
+                        }`}>
+                        <div
+                          className={`diagram-container transition-all duration-300 ${expandedDiagram === block.content ? 'expanded-diagram' : ''}`}
+                          data-mermaid-source={block.content}
+                          style={{
+                            ...(expandedDiagram === block.content ? {
+                              position: 'fixed',
+                              top: 0,
+                              left: 0,
+                              right: 0,
+                              bottom: 0,
+                              zIndex: 9998,
+                              background: 'rgba(0, 0, 0, 0.9)',
+                              display: 'flex',
+                              alignItems: 'center',
+                              justifyContent: 'center',
+                              padding: '2rem'
+                            } : {})
+                          }}>
+                          <div className="absolute top-2 right-2 z-[9999] flex gap-2">
+                            {expandedDiagram === block.content ? (
+                              <button
+                                type="button"
+                                className="diagram-action-btn fixed top-4 right-4 z-[10000] bg-destructive text-destructive-foreground hover:bg-destructive/90 border border-destructive shadow-lg w-10 h-10 rounded-lg flex items-center justify-center"
+                                title="Close Expanded View"
+                                onClick={() => setExpandedDiagram(null)}
+                              >
+                                <X className="h-5 w-5" />
+                              </button>
+                            ) : (
+                              <>
+                                <button
+                                  type="button"
+                                  className="diagram-action-btn"
+                                  title="Download Architecture"
+                                  onClick={() => handleDownloadDiagram(block.content)}
+                                >
+                                  <Download className="h-3.5 w-3.5" />
+                                </button>
+                                <button
+                                  type="button"
+                                  className="diagram-action-btn"
+                                  title="Expand Diagram"
+                                  onClick={() => handleExpandDiagram(block.content)}
+                                >
+                                  <Expand className="h-3.5 w-3.5" />
+                                </button>
+                              </>
+                            )}
+                          </div>
+                          {expandedDiagram === block.content ? (
+                            <>
+                              {/* Original inline placeholder while expanded */}
+                              <div className="flex flex-col items-center justify-center p-8 bg-muted/20 rounded-lg border border-dashed border-border">
+                                <Expand className="h-8 w-8 text-muted-foreground/30 mb-2" />
+                                <span className="text-xs text-muted-foreground">Diagram expanded...</span>
+                              </div>
+
+                              {/* Portal the actual expanded view to body */}
+                              {createPortal(
+                                <div className="expanded-diagram">
+                                  <button
+                                    type="button"
+                                    className="diagram-action-btn fixed"
+                                    title="Close Expanded View"
+                                    onClick={() => setExpandedDiagram(null)}
+                                  >
+                                    <X className="h-6 w-6" />
+                                  </button>
+
+                                  <div className="expanded-content-wrapper">
+                                    {expandedLoading ? (
+                                      <div className="flex flex-col items-center justify-center p-8 gap-4">
+                                        <div className="h-12 w-12 rounded-full border-4 border-primary/20 border-t-primary animate-spin" />
+                                        <div className="text-sm font-medium animate-pulse">Enhancing Architecture...</div>
+                                      </div>
+                                    ) : expandedSvgHtml ? (
+                                      <div className="expanded-svg" dangerouslySetInnerHTML={{ __html: expandedSvgHtml }} />
+                                    ) : (
+                                      <div className="text-sm text-muted-foreground">Preparing diagram…</div>
+                                    )}
+                                  </div>
+                                </div>,
+                                document.body
+                              )}
+                            </>
+                          ) : (
+                            <div
+                              className="mermaid mmd-grab"
+                              data-mermaid-source={block.content}
+                              style={{ overflowX: 'auto' }}
+                              onMouseDown={(e) => {
+                                const container = (e.currentTarget.closest('.diagram-container') as HTMLElement) || undefined;
+                                if (!container) return;
+                                // mark dragging state for cursor only; pan logic handled in MermaidEditor preview
+                                container.classList.add('mmd-grabbing');
+                              }}
+                              onMouseUp={(e) => {
+                                const container = (e.currentTarget.closest('.diagram-container') as HTMLElement) || undefined;
+                                if (!container) return;
+                                container.classList.remove('mmd-grabbing');
+                              }}
+                            >
+                              {block.content}
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    ) : (
+                      <pre className="overflow-auto rounded-b-lg bg-[#0b1020] text-[#e6edf3] p-4 border border-t-0 border-border">
+                        <code
+                          className="font-mono"
+                          dangerouslySetInnerHTML={{ __html: highlightCode(block.content, block.lang || '') }}
+                        />
+                      </pre>
+                    )}
                   </div>
-                  <div className="overflow-auto rounded-b-lg border border-t-0 border-border bg-card">
-                    {(() => {
-                      try {
-                        const tableData = JSON.parse(block.content);
-                        return (
-                          <Table className="table-professional">
-                            <TableHeader>
-                              <TableRow>
-                                {tableData.headers.map((header: string, idx: number) => (
-                                  <TableHead key={idx} className="typography-caption">
-                                    <span dangerouslySetInnerHTML={{ __html: formatTextContent(header) }} />
-                                  </TableHead>
-                                ))}
-                              </TableRow>
-                            </TableHeader>
-                            <TableBody>
-                              {tableData.rows.map((row: string[], rowIdx: number) => (
-                                <TableRow key={rowIdx} className="hover:bg-muted/50">
-                                  {row.map((cell: string, cellIdx: number) => (
-                                    <TableCell key={cellIdx} className={"typography-body"}>
-                                      <span dangerouslySetInnerHTML={{ __html: formatTextContent(cell) }} />
-                                    </TableCell>
+                ) : block.type === 'table' ? (
+                  <div className="my-1">
+                    <div className="flex items-center justify-between bg-muted/30 px-4 py-2 rounded-t-lg border border-b-0 border-border">
+                      <span className="typography-caption">
+                        Data Table
+                      </span>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => handleCopy(block.content)}
+                        className="h-6 px-2 text-xs text-primary hover:text-primary/80 hover:bg-muted"
+                      >
+                        <Copy className="h-3 w-3 mr-1" />
+                        Copy table
+                      </Button>
+                    </div>
+                    <div className="overflow-auto rounded-b-lg border border-t-0 border-border bg-card">
+                      {(() => {
+                        try {
+                          const tableData = JSON.parse(block.content);
+                          return (
+                            <Table className="table-professional">
+                              <TableHeader>
+                                <TableRow>
+                                  {tableData.headers.map((header: string, idx: number) => (
+                                    <TableHead key={idx} className="typography-caption">
+                                      <span dangerouslySetInnerHTML={{ __html: formatTextContent(header) }} />
+                                    </TableHead>
                                   ))}
                                 </TableRow>
-                              ))}
-                            </TableBody>
-                          </Table>
-                        );
-                      } catch (error) {
-                        return (
-                          <div className="p-4 typography-body text-muted-foreground">
-                            Error parsing table data
-                          </div>
-                        );
-                      }
-                    })()}
+                              </TableHeader>
+                              <TableBody>
+                                {tableData.rows.map((row: string[], rowIdx: number) => (
+                                  <TableRow key={rowIdx} className="hover:bg-muted/50">
+                                    {row.map((cell: string, cellIdx: number) => (
+                                      <TableCell key={cellIdx} className={"typography-body"}>
+                                        <span dangerouslySetInnerHTML={{ __html: formatTextContent(cell) }} />
+                                      </TableCell>
+                                    ))}
+                                  </TableRow>
+                                ))}
+                              </TableBody>
+                            </Table>
+                          );
+                        } catch (error) {
+                          return (
+                            <div className="p-4 typography-body text-muted-foreground">
+                              Error parsing table data
+                            </div>
+                          );
+                        }
+                      })()}
+                    </div>
                   </div>
-                </div>
-              ) : block.type === 'heading' ? (
-                <div className="text-base mb-1 mt-1 font-semibold section-heading">
-                  <span dangerouslySetInnerHTML={{ __html: block.content }} />
-                </div>
-              ) : block.type === 'ul' ? (
-                <ul className="mb-2 space-y-0.5" style={{ listStyle: 'none', paddingLeft: '0' }}>
-                  {block.content.split('</li>').filter(item => item.trim()).map((item, idx) => (
-                    <li key={idx} className="flex items-start mb-0.5">
-                      <span className="text-primary font-bold mr-3 mt-1">•</span>
-                      <span className="text-sm leading-relaxed streaming-content" dangerouslySetInnerHTML={{ __html: item.replace('<li>', '') }} />
-                    </li>
-                  ))}
-                </ul>
-              ) : block.type === 'ol' ? (
-                <ol className="list-decimal list-inside mb-2 space-y-0.5 ml-4 text-sm leading-relaxed streaming-content" dangerouslySetInnerHTML={{ __html: block.content }} />
-              ) : (
-                <div className="prose prose-neutral dark:prose-invert max-w-none">
-                  <div
-                    className="text-sm leading-relaxed streaming-content"
-                    dangerouslySetInnerHTML={{ __html: formatTextContent(block.content) }}
-                  />
-                </div>
-              )}
-            </div>
-          ))}
+                ) : block.type === 'heading' ? (
+                  <div className="text-base mb-1 mt-1 font-semibold section-heading">
+                    <span dangerouslySetInnerHTML={{ __html: block.content }} />
+                  </div>
+                ) : block.type === 'ul' ? (
+                  <ul className="mb-2 space-y-0.5 -ml-2 md:ml-0" style={{ listStyle: 'none', paddingLeft: '0' }}>
+                    {block.content.split('</li>').filter(item => item.trim()).map((item, idx) => (
+                      <li key={idx} className="flex items-start mb-0.5">
+                        <span className="text-primary font-bold mr-2 md:mr-3 mt-1">•</span>
+                        <span className="text-sm leading-relaxed streaming-content" dangerouslySetInnerHTML={{ __html: item.replace('<li>', '') }} />
+                      </li>
+                    ))}
+                  </ul>
+                ) : block.type === 'ol' ? (
+                  <ol className="list-decimal list-inside mb-2 space-y-0.5 ml-4 text-sm leading-relaxed streaming-content" dangerouslySetInnerHTML={{ __html: block.content }} />
+                ) : (
+                  <div className="prose prose-neutral dark:prose-invert max-w-none">
+                    <div
+                      className="text-sm leading-relaxed streaming-content"
+                      dangerouslySetInnerHTML={{ __html: formatTextContent(block.content) }}
+                    />
+                  </div>
+                )}
+              </div>
+            ))}
 
-          {/* Current typing block with real-time formatting */}
-          {typedText && (
-            <div className="prose prose-neutral dark:prose-invert max-w-none streaming-content">
-              <div
-                className="text-sm leading-relaxed streaming-content"
-                dangerouslySetInnerHTML={{
-                  __html: (() => {
-                    // Check if we're in an incomplete code block
-                    const codeBlockMatches = typedText.match(/```/g);
-                    const isIncompleteCodeBlock = codeBlockMatches && codeBlockMatches.length % 2 === 1;
+            {/* Current typing block with real-time formatting */}
+            {typedText && (
+              <div className="prose prose-neutral dark:prose-invert max-w-none streaming-content">
+                <div
+                  className="text-sm leading-relaxed streaming-content"
+                  dangerouslySetInnerHTML={{
+                    __html: (() => {
+                      // Check if we're in an incomplete code block
+                      const codeBlockMatches = typedText.match(/```/g);
+                      const isIncompleteCodeBlock = codeBlockMatches && codeBlockMatches.length % 2 === 1;
 
-                    if (isIncompleteCodeBlock) {
-                      return formatIncompleteCodeBlock(typedText) + '<span class="animate-pulse">|</span>';
-                    } else {
-                      return formatStreamingText(typedText) + '<span class="animate-pulse">|</span>';
-                    }
-                  })()
-                }}
-              />
-            </div>
-          )}
+                      if (isIncompleteCodeBlock) {
+                        return formatIncompleteCodeBlock(typedText) + '<span class="animate-pulse">|</span>';
+                      } else {
+                        return formatStreamingText(typedText) + '<span class="animate-pulse">|</span>';
+                      }
+                    })()
+                  }}
+                />
+              </div>
+            )}
 
-        </div>
+          </div>
+        )}
 
         {/* Mobile action bar for Copy/Share (icon-only, no blue active state) */}
         <div className="sm:hidden flex items-center gap-2 mt-3 ml-2">
@@ -3071,17 +3176,6 @@ export const AnswerCard = ({ answer, question, streaming = true, onEdit, onSubmi
 
 
         {/* Prompt review section removed per requirement */}
-
-        {/* Footer - only show when streaming is complete */}
-        {!streaming && (
-          <div className="hidden md:block mt-4 pt-3 border-t border-border">
-            <div className="flex items-center justify-center typography-caption text-muted-foreground">
-              <span>
-                {displayAnswer.split(' ').filter(Boolean).length} words • {Math.ceil(displayAnswer.split(' ').filter(Boolean).length / 150)} min read
-              </span>
-            </div>
-          </div>
-        )}
         <MermaidEditor
           open={mermaidEditorOpen}
           onOpenChange={setMermaidEditorOpen}
@@ -3089,6 +3183,6 @@ export const AnswerCard = ({ answer, question, streaming = true, onEdit, onSubmi
           title="Mermaid Live Editor"
         />
       </CardContent>
-    </Card>
+    </Card >
   );
 };

@@ -1,8 +1,7 @@
 import { useState, useRef, useEffect } from "react";
-import { Mic, MicOff, Upload, Check, Monitor } from "lucide-react";
+import { Mic, MicOff, Upload, Monitor } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
-import { apiUploadProfile } from "@/lib/api";
 
 interface SearchBarProps {
   value: string;
@@ -12,8 +11,6 @@ interface SearchBarProps {
   resetToken?: number;
   // Ensure a session exists and return its id (provided by parent)
   ensureSession?: (opts?: { forceNew?: boolean }) => Promise<string>;
-  // Optional callback after a successful upload
-  onUploaded?: (info: { characters: number; fileName: string }) => void;
   // Callback for generating response
   onGenerate?: () => void;
   // Whether response is being generated
@@ -22,7 +19,7 @@ interface SearchBarProps {
   canGenerate?: boolean;
 }
 
-export const SearchBar = ({ value, onChange, placeholder = "Type your question...", resetToken, ensureSession, onUploaded, onGenerate, isGenerating = false, canGenerate = true }: SearchBarProps) => {
+export const SearchBar = ({ value, onChange, placeholder = "Type your question...", resetToken, ensureSession, onGenerate, isGenerating = false, canGenerate = true }: SearchBarProps) => {
   const [isListening, setIsListening] = useState(false);
   const [isSupported] = useState(() => 'webkitSpeechRecognition' in window || 'SpeechRecognition' in window);
   const recognitionRef = useRef<any>(null);
@@ -31,9 +28,6 @@ export const SearchBar = ({ value, onChange, placeholder = "Type your question..
   const permissionPrimedRef = useRef(false);
   const isStartingRef = useRef(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
-  const fileInputRef = useRef<HTMLInputElement>(null);
-  const [isUploading, setIsUploading] = useState(false);
-  const [lastUploaded, setLastUploaded] = useState<{ name: string; characters: number } | null>(null);
   const [confidence, setConfidence] = useState<number>(0);
   const [isProcessing, setIsProcessing] = useState(false);
   const [transcriptionBuffer, setTranscriptionBuffer] = useState<string>('');
@@ -73,6 +67,18 @@ export const SearchBar = ({ value, onChange, placeholder = "Type your question..
       lastRenderedTextRef.current = value;
     }
   }, [value, isListening]);
+
+  // Track if we're on mobile for responsive styling
+  const [isMobile, setIsMobile] = useState(window.innerWidth < 768);
+
+  useEffect(() => {
+    const handleResize = () => {
+      setIsMobile(window.innerWidth < 768);
+    };
+
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
 
   // Simple height management for consistent layout
   useEffect(() => {
@@ -773,49 +779,6 @@ export const SearchBar = ({ value, onChange, placeholder = "Type your question..
     }
   };
 
-  const handleUploadClick = () => {
-    fileInputRef.current?.click();
-  };
-
-  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    if (!ensureSession) {
-      toast({ title: "Unable to upload", description: "Session is not initialized yet.", variant: "destructive" });
-      return;
-    }
-    try {
-      setIsUploading(true);
-      let sid = await ensureSession?.();
-      try {
-        if (!sid) sid = await ensureSession?.({ forceNew: false });
-        const res = await apiUploadProfile({ session_id: sid as string, file });
-        setLastUploaded({ name: file.name, characters: res.characters });
-        onUploaded?.({ characters: res.characters, fileName: file.name });
-        toast({ title: "Profile uploaded", description: `${file.name} • ${res.characters.toLocaleString()} characters indexed.` });
-      } catch (err: any) {
-        const msg = String(err?.message || "");
-        const looksLikeMissing = msg.includes("Session not found");
-        if (looksLikeMissing) {
-          try { window.localStorage.removeItem("ia_session_id"); } catch { }
-          sid = await ensureSession?.({ forceNew: true });
-          const res = await apiUploadProfile({ session_id: sid as string, file });
-          setLastUploaded({ name: file.name, characters: res.characters });
-          onUploaded?.({ characters: res.characters, fileName: file.name });
-          toast({ title: "Profile uploaded", description: `${file.name} • ${res.characters.toLocaleString()} characters indexed.` });
-        } else {
-          throw err;
-        }
-      }
-    } catch (err: any) {
-      toast({ title: "Upload failed", description: err?.message || "Please try again.", variant: "destructive" });
-    } finally {
-      setIsUploading(false);
-      // Reset input to allow re-uploading the same file
-      if (fileInputRef.current) fileInputRef.current.value = "";
-    }
-  };
-
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     // On backspace, clear the speech buffer so next speech starts fresh
     if (e.key === 'Backspace' && isListening) {
@@ -1097,11 +1060,12 @@ export const SearchBar = ({ value, onChange, placeholder = "Type your question..
     <div className="relative w-full">
       <div className="relative group">
         {/* ChatGPT-style compact mobile search bar */}
-        <div className="search-bar bg-background/95 backdrop-blur-sm border border-border/50 rounded-2xl shadow-lg focus-within:shadow-xl focus-within:ring-2 focus-within:ring-primary/20 focus-within:border-primary transition-all duration-300 group-hover:border-primary/30">
-          {/* Main content container */}
-          <div className="flex items-center p-2">
-            {/* Text area with stable positioned icons */}
-            <div className="flex-1 relative flex items-center">
+        <div className="search-bar bg-background/98 backdrop-blur-xl border border-border/50 rounded-2xl shadow-lg focus-within:shadow-xl focus-within:ring-2 focus-within:ring-primary/20 focus-within:border-primary transition-all duration-300 group-hover:border-primary/30">
+          {/* Main content container - using flex for proper alignment */}
+          <div className="flex items-end gap-1 px-1.5 py-1.5 md:p-2">
+
+            {/* Text area - grows to fill space */}
+            <div className="flex-1 min-w-0">
               <textarea
                 ref={textareaRef}
                 value={value}
@@ -1110,7 +1074,8 @@ export const SearchBar = ({ value, onChange, placeholder = "Type your question..
                 onFocus={handleFocus}
                 onBlur={handleBlur}
                 placeholder={placeholder}
-                className="w-full py-2 px-0 pr-20 text-sm bg-transparent border-none outline-none resize-none placeholder:text-muted-foreground/70 leading-relaxed overflow-y-auto scrollbar-thin"
+                maxLength={512}
+                className="w-full py-2 pl-1 pr-0 text-sm bg-transparent border-none outline-none resize-none placeholder:text-muted-foreground/70 leading-relaxed overflow-y-auto scrollbar-thin"
                 rows={1}
                 style={{
                   fontSize: '16px', // Prevents zoom on iOS
@@ -1121,85 +1086,45 @@ export const SearchBar = ({ value, onChange, placeholder = "Type your question..
                   textAlign: 'left'
                 }}
               />
+            </div>
 
-              {/* Fixed + icon positioned at bottom left */}
-              <div className="absolute left-0 bottom-1 flex-shrink-0">
+            {/* Action buttons - right side, always at the far right and bottom */}
+            <div className="flex items-center flex-shrink-0 ml-auto pb-0.5 pr-1 md:pr-0" style={{ gap: isMobile ? '0.125rem' : '0.25rem' }}>
+              {/* Microphone button */}
+              {isSupported && (
                 <Button
-                  onClick={handleUploadClick}
+                  onClick={handleProMicToggle}
                   variant="ghost"
                   size="sm"
-                  disabled={isUploading}
-                  className="rounded-full h-8 w-8 p-0 text-muted-foreground hover:text-foreground hover:bg-muted/50 touch-manipulation"
-                  title={isUploading ? 'Uploading...' : 'Upload Resume'}
+                  className={`rounded-full h-8 w-8 md:h-6 md:w-6 p-0 touch-manipulation ${isCapturingProMic
+                    ? "text-destructive hover:bg-destructive/10"
+                    : "text-muted-foreground hover:text-foreground hover:bg-muted/50"
+                    }`}
+                  title={isCapturingProMic ? 'Stop microphone' : 'Start microphone'}
                 >
-                  {isUploading ? (
-                    <div className="w-4 h-4 border-2 border-muted-foreground rounded-full border-t-transparent animate-spin"></div>
-                  ) : (
-                    <span className="text-lg font-medium">+</span>
-                  )}
+                  <Mic className="h-4 w-4 md:h-3 md:w-3" />
                 </Button>
-              </div>
+              )}
 
-              {/* Fixed action buttons positioned at bottom right */}
-              <div className="absolute right-0 bottom-1 flex items-center gap-1 flex-shrink-0">
-                {/* Microphone button */}
-                {isSupported && (
-                  <Button
-                    onClick={handleProMicToggle}
-                    variant="ghost"
-                    size="sm"
-                    className={`rounded-full h-6 w-6 p-0 touch-manipulation ${isCapturingProMic
-                      ? "text-destructive hover:bg-destructive/10"
-                      : "text-muted-foreground hover:text-foreground hover:bg-muted/50"
-                      }`}
-                    title={isCapturingProMic ? 'Stop microphone' : 'Start microphone'}
-                  >
-                    <Mic className="h-3 w-3" />
-                  </Button>
+              {/* Send button */}
+              <Button
+                onClick={() => canGenerate && value.trim() && onGenerate && !isGenerating ? onGenerate() : null}
+                disabled={!canGenerate || !value.trim() || isGenerating}
+                className="rounded-full h-8 w-8 md:h-6 md:w-6 p-0 bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed touch-manipulation"
+                title="Send message"
+              >
+                {isGenerating ? (
+                  <div className="w-4 h-4 md:w-3 md:h-3 border-2 border-primary-foreground rounded-full border-t-transparent animate-spin"></div>
+                ) : (
+                  <svg className="h-4 w-4 md:h-3 md:w-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" />
+                  </svg>
                 )}
-
-                {/* Send button */}
-                <Button
-                  onClick={() => canGenerate && value.trim() && onGenerate && !isGenerating ? onGenerate() : null}
-                  disabled={!canGenerate || !value.trim() || isGenerating}
-                  className="rounded-full h-6 w-6 p-0 bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed touch-manipulation"
-                  title="Send message"
-                >
-                  {isGenerating ? (
-                    <div className="w-3 h-3 border-2 border-primary-foreground rounded-full border-t-transparent animate-spin"></div>
-                  ) : (
-                    <svg className="h-3 w-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" />
-                    </svg>
-                  )}
-                </Button>
-              </div>
+              </Button>
             </div>
           </div>
         </div>
       </div>
-
-      {/* Hidden file input */}
-      <input
-        ref={fileInputRef}
-        type="file"
-        accept=".pdf,.txt,.doc,.docx"
-        className="hidden"
-        onChange={handleFileChange}
-      />
-
-      {/* Upload status indicator - mobile optimized */}
-      {lastUploaded && (
-        <div className="mt-2 flex items-center justify-center px-2">
-          <span className="text-xs text-muted-foreground flex items-center text-center">
-            <Check className="h-3 w-3 mr-1 text-primary flex-shrink-0" />
-            <span className="truncate">
-              Indexed: {lastUploaded.name} ({lastUploaded.characters.toLocaleString()} chars)
-            </span>
-          </span>
-        </div>
-      )}
-
     </div>
   );
 };
