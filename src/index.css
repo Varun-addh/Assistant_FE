@@ -33,6 +33,26 @@ html {
   scroll-behavior: smooth;
 }
 
+/* ===== Viewport/keyboard stability (mobile) =====
+   Uses CSS variables updated by JS (see InterviewAssistant).
+   Goal: prevent whole-page jump when keyboard opens; lift fixed footer instead. */
+:root {
+  --app-height: 100vh;
+  --keyboard-offset: 0px;
+}
+
+.ia-fixed-bottom {
+  bottom: var(--keyboard-offset) !important;
+  transform: translateZ(0);
+  backface-visibility: hidden;
+}
+
+@media (max-width: 768px) {
+  .ia-main-scroll.ia-main-scroll-footer {
+    padding-bottom: calc(10rem + var(--keyboard-offset)) !important;
+  }
+}
+
 /* Prevent horizontal scroll on mobile */
 @media (max-width: 768px) {
 
@@ -1724,17 +1744,9 @@ All colors MUST be HSL.
     /* Compact search bar for small screens */
     .search-bar {
       min-height: 44px;
-      border-radius: 18px;
     }
 
-    .search-bar textarea {
-      font-size: 15px !important;
-      padding: 8px 10px 8px 40px !important;
-    }
-
-    .search-bar-container {
-      padding: 10px;
-    }
+    /* Keep textarea sizing driven by the component (prevents layout quirks) */
 
     /* Smaller buttons */
     .btn,
@@ -1831,11 +1843,6 @@ All colors MUST be HSL.
     /* Comfortable search bar */
     .search-bar {
       min-height: 52px;
-      border-radius: 22px;
-    }
-
-    .search-bar textarea {
-      padding: 12px 14px 12px 48px !important;
     }
 
     /* Medium buttons */
@@ -1879,37 +1886,7 @@ All colors MUST be HSL.
 
   /* Desktop button positioning - also fixed */
   @media (min-width: 769px) {
-
-    /* Fixed + icon positioning for desktop */
-    .search-bar .absolute.left-0 {
-      pointer-events: auto !important;
-      z-index: 10 !important;
-      left: 4px;
-      bottom: 4px;
-    }
-
-    /* Fixed action buttons positioning for desktop */
-    .search-bar .absolute.right-0 {
-      pointer-events: auto !important;
-      z-index: 10 !important;
-      right: 4px;
-      bottom: 4px;
-    }
-
-    /* Desktop textarea with stable alignment */
-    .search-bar textarea {
-      padding-left: 40px !important;
-      padding-right: 80px !important;
-      padding-top: 8px !important;
-      padding-bottom: 8px !important;
-      align-items: flex-start !important;
-    }
-
-    /* Desktop textarea container with stable alignment */
-    .search-bar .flex-1 {
-      display: flex;
-      align-items: flex-start;
-    }
+    /* Component controls its own spacing */
   }
 
   /* Safe area handling for mobile devices */
@@ -2052,42 +2029,6 @@ All colors MUST be HSL.
   @media (max-width: 768px) {
     .search-bar {
       position: relative;
-    }
-
-    /* Ensure icons stay at bottom and rightmost on mobile */
-    .search-bar .flex.items-end {
-      align-items: flex-end !important;
-    }
-
-    /* Keep action buttons fixed at bottom right */
-    .search-bar .flex-shrink-0.ml-auto {
-      align-self: flex-end;
-      margin-left: auto !important;
-    }
-
-    /* Prevent icon movement when textarea grows */
-    .search-bar textarea {
-      align-self: flex-start;
-    }
-
-    /* Tighter spacing on mobile for compact layout */
-    .search-bar .flex.items-end {
-      gap: 0 !important;
-    }
-
-    /* Reduce padding on mobile for more compact feel */
-    .search-bar>div {
-      padding: 0.375rem !important;
-    }
-
-    /* Ensure + button and text are close together */
-    .search-bar .flex-1.min-w-0 {
-      margin-left: -1.25rem !important;
-    }
-
-    /* Ensure right icons are tightly grouped */
-    .search-bar .flex-shrink-0.ml-auto {
-      gap: 0.125rem !important;
     }
   }
 

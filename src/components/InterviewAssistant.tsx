@@ -2,6 +2,46 @@ import { useEffect, useState, useRef } from "react";
 import { SearchBar } from "./SearchBar";
 import { AnswerCard } from "./AnswerCard";
 
+// Stratax brand mark — Architecture-driven flow with decision nodes
+const StrataxMark = ({ className }: { className?: string }) => (
+  <svg
+    viewBox="0 0 24 24"
+    className={className}
+    fill="none"
+    xmlns="http://www.w3.org/2000/svg"
+    aria-hidden="true"
+    focusable="false"
+  >
+    {/* Primary flow — S/X intertwined path (top-left to bottom-right) */}
+    <path
+      d="M6.8 7.5 C8.2 6 10 5.2 11.8 5.2 C14.2 5.2 16 6.5 16 8.2 C16 9.5 15 10.4 13.2 10.9 L11.4 11.5 C9.2 12.2 8 13.2 8 14.8 C8 16.5 9.8 17.8 12.2 17.8 C14 17.8 15.5 17.2 16.5 16"
+      stroke="currentColor"
+      strokeWidth="2.4"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    />
+    {/* Secondary flow — counter-path (bottom-left to top-right) */}
+    <path
+      d="M17.2 16.5 C15.8 18 14 18.8 12.2 18.8 C9.8 18.8 8 17.5 8 15.8 C8 14.5 9 13.6 10.8 13.1 L12.6 12.5 C14.8 11.8 16 10.8 16 9.2 C16 7.5 14.2 6.2 11.8 6.2 C10 6.2 8.5 6.8 7.5 8"
+      stroke="currentColor"
+      strokeWidth="2.4"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      opacity="0.92"
+    />
+    
+    {/* Architecture nodes — decision points at key bends/intersections */}
+    {/* Top node: Entry decision point */}
+    <circle cx="7.5" cy="8" r="1.4" fill="currentColor" opacity="0.85" />
+    
+    {/* Center node: Core intersection (system complexity) */}
+    <circle cx="12" cy="12" r="1.6" fill="currentColor" opacity="0.9" />
+    
+    {/* Bottom node: Exit/output decision */}
+    <circle cx="16.5" cy="16" r="1.4" fill="currentColor" opacity="0.85" />
+  </svg>
+);
+
 // Animated Loading Dots Component
 const LoadingDots = () => (
   <span className="inline-flex items-center">
@@ -25,7 +65,8 @@ import { PracticeMode } from "./PracticeMode";
 import { InterviewIntelligence } from "./InterviewIntelligence";
 import { AnswerEngineUpgradeBanner } from "./AnswerEngineUpgradeBanner";
 import { ThemeToggle } from "./ThemeToggle";
-import { MessageSquare, MoreVertical, Trash2, Menu, X, History as HistoryIcon, RefreshCw, Loader2, AlertCircle, Sparkles, Copy, Download, Edit2, Code2 } from "lucide-react";
+import { UserProfile } from "./UserProfile";
+import { MessageSquare, MoreVertical, Trash2, Menu, X, History as HistoryIcon, RefreshCw, Loader2, AlertCircle, Sparkles, Copy, Download, Edit2, Code2, PanelLeft } from "lucide-react";
 import { apiCreateSession, apiSubmitQuestion, apiSubmitQuestionStream, apiGetHistory, apiGetSessions, apiDeleteSession, apiUpdateSessionTitle, apiDeleteHistoryItemByIndex, apiGetHistoryTabs, apiDeleteHistoryTab, apiDeleteAllHistory, apiUploadProfile, type AnswerStyle, type SessionSummary, type GetHistoryResponse, type HistoryTabSummary, type HistoryItem } from "@/lib/api";
 import { apiRenderMermaid } from "@/lib/api";
 import { downloadAnswerPdf } from "@/lib/utils";
@@ -38,16 +79,19 @@ import { useToast } from "@/hooks/use-toast";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, DropdownMenuSeparator, DropdownMenuLabel } from "@/components/ui/dropdown-menu";
-import { Link } from "react-router-dom";
+import { Link, useLocation, useNavigate } from "react-router-dom";
 import { startEvaluationOverlay } from "@/overlayHost";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { BYOKOnboarding } from "./BYOKOnboarding";
+import { OnboardingOverlay } from "./OnboardingOverlay";
 import { ApiKeySettings } from "./ApiKeySettings";
 import { UnlockAnswerEngine } from "./UnlockAnswerEngine";
 import { AnimatePresence } from "framer-motion";
 import { Key, Settings } from "lucide-react";
 import { PoweredByBadge } from "./PoweredByBadge";
 import { isDevelopmentMode, hasValidApiKeys } from "@/lib/devUtils";
+import { useAuth } from "@/context/AuthContext";
+import { Badge } from "@/components/ui/badge";
 
 interface BeforeInstallPromptEvent extends Event {
   prompt: () => Promise<void>;
@@ -55,8 +99,10 @@ interface BeforeInstallPromptEvent extends Event {
 }
 
 export const InterviewAssistant = () => {
+  const { user, loading: authLoading, logout } = useAuth();
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const mainScrollRef = useRef<HTMLDivElement>(null);
+  const viewportBaseHeightRef = useRef<number>(0);
   const [question, setQuestion] = useState("");
   const [answer, setAnswer] = useState("");
   const [isGenerating, setIsGenerating] = useState(false);
@@ -75,9 +121,98 @@ export const InterviewAssistant = () => {
   const [openMenuIndex, setOpenMenuIndex] = useState<number | null>(null);
   const [menuPos, setMenuPos] = useState<{ top: number; left: number } | null>(null);
   const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState(false);
+  const [isDesktopSidebarOpen, setIsDesktopSidebarOpen] = useState<boolean>(() => {
+    try {
+      const stored = window.localStorage.getItem("ia_desktop_sidebar_open");
+      return stored == null ? true : stored === "true";
+    } catch {
+      return true;
+    }
+  });
   const [deferredPrompt, setDeferredPrompt] = useState<BeforeInstallPromptEvent | null>(null);
   const [showInstallBanner, setShowInstallBanner] = useState(false);
-  const [activeMainTab, setActiveMainTab] = useState<"answer" | "intelligence" | "mock-interview" | "practice">("answer");
+  const location = useLocation();
+  const navigate = useNavigate();
+  const [activeMainTab, setActiveMainTab] = useState<"answer" | "intelligence" | "mock-interview" | "practice">(() => {
+    try {
+      const stored = window.localStorage.getItem('ia_active_main_tab');
+      if (stored === 'answer' || stored === 'intelligence' || stored === 'mock-interview' || stored === 'practice') return stored;
+    } catch { }
+    return 'answer';
+  });
+
+  // Allow deep-linking / navigation to a specific tab.
+  useEffect(() => {
+    const raw = (location.state as any)?.openTab;
+    const openTab = typeof raw === 'string' ? raw : null;
+    if (!openTab) return;
+    if (openTab === 'answer' || openTab === 'intelligence' || openTab === 'mock-interview' || openTab === 'practice') {
+      setActiveMainTab(openTab);
+
+      // IMPORTANT: react-router location state persists in browser history across refresh.
+      // Clear it after consuming, otherwise refreshing /app can force the same tab again.
+      navigate(location.pathname, { replace: true, state: {} });
+    }
+  }, [location.state, location.pathname, navigate]);
+
+  // Persist selected tab so refresh keeps user's current tab.
+  useEffect(() => {
+    try {
+      window.localStorage.setItem('ia_active_main_tab', activeMainTab);
+    } catch { }
+  }, [activeMainTab]);
+
+  useEffect(() => {
+    try {
+      window.localStorage.setItem("ia_desktop_sidebar_open", String(isDesktopSidebarOpen));
+    } catch { }
+  }, [isDesktopSidebarOpen]);
+
+  const showBottomSearchBar =
+    activeMainTab === "answer" &&
+    (showAnswer || isGenerating) &&
+    !isMobileSidebarOpen;
+
+  // Keep layout stable when the mobile keyboard opens.
+  // We compute a keyboard offset and lift the fixed bottom bar instead of letting the browser scroll the whole page.
+  useEffect(() => {
+    const updateViewportVars = () => {
+      const layoutHeight = document.documentElement.clientHeight;
+      const vv = window.visualViewport;
+
+      // Lock to the largest observed layout height to avoid shrinking the whole UI when the keyboard opens.
+      // We still compute keyboard offset from visualViewport to lift the fixed footer.
+      if (viewportBaseHeightRef.current === 0) viewportBaseHeightRef.current = layoutHeight;
+      if (layoutHeight > viewportBaseHeightRef.current) viewportBaseHeightRef.current = layoutHeight;
+      const baseHeight = viewportBaseHeightRef.current;
+
+      // Stable "app height" based on layout viewport.
+      document.documentElement.style.setProperty('--app-height', `${baseHeight}px`);
+
+      if (!vv) {
+        document.documentElement.style.setProperty('--keyboard-offset', '0px');
+        return;
+      }
+
+      // Keyboard height approximation: difference between layout viewport and visual viewport.
+      // `offsetTop` is relevant on iOS when the visual viewport shifts.
+      const keyboardOffset = Math.max(0, baseHeight - vv.height - vv.offsetTop);
+      document.documentElement.style.setProperty('--keyboard-offset', `${keyboardOffset}px`);
+    };
+
+    updateViewportVars();
+
+    const vv = window.visualViewport;
+    window.addEventListener('resize', updateViewportVars);
+    vv?.addEventListener('resize', updateViewportVars);
+    vv?.addEventListener('scroll', updateViewportVars);
+
+    return () => {
+      window.removeEventListener('resize', updateViewportVars);
+      vv?.removeEventListener('resize', updateViewportVars);
+      vv?.removeEventListener('scroll', updateViewportVars);
+    };
+  }, []);
 
   // Intelligence history state (only for intelligence tab)
   const [intelligenceHistoryTabs, setIntelligenceHistoryTabs] = useState<HistoryTabSummary[]>(() => {
@@ -144,6 +279,7 @@ export const InterviewAssistant = () => {
 
   const [showKeyOnboarding, setShowKeyOnboarding] = useState(false);
   const [hasApiKey, setHasApiKey] = useState(false);
+  const [showOnboardingTour, setShowOnboardingTour] = useState(false);
 
   // Profile upload state
   const profileInputRef = useRef<HTMLInputElement>(null);
@@ -153,6 +289,10 @@ export const InterviewAssistant = () => {
   // Architecture mode selection state
   const [showArchitectureChoice, setShowArchitectureChoice] = useState(false);
   const [pendingArchitectureQuestion, setPendingArchitectureQuestion] = useState<string>("");
+  const [architectureChoicePayload, setArchitectureChoicePayload] = useState<{
+    default?: string;
+    options: Array<{ id: string; label: string; description?: string }>;
+  } | null>(null);
 
   // Rename session state
   const [editingSessionId, setEditingSessionId] = useState<string | null>(null);
@@ -494,25 +634,81 @@ export const InterviewAssistant = () => {
   }, [isGenerating]);
 
   useEffect(() => {
-    // In development mode, bypass API key checks
-    if (isDevelopmentMode()) {
-      console.log('🔧 [Dev Mode] Bypassing API key requirements');
+    if (authLoading) return;
+
+    // Guest mode (logged out): allow full navigation without onboarding/keys.
+    if (!user) {
       setHasApiKey(true);
       setShowKeyOnboarding(false);
+      setShowOnboardingTour(false);
       return;
     }
 
-    // Production: Check for API keys
-    const key = localStorage.getItem("user_api_key");
-
-    if (!key) {
-      // Always redirect to landing page if no API key is found in production
-      window.location.href = "/";
+    // In development mode, bypass API key checks and onboarding
+    if (isDevelopmentMode()) {
+      console.log('🔧 [Dev Mode] Bypassing API key requirements and onboarding');
+      setHasApiKey(true);
+      setShowKeyOnboarding(false);
+      setShowOnboardingTour(false);
       return;
     }
 
-    setHasApiKey(!!key);
-  }, []);
+    // Production (authenticated): Check onboarding completion status
+    const onboardingTourCompleted = localStorage.getItem("onboarding_tour_completed");
+    const apiKeysConnected = localStorage.getItem("api_keys_connected");
+    const groqKey = localStorage.getItem("user_api_key");
+    const geminiKey = localStorage.getItem("gemini_api_key");
+
+    // Step 1: Check if onboarding tour is completed
+    if (!onboardingTourCompleted) {
+      console.log('📚 First time user - showing onboarding tour');
+      setShowOnboardingTour(true);
+      setHasApiKey(false);
+      return;
+    }
+
+    // Step 2: Check if API keys are connected
+    if (!apiKeysConnected || (!groqKey && !geminiKey)) {
+      console.log('🔑 Onboarding complete, but no API keys - showing API key setup');
+      setShowKeyOnboarding(true);
+      setHasApiKey(false);
+      return;
+    }
+
+    // All checks passed - user can access the app
+    console.log('✅ User fully onboarded with API keys');
+    setHasApiKey(true);
+    setShowOnboardingTour(false);
+    setShowKeyOnboarding(false);
+  }, [authLoading, user]);
+
+  // Handle onboarding tour completion
+  const handleOnboardingTourComplete = () => {
+    console.log('✅ Onboarding tour completed');
+    localStorage.setItem("onboarding_tour_completed", "true");
+    setShowOnboardingTour(false);
+    
+    // Check if user already has API keys (returning user scenario)
+    const groqKey = localStorage.getItem("user_api_key");
+    const geminiKey = localStorage.getItem("gemini_api_key");
+    
+    if (groqKey || geminiKey) {
+      // User already has keys, mark as connected and proceed
+      localStorage.setItem("api_keys_connected", "true");
+      setHasApiKey(true);
+    } else {
+      // Show API key setup
+      setShowKeyOnboarding(true);
+    }
+  };
+
+  // Handle API key setup completion
+  const handleApiKeySetupComplete = () => {
+    console.log('✅ API keys connected');
+    localStorage.setItem("api_keys_connected", "true");
+    setShowKeyOnboarding(false);
+    setHasApiKey(true);
+  };
 
   const handleDeleteHistory = async (idx: number) => {
     try {
@@ -591,13 +787,30 @@ export const InterviewAssistant = () => {
   };
 
   const ensureSession = async (opts?: { forceNew?: boolean }): Promise<string> => {
+    const isValidSessionId = (value: unknown): value is string => {
+      if (typeof value !== "string") return false;
+      const v = value.trim();
+      if (!v) return false;
+      const lowered = v.toLowerCase();
+      if (lowered === "undefined" || lowered === "null" || lowered === "none") return false;
+      // Accept UUID (with or without hyphens)
+      if (/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(v)) return true;
+      if (/^[0-9a-f]{32}$/i.test(v)) return true;
+      return false;
+    };
+
     const forceNew = !!opts?.forceNew;
-    if (!forceNew && sessionId) return sessionId;
+    if (!forceNew && isValidSessionId(sessionId)) return sessionId;
     const stored = !forceNew && typeof window !== 'undefined' ? window.localStorage.getItem("ia_session_id") : null;
-    if (!forceNew && stored) {
+    if (!forceNew && stored && isValidSessionId(stored)) {
       setSessionId(stored);
       return stored;
     }
+
+    if (!forceNew && stored && !isValidSessionId(stored)) {
+      try { window.localStorage.removeItem("ia_session_id"); } catch { }
+    }
+
     const s = await apiCreateSession();
     setSessionId(s.session_id);
     try { window.localStorage.setItem("ia_session_id", s.session_id); } catch {
@@ -1167,9 +1380,28 @@ export const InterviewAssistant = () => {
   // 🏗️ Architecture Mode Selection Handler
   const handleArchitectureModeSelection = async (mode: "single" | "multi-view") => {
     console.log(`[Architecture] User selected mode: ${mode}`);
+
+    // Ensure typewriter animation stays enabled for the final answer.
+    // This flow updates an existing history item (same `created_at`), which can
+    // otherwise be treated as "already seen" and render instantly.
+    setStreaming(true);
+
+    // Clear AnswerCard seen-cache for this entry so replacing the choice prompt
+    // with the real answer re-animates.
+    try {
+      const existing = history?.items?.find((it) => it.question === pendingArchitectureQuestion);
+      const cacheKey = existing?.created_at;
+      const cache = (window as unknown as { __seenAnswersCache?: Set<string> }).__seenAnswersCache;
+      if (cacheKey && cache) {
+        cache.delete(cacheKey);
+      }
+    } catch {
+      void 0;
+    }
     
     // Hide choice UI
     setShowArchitectureChoice(false);
+    setArchitectureChoicePayload(null);
     
     // Show loading state
     setIsGenerating(true);
@@ -1188,6 +1420,15 @@ export const InterviewAssistant = () => {
         style: style,
         architecture_mode: mode
       });
+
+      const effectiveSid = (res as any)?.session_id && typeof (res as any).session_id === "string" ? (res as any).session_id : sid;
+      if (effectiveSid && effectiveSid !== sid) {
+        try {
+          setSessionId(effectiveSid);
+          window.localStorage.setItem("ia_session_id", effectiveSid);
+          console.log("[session] Adopted effective session id from backend:", effectiveSid);
+        } catch { }
+      }
 
       console.log("[Architecture] Response received:", res);
 
@@ -1213,7 +1454,7 @@ export const InterviewAssistant = () => {
             style: res.style,
             created_at: base[existingIdx].created_at
           }) : it);
-          return { session_id: sid, items: next } as GetHistoryResponse;
+          return { session_id: effectiveSid, items: next } as GetHistoryResponse;
         } else {
           // Fallback: create new entry (shouldn't happen normally)
           const next: HistoryItem[] = [{
@@ -1222,7 +1463,7 @@ export const InterviewAssistant = () => {
             style: res.style,
             created_at: new Date().toISOString()
           }, ...base];
-          return { session_id: sid, items: next } as GetHistoryResponse;
+          return { session_id: effectiveSid, items: next } as GetHistoryResponse;
         }
       });
 
@@ -1280,6 +1521,8 @@ export const InterviewAssistant = () => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  const GENERATING_PLACEHOLDER = "**Generating your response**";
+
   // Restore last visible answer immediately on mount (UX: "return where you left off")
   useEffect(() => {
     try {
@@ -1287,8 +1530,23 @@ export const InterviewAssistant = () => {
       const cachedA = window.localStorage.getItem('ia_last_answer') || '';
       const cachedShow = window.localStorage.getItem('ia_show_answer') === 'true';
       const cachedViewing = window.localStorage.getItem('ia_viewing_history') === 'true';
+      const normalizedA = cachedA.trim();
+      const isIncompleteCachedAnswer = !normalizedA || normalizedA === GENERATING_PLACEHOLDER;
+
+      // If we somehow persisted an in-flight placeholder, do not restore it.
+      // This prevents the app from booting into a "stuck generating" state and duplicating bubbles.
+      if (cachedShow && cachedQ && isIncompleteCachedAnswer) {
+        try {
+          window.localStorage.removeItem('ia_last_answer');
+          window.localStorage.setItem('ia_show_answer', 'false');
+        } catch {
+          // ignore
+        }
+        return;
+      }
+
       // Only restore if we have a complete Q&A (not just question with empty answer)
-      if (cachedShow && cachedQ && cachedA && cachedA.trim()) {
+      if (cachedShow && cachedQ && normalizedA) {
         setLastQuestion(cachedQ);
         // Ensure we mark this as a history view BEFORE setting the answer/show
         // so any mounted `AnswerCard` receives `streaming={false}` immediately
@@ -1302,7 +1560,7 @@ export const InterviewAssistant = () => {
           setHistory((prev) => {
             const items = prev?.items || [];
             const exists = items.some(it => it.question === cachedQ && it.answer === cachedA);
-            if (!exists && cachedQ && cachedA) {
+            if (!exists && cachedQ && normalizedA) {
               return {
                 session_id: sessionId || '',
                 items: [{
@@ -1316,7 +1574,7 @@ export const InterviewAssistant = () => {
             return prev;
           });
           // Also add to durable archive
-          if (sessionId && cachedQ && cachedA) {
+          if (sessionId && cachedQ && normalizedA) {
             try {
               const archiveKey = `ia_history_archive_${sessionId}`;
               const raw = window.localStorage.getItem(archiveKey);
@@ -1420,7 +1678,12 @@ export const InterviewAssistant = () => {
             const archived = JSON.parse(rawArch) as Array<{ question: string; answer: string; ts: number }>;
             if (Array.isArray(archived) && archived.length > 0) {
               // Filter out incomplete entries (empty answer) - these are failed optimistic inserts
-              const complete = archived.filter(it => it.answer && it.answer.trim());
+              const complete = archived.filter(it => {
+                const a = (it.answer || '').trim();
+                if (!a) return false;
+                if (a === GENERATING_PLACEHOLDER) return false;
+                return true;
+              });
               if (complete.length > 0) {
                 const items = complete.map(it => ({ question: it.question, answer: it.answer })) as any;
                 setHistory({ session_id: sessionId, items } as any);
@@ -1456,7 +1719,9 @@ export const InterviewAssistant = () => {
             // Filter out incomplete entries (empty answer) and de-duplicate
             const unique = combined.filter(it => {
               // Skip incomplete entries (optimistic inserts that never got responses)
-              if (!it.answer || !it.answer.trim()) return false;
+              const a = (it.answer || '').trim();
+              if (!a) return false;
+              if (a === GENERATING_PLACEHOLDER) return false;
               const key = `${it.question}\u0000${it.answer}`;
               if (seen.has(key)) return false;
               seen.add(key);
@@ -1493,11 +1758,15 @@ export const InterviewAssistant = () => {
   useEffect(() => {
     try {
       window.localStorage.setItem('ia_last_question', lastQuestion || '');
-      window.localStorage.setItem('ia_last_answer', answer || '');
-      window.localStorage.setItem('ia_show_answer', String(!!showAnswer));
+      // Never persist the in-flight generating placeholder as a "real" answer.
+      // Restoring it causes duplicate bubbles and a stuck "generating" state on reload.
+      const safeAnswer = isGenerating && (answer || '').trim() === GENERATING_PLACEHOLDER ? '' : (answer || '');
+      const safeShow = isGenerating && (answer || '').trim() === GENERATING_PLACEHOLDER ? false : !!showAnswer;
+      window.localStorage.setItem('ia_last_answer', safeAnswer);
+      window.localStorage.setItem('ia_show_answer', String(safeShow));
       window.localStorage.setItem('ia_viewing_history', String(!!viewingHistory));
     } catch { }
-  }, [lastQuestion, answer, showAnswer, viewingHistory]);
+  }, [lastQuestion, answer, showAnswer, viewingHistory, isGenerating]);
 
   // Fetch evaluation allowance when the lastQuestion or sessionId changes.
   useEffect(() => {
@@ -1712,7 +1981,7 @@ export const InterviewAssistant = () => {
       // Show immediate feedback only when not inline-editing existing response
       if (!(isEditingFromAnswer && originalQA)) {
         setShowAnswer(true);
-        setAnswer("**Generating your response**");
+        setAnswer(GENERATING_PLACEHOLDER);
       }
 
       try {
@@ -1721,41 +1990,60 @@ export const InterviewAssistant = () => {
         console.log("[truncation] Backend truncated flag:", res.truncated);
         console.log("[truncation] Gemini key exists:", !!localStorage.getItem("gemini_api_key"));
 
+        // If backend repaired/overrode the session id, adopt it so future requests stay in the same session.
+        const effectiveSid = (res as any)?.session_id && typeof (res as any).session_id === "string" ? (res as any).session_id : sid;
+        if (effectiveSid && effectiveSid !== sid) {
+          try {
+            setSessionId(effectiveSid);
+            window.localStorage.setItem("ia_session_id", effectiveSid);
+            console.log("[session] Adopted effective session id from backend:", effectiveSid);
+          } catch { }
+        }
+
         // Note: Truncation handling removed to match ChatGPT/Claude behavior
         // Responses are shown in full without upgrade prompts
         setAnswerTruncated(false);
         setShowUpgradeBanner(false);
 
-        // 🏗️ Architecture Mode Choice Detection
-        // Check if backend is asking user to choose between single/multi-view
-        const isArchitectureChoice = res.answer.includes("Choose your preferred architecture format") ||
-          res.answer.includes("architecture_mode") ||
-          (res.answer.includes("Single Comprehensive") && res.answer.includes("Multi-View"));
-        
-        if (isArchitectureChoice) {
-          // Show choice UI instead of normal answer
+        // 🏗️ Architecture Mode Choice (structured)
+        if (res?.ui_action === "choose_architecture_mode") {
+          const payload = (res.ui_payload || {}) as {
+            default?: string;
+            options?: Array<{ id: string; label: string; description?: string }>;
+          };
+
           setShowArchitectureChoice(true);
           setPendingArchitectureQuestion(currentQuestion);
-          setAnswer(res.answer); // Show the choice message
+          setArchitectureChoicePayload({
+            default: payload.default,
+            options: Array.isArray(payload.options) ? payload.options : [],
+          });
+
+          // Ensure we don't show any "answer text" for this step
+          setAnswer("");
           setIsGenerating(false);
-          
-          // Update the pending history entry with the choice message
+
+          // Keep the pending history entry (answer stays empty)
           setHistory((prev) => {
             const base = prev?.items ? [...prev.items] : [];
-            const pendingIdx = base.findIndex(it => it.question === currentQuestion && it.answer === '');
+            const pendingIdx = base.findIndex((it) => it.question === currentQuestion && it.answer === "");
             if (pendingIdx >= 0) {
-              const next = base.map((it, i) => i === pendingIdx ? ({
-                question: currentQuestion,
-                answer: res.answer,
-                style: res.style,
-                created_at: base[pendingIdx].created_at
-              }) : it);
-              return { session_id: sid, items: next } as GetHistoryResponse;
+              const next = base.map((it, i) =>
+                i === pendingIdx
+                  ? {
+                      question: currentQuestion,
+                      answer: "",
+                      style: res.style,
+                      created_at: base[pendingIdx].created_at,
+                    }
+                  : it
+              );
+              return { session_id: effectiveSid, items: next } as GetHistoryResponse;
             }
             return prev;
           });
-          
-          return; // Don't proceed with normal flow
+
+          return;
         }
 
         if (isEditingFromAnswer && originalQA) {
@@ -1803,14 +2091,14 @@ export const InterviewAssistant = () => {
             seenQ.add(currentQuestion);
             return true;
           });
-          return { session_id: sid, items: dedup } as GetHistoryResponse;
+          return { session_id: effectiveSid, items: dedup } as GetHistoryResponse;
         });
 
         // Update sidebar with latest counts/titles
         loadSessions();
         // Persist to local durable archive (replace pending entry if present)
         try {
-          const archiveKey = `ia_history_archive_${sid}`;
+          const archiveKey = `ia_history_archive_${effectiveSid}`;
           const raw = window.localStorage.getItem(archiveKey);
           const list = raw ? (JSON.parse(raw) as Array<{ question: string; answer: string; ts: number }>) : [];
           const pendingIndex = list.findIndex(x => x.question === currentQuestion && x.answer === '');
@@ -2059,7 +2347,7 @@ export const InterviewAssistant = () => {
     let animationFrameId: number;
 
     const animate = () => {
-      ctx.fillStyle = 'rgba(0, 0, 0, 0.05)';
+      ctx.fillStyle = 'rgba(0, 0, 0, 0.035)';
       ctx.fillRect(0, 0, canvas.width, canvas.height);
 
       particles.forEach((p, i) => {
@@ -2071,7 +2359,8 @@ export const InterviewAssistant = () => {
 
         ctx.beginPath();
         ctx.arc(p.x, p.y, p.radius, 0, Math.PI * 2);
-        ctx.fillStyle = 'rgba(139, 92, 246, 0.4)';
+        // Subtle, pro dark-mode accent (blue/cyan) to avoid strong pink/purple glow.
+        ctx.fillStyle = 'rgba(59, 130, 246, 0.28)';
         ctx.fill();
 
         particles.slice(i + 1).forEach((p2) => {
@@ -2081,7 +2370,7 @@ export const InterviewAssistant = () => {
 
           if (dist < 100) {
             ctx.beginPath();
-            ctx.strokeStyle = `rgba(139, 92, 246, ${0.15 * (1 - dist / 100)})`;
+            ctx.strokeStyle = `rgba(56, 189, 248, ${0.10 * (1 - dist / 100)})`;
             ctx.lineWidth = 0.5;
             ctx.moveTo(p.x, p.y);
             ctx.lineTo(p2.x, p2.y);
@@ -2108,7 +2397,7 @@ export const InterviewAssistant = () => {
   }, []);
 
   return (
-    <div className="relative h-screen overflow-hidden overflow-x-hidden bg-background" style={{ overscrollBehavior: 'none' }}>
+    <div className="relative h-[var(--app-height)] overflow-hidden overflow-x-hidden bg-background" style={{ overscrollBehavior: 'none' }}>
       {/* Animated Background - Only visible in dark mode */}
       <canvas
         ref={canvasRef}
@@ -2152,14 +2441,18 @@ export const InterviewAssistant = () => {
       </AnimatePresence>
 
 
-      {/* Gradient Overlays - Only visible in dark mode */}
-      <div className="absolute inset-0 hidden dark:block bg-gradient-to-br dark:from-purple-900/20 dark:via-black dark:to-blue-900/20 pointer-events-none" />
-      <div className="absolute top-0 left-1/4 w-96 h-96 hidden dark:block dark:bg-purple-500/20 rounded-full blur-[120px] animate-pulse pointer-events-none" />
-      <div className="absolute bottom-0 right-1/4 w-96 h-96 hidden dark:block dark:bg-blue-500/20 rounded-full blur-[120px] animate-pulse delay-1000 pointer-events-none" />
+      {/* Gradient Overlays - Only visible in dark mode (pro grey + subtle color touch) */}
+      <div className="absolute inset-0 hidden dark:block bg-gradient-to-br dark:from-zinc-900/55 dark:via-zinc-950/70 dark:to-slate-950/60 pointer-events-none" />
+      <div className="absolute inset-0 hidden dark:block bg-gradient-to-br from-indigo-500/5 via-transparent to-cyan-500/5 pointer-events-none" />
+      <div className="absolute inset-0 hidden dark:block bg-gradient-to-t from-transparent via-white/[0.02] to-white/[0.035] pointer-events-none" />
+      <div className="absolute top-0 left-1/4 w-96 h-96 hidden dark:block dark:bg-indigo-500/10 rounded-full blur-[160px] pointer-events-none" />
+      <div className="absolute bottom-0 right-1/4 w-96 h-96 hidden dark:block dark:bg-cyan-500/10 rounded-full blur-[160px] pointer-events-none" />
 
       {/* Key Status Badge - Only shown when key is missing */}
       {!hasApiKey && (
-        <div className="fixed top-20 left-4 md:left-72 z-40">
+        <div
+          className={`fixed top-20 left-4 z-40 ${activeMainTab === "practice" ? "md:left-4" : isDesktopSidebarOpen ? "md:left-72" : "md:left-16"}`}
+        >
           <div className="flex items-center gap-2 px-3 py-1.5 rounded-full border backdrop-blur-md transition-all duration-500 bg-amber-500/10 border-amber-500/20 text-amber-500 shadow-[0_0_158px_-5px_rgba(245,158,11,0.3)]">
             <Key className="w-3 h-3 animate-pulse" />
             <span className="text-[9px] font-black uppercase tracking-[0.1em]">
@@ -2185,18 +2478,41 @@ export const InterviewAssistant = () => {
               </Button>
             </div>
 
-            <div className="flex items-center gap-0.5">
+            <div className="flex items-center gap-1">
+              {!authLoading && (
+                user ? (
+                  null
+                ) : (
+                  <>
+                    <Badge variant="outline" className="hidden xs:inline-flex text-[10px] px-2 py-1">
+                      Guest mode
+                    </Badge>
+                    <Link to="/login?mode=signin">
+                      <Button variant="ghost" size="sm" className="h-8 px-2 text-xs">
+                        Sign In
+                      </Button>
+                    </Link>
+                    <Link to="/login?mode=signup">
+                      <Button size="sm" className="h-8 px-2 text-xs">
+                        Sign Up
+                      </Button>
+                    </Link>
+                  </>
+                )
+              )}
               <ThemeToggle className="h-8 w-8" iconClassName="h-4 w-4" />
-              <Dialog>
-                <DialogTrigger asChild>
-                  <Button variant="ghost" size="sm" className={`h-8 w-8 p-0 hover:bg-white/10 ${!hasApiKey ? 'bg-amber-500/10 text-amber-500' : ''}`}>
-                    <Settings className="h-3.5 w-3.5" />
-                  </Button>
-                </DialogTrigger>
-                <DialogContent className="w-[calc(100vw-2rem)] sm:max-w-[450px] p-0 border-none bg-transparent">
-                  <ApiKeySettings />
-                </DialogContent>
-              </Dialog>
+              {user && !authLoading && (
+                <Dialog>
+                  <DialogTrigger asChild>
+                    <Button variant="ghost" size="sm" className={`h-8 w-8 p-0 hover:bg-white/10 ${!hasApiKey ? 'bg-amber-500/10 text-amber-500' : ''}`}>
+                      <Settings className="h-3.5 w-3.5" />
+                    </Button>
+                  </DialogTrigger>
+                  <DialogContent className="w-[calc(100vw-2rem)] sm:max-w-[450px] p-0 border-none bg-transparent">
+                    <ApiKeySettings />
+                  </DialogContent>
+                </Dialog>
+              )}
             </div>
           </div>
         </div>
@@ -2208,9 +2524,28 @@ export const InterviewAssistant = () => {
               className="fixed left-0 top-0 bottom-0 w-80 max-w-[85vw] h-full bg-background border-r border-border shadow-2xl flex flex-col"
               onClick={(e) => e.stopPropagation()}
             >
+              {/* Mobile Sidebar Header */}
+              <div className="flex items-center justify-between px-4 py-3 border-b border-border/50">
+                <div className="flex items-center gap-2">
+                  <div className="w-8 h-8 bg-gradient-to-br from-purple-500 to-blue-500 rounded-lg flex items-center justify-center">
+                    <StrataxMark className="w-5 h-5 text-white" />
+                  </div>
+                  <div className="text-sm font-bold">Stratax AI</div>
+                </div>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-8 w-8"
+                  onClick={() => setIsMobileSidebarOpen(false)}
+                  aria-label="Close sidebar"
+                >
+                  <X className="h-4 w-4" />
+                </Button>
+              </div>
+
               {/* Mobile Sidebar Content */}
-              <div className="flex-1 overflow-y-auto custom-scrollbar overflow-x-hidden pt-4" style={{ WebkitOverflowScrolling: 'touch', overscrollBehavior: 'contain' }}>
-                <div className="px-4 py-6 space-y-8 pb-20">
+              <div className="flex-1 overflow-y-auto custom-scrollbar overflow-x-hidden" style={{ WebkitOverflowScrolling: 'touch', overscrollBehavior: 'contain' }}>
+                <div className="px-4 py-6 space-y-8">
                   {/* View Selection */}
                   <div>
                     <h3 className="text-[10px] font-bold text-muted-foreground uppercase tracking-[0.2em] mb-4 px-2">Navigation</h3>
@@ -2537,19 +2872,64 @@ export const InterviewAssistant = () => {
                   )}
                 </div>
               </div>
+
+              {/* Mobile Sidebar Footer */}
+              {user && !authLoading && (
+                <div className="p-2 border-t border-border/50">
+                  <div className="flex items-center justify-between">
+                    <UserProfile
+                      variant="sidebar"
+                      showTier={false}
+                      showEmailInTrigger={false}
+                      onLogout={() => setIsMobileSidebarOpen(false)}
+                    />
+                  </div>
+                </div>
+              )}
             </div>
           </div>
         )}
 
-        {/* Desktop Sidebar - Hidden in Practice Mode */}
-        <aside className={`hidden md:flex fixed left-0 top-0 bottom-0 w-64 border-r border-border bg-background/50 backdrop-blur-xl z-40 flex-col ${activeMainTab === "practice" ? "md:hidden" : ""
-          }`}>
+        {/* Collapsed Sidebar Rail (Desktop) - Hidden in Practice Mode */}
+        {activeMainTab !== "practice" && !isDesktopSidebarOpen && (
+          <div className="hidden md:flex fixed left-0 top-0 bottom-0 w-14 border-r border-border bg-background/50 backdrop-blur-xl z-50">
+            <div className="w-full flex flex-col items-center pt-3">
+              <button
+                type="button"
+                onClick={() => setIsDesktopSidebarOpen(true)}
+                aria-label="Show history sidebar"
+                title="Show history"
+                className="group relative h-10 w-10 rounded-xl border border-border bg-background/70 backdrop-blur-xl hover:bg-background/90 transition-colors flex items-center justify-center overflow-hidden"
+              >
+                <div className="w-7 h-7 bg-gradient-to-br from-purple-500 to-blue-500 rounded-lg flex items-center justify-center transition-opacity duration-150 group-hover:opacity-0">
+                  <StrataxMark className="w-4 h-4 text-white" />
+                </div>
+                <div className="absolute inset-0 flex items-center justify-center opacity-0 transition-opacity duration-150 group-hover:opacity-100">
+                  <PanelLeft className="h-4 w-4" />
+                </div>
+              </button>
+            </div>
+          </div>
+        )}
+        <aside className={`hidden md:flex fixed left-0 top-0 bottom-0 w-64 border-r border-border bg-background/50 backdrop-blur-xl z-40 flex-col transition-transform duration-300 ${activeMainTab === "practice" ? "md:hidden" : ""} ${isDesktopSidebarOpen ? "translate-x-0" : "-translate-x-full"}`}>
           <div className="p-4 border-b border-border">
-            <div className="flex items-center gap-2">
-              <div className="w-8 h-8 bg-gradient-to-br from-purple-500 to-blue-500 rounded-lg flex items-center justify-center">
-                <Sparkles className="w-5 h-5 text-white" />
+            <div className="flex items-center justify-between gap-3">
+              <div className="flex items-center gap-2 min-w-0">
+                <div className="w-8 h-8 bg-gradient-to-br from-purple-500 to-blue-500 rounded-lg flex items-center justify-center shrink-0">
+                  <StrataxMark className="w-5 h-5 text-white" />
+                </div>
+                <h1 className="text-xl font-bold bg-gradient-to-r from-foreground to-muted-foreground bg-clip-text text-transparent truncate">Stratax AI</h1>
               </div>
-              <h1 className="text-xl font-bold bg-gradient-to-r from-foreground to-muted-foreground bg-clip-text text-transparent">Stratax AI</h1>
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-8 w-8 shrink-0"
+                onClick={() => setIsDesktopSidebarOpen(false)}
+                title="Hide history"
+                aria-label="Hide history sidebar"
+              >
+                <PanelLeft className="h-4 w-4" />
+              </Button>
             </div>
           </div>
 
@@ -3164,41 +3544,87 @@ export const InterviewAssistant = () => {
               </>
             )}
           </div>
+
+          {/* Desktop Sidebar Footer */}
+          {user && !authLoading && (
+            <div className="p-2 border-t border-border/50">
+              <div className="flex items-center justify-between">
+                <UserProfile variant="sidebar" showTier={false} showEmailInTrigger={false} />
+              </div>
+            </div>
+          )}
         </aside>
 
         {/* Main content area */}
-        <div className={`flex-1 flex flex-col min-h-0 overflow-hidden overflow-x-hidden transition-all duration-300 ${isMobileSidebarOpen ? 'overflow-hidden' : ''} ${activeMainTab === "practice" ? "md:pl-0" : "md:pl-64"
-          }`}>
-          <Tabs value={activeMainTab} onValueChange={(v) => setActiveMainTab(v as "answer" | "intelligence" | "mock-interview" | "practice")} className="flex-1 flex flex-col min-h-0">
+        <div
+          className={`flex-1 flex flex-col min-h-0 overflow-hidden overflow-x-hidden transition-all duration-300 ${isMobileSidebarOpen ? "overflow-hidden" : ""} ${activeMainTab === "practice" ? "md:pl-0" : isDesktopSidebarOpen ? "md:pl-64" : "md:pl-14"}`}
+        >
+          <Tabs
+            value={activeMainTab}
+            onValueChange={(v) => {
+              setActiveMainTab(v as "answer" | "intelligence" | "mock-interview" | "practice");
+              // Clear any lingering openTab navigation state so refresh doesn't hijack the tab.
+              navigate(location.pathname, { replace: true, state: {} });
+            }}
+            className="flex-1 flex flex-col min-h-0"
+          >
             {/* Unified Desktop Header */}
             <header className="hidden md:flex items-center justify-between px-6 py-2 border-b border-border/50 bg-background/50 backdrop-blur-xl sticky top-0 z-40 transition-all duration-300">
-              <TabsList className="bg-transparent border-0 h-10 gap-2">
-                <TabsTrigger value="answer" className="data-[state=active]:bg-primary/10 data-[state=active]:text-primary font-bold px-4 transition-all whitespace-nowrap">AI Copilot</TabsTrigger>
-                <TabsTrigger value="intelligence" className="data-[state=active]:bg-primary/10 data-[state=active]:text-primary font-bold px-4 transition-all whitespace-nowrap">Search Intelligence</TabsTrigger>
-                <TabsTrigger value="mock-interview" className="data-[state=active]:bg-primary/10 data-[state=active]:text-primary font-bold px-4 transition-all whitespace-nowrap">Mock Interview</TabsTrigger>
-                <TabsTrigger value="practice" className="data-[state=active]:bg-primary/10 data-[state=active]:text-primary font-bold px-4 transition-all whitespace-nowrap">Live Practice</TabsTrigger>
-              </TabsList>
+              <div className="flex items-center gap-2">
+                <TabsList className="bg-transparent border-0 h-10 gap-2">
+                  <TabsTrigger value="answer" className="data-[state=active]:bg-primary/10 data-[state=active]:text-primary font-bold px-4 transition-all whitespace-nowrap">AI Copilot</TabsTrigger>
+                  <TabsTrigger value="intelligence" className="data-[state=active]:bg-primary/10 data-[state=active]:text-primary font-bold px-4 transition-all whitespace-nowrap">Search Intelligence</TabsTrigger>
+                  <TabsTrigger value="mock-interview" className="data-[state=active]:bg-primary/10 data-[state=active]:text-primary font-bold px-4 transition-all whitespace-nowrap">Mock Interview</TabsTrigger>
+                  <TabsTrigger value="practice" className="data-[state=active]:bg-primary/10 data-[state=active]:text-primary font-bold px-4 transition-all whitespace-nowrap">Live Practice</TabsTrigger>
+                </TabsList>
+              </div>
 
               <div className="flex items-center gap-2">
+                {!authLoading && (
+                  user ? (
+                    null
+                  ) : (
+                    <>
+                      <Badge variant="outline" className="text-[11px] px-2 py-1">
+                        Guest mode
+                      </Badge>
+                      <Link to="/login?mode=signin">
+                        <Button variant="ghost" size="sm">
+                          Sign In
+                        </Button>
+                      </Link>
+                      <Link to="/login?mode=signup">
+                        <Button size="sm">Sign Up</Button>
+                      </Link>
+                    </>
+                  )
+                )}
+                {user && !authLoading && (
+                  <Link to="/progress">
+                    <Button variant="ghost" size="sm">Progress</Button>
+                  </Link>
+                )}
                 <ThemeToggle />
-                <Dialog>
-                  <DialogTrigger asChild>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      className={`h-9 flex items-center gap-2 transition-all duration-300 ${!hasApiKey
-                        ? 'bg-amber-500/10 text-amber-500 border-amber-500/50 hover:bg-amber-500/20 shadow-[0_0_15px_-5px_rgba(245,158,11,0.3)]'
-                        : 'hover:bg-accent'
-                        }`}
-                    >
-                      <Settings className="h-4 w-4" />
-                      <span className="font-semibold">{hasApiKey ? 'Bridge Settings' : 'Connect AI Bridge'}</span>
-                    </Button>
-                  </DialogTrigger>
-                  <DialogContent className="w-[calc(100vw-2rem)] sm:max-w-[450px] p-0 border-none bg-transparent">
-                    <ApiKeySettings />
-                  </DialogContent>
-                </Dialog>
+                {user && !authLoading && (
+                  <Dialog>
+                    <DialogTrigger asChild>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className={`h-9 flex items-center gap-2 transition-all duration-300 ${!hasApiKey
+                          ? 'bg-amber-500/10 text-amber-500 border-amber-500/50 hover:bg-amber-500/20 shadow-[0_0_15px_-5px_rgba(245,158,11,0.3)]'
+                          : 'hover:bg-accent'
+                          }`}
+                      >
+                        <Settings className="h-4 w-4" />
+                        <span className="font-semibold">{hasApiKey ? 'Bridge Settings' : 'Connect AI Bridge'}</span>
+                      </Button>
+                    </DialogTrigger>
+                    <DialogContent className="w-[calc(100vw-2rem)] sm:max-w-[450px] p-0 border-none bg-transparent">
+                      <ApiKeySettings />
+                    </DialogContent>
+                  </Dialog>
+                )}
                 <Link to="/run">
                   <Button variant="outline" size="sm" className="hidden lg:flex">Run Code</Button>
                 </Link>
@@ -3206,7 +3632,7 @@ export const InterviewAssistant = () => {
             </header>
 
             {/* Content Section */}
-            <div ref={mainScrollRef} className={`flex-1 overflow-y-auto overflow-x-hidden scroll-professional px-0 py-2 md:px-6 md:py-6 ${activeMainTab === "answer" ? "pb-40 md:pb-44" : ""
+            <div ref={mainScrollRef} className={`ia-main-scroll flex-1 overflow-y-auto overflow-x-hidden scroll-professional px-0 py-2 md:px-6 md:py-6 ${showBottomSearchBar ? "pb-40 md:pb-44 ia-main-scroll-footer" : ""
               }`} style={{ scrollbarGutter: 'stable', overscrollBehaviorX: 'none', WebkitOverflowScrolling: 'touch' }}>
               <div className="max-w-4xl mx-auto w-full overflow-x-hidden">
 
@@ -3232,13 +3658,13 @@ export const InterviewAssistant = () => {
 
                             <div>
                               {/* 🏗️ Architecture Mode Choice UI */}
-                              {isLatest && isGenerating && !showArchitectureChoice && (!item.answer || item.answer === "**Generating your response**") ? (
+                              {isLatest && isGenerating && !showArchitectureChoice && (!item.answer || item.answer === GENERATING_PLACEHOLDER) ? (
                                 <div className="pl-2">
                                   <span className="text-sm text-muted-foreground">
                                     Generating<LoadingDots />
                                   </span>
                                 </div>
-                              ) : isLatest && showArchitectureChoice ? (
+                              ) : isLatest && showArchitectureChoice && item.question === pendingArchitectureQuestion ? (
                                 <div className="bg-gradient-to-br from-blue-50 to-indigo-50 dark:from-blue-950/30 dark:to-indigo-950/30 rounded-2xl p-6 shadow-lg border border-blue-200/50 dark:border-blue-800/50">
                                   <div className="text-center space-y-4 mb-6">
                                     <div className="inline-flex items-center justify-center w-12 h-12 bg-primary/10 rounded-xl">
@@ -3253,84 +3679,43 @@ export const InterviewAssistant = () => {
                                   </div>
 
                                   <div className="grid md:grid-cols-2 gap-4">
-                                    {/* Single Comprehensive Option */}
-                                    <button
-                                      onClick={() => handleArchitectureModeSelection("single")}
-                                      disabled={isGenerating}
-                                      className="group relative bg-white dark:bg-gray-900 rounded-xl p-6 border-2 border-gray-200 dark:border-gray-700 hover:border-primary hover:shadow-xl transition-all duration-300 text-left disabled:opacity-50 disabled:cursor-not-allowed"
-                                    >
-                                      <div className="absolute top-4 right-4 w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center group-hover:scale-110 transition-transform">
-                                        <span className="text-2xl">📊</span>
-                                      </div>
-                                      <div className="pr-12">
-                                        <h4 className="text-lg font-bold text-foreground mb-2">
-                                          Single Comprehensive
-                                        </h4>
-                                        <div className="inline-flex items-center gap-1.5 px-2 py-1 bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400 rounded-md text-xs font-medium mb-3">
-                                          <span>⚡</span>
-                                          <span>Fast: ~15-20 seconds</span>
-                                        </div>
-                                        <p className="text-sm text-muted-foreground mb-4">
-                                          One complete diagram with all components, executive summary, key highlights, and detailed tables
-                                        </p>
-                                        <div className="space-y-1 text-xs text-muted-foreground">
-                                          <div className="flex items-center gap-2">
-                                            <Check className="h-3 w-3 text-green-500" />
-                                            <span>Comprehensive overview</span>
-                                          </div>
-                                          <div className="flex items-center gap-2">
-                                            <Check className="h-3 w-3 text-green-500" />
-                                            <span>Executive summary</span>
-                                          </div>
-                                          <div className="flex items-center gap-2">
-                                            <Check className="h-3 w-3 text-green-500" />
-                                            <span>Detailed analysis tables</span>
-                                          </div>
-                                        </div>
-                                      </div>
-                                    </button>
+                                    {(architectureChoicePayload?.options || []).map((opt) => {
+                                      const isDefault = opt.id === architectureChoicePayload?.default;
+                                      const isMulti = opt.id === 'multi-view';
+                                      const cardClass = isDefault
+                                        ? 'group relative bg-gradient-to-br from-primary/5 to-primary/10 dark:from-primary/10 dark:to-primary/20 rounded-xl p-6 border-2 border-primary/30 hover:border-primary hover:shadow-xl transition-all duration-300 text-left disabled:opacity-50 disabled:cursor-not-allowed'
+                                        : 'group relative bg-white dark:bg-gray-900 rounded-xl p-6 border-2 border-gray-200 dark:border-gray-700 hover:border-primary hover:shadow-xl transition-all duration-300 text-left disabled:opacity-50 disabled:cursor-not-allowed';
 
-                                    {/* Multi-View Option */}
-                                    <button
-                                      onClick={() => handleArchitectureModeSelection("multi-view")}
-                                      disabled={isGenerating}
-                                      className="group relative bg-gradient-to-br from-primary/5 to-primary/10 dark:from-primary/10 dark:to-primary/20 rounded-xl p-6 border-2 border-primary/30 hover:border-primary hover:shadow-xl transition-all duration-300 text-left disabled:opacity-50 disabled:cursor-not-allowed"
-                                    >
-                                      <div className="absolute top-4 right-4 w-10 h-10 rounded-full bg-primary/20 flex items-center justify-center group-hover:scale-110 transition-transform">
-                                        <span className="text-2xl">🎯</span>
-                                      </div>
-                                      <div className="pr-12">
-                                        <div className="flex items-center gap-2 mb-2">
-                                          <h4 className="text-lg font-bold text-foreground">
-                                            Multi-View
-                                          </h4>
-                                          <span className="text-xs font-semibold px-2 py-0.5 bg-primary text-primary-foreground rounded-full">
-                                            Recommended
-                                          </span>
-                                        </div>
-                                        <div className="inline-flex items-center gap-1.5 px-2 py-1 bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400 rounded-md text-xs font-medium mb-3">
-                                          <Loader2 className="h-3 w-3" />
-                                          <span>Takes longer: ~45-60 seconds</span>
-                                        </div>
-                                        <p className="text-sm text-muted-foreground mb-4">
-                                          5+ focused diagrams with explanations, code examples, and interview tips for each architectural layer
-                                        </p>
-                                        <div className="space-y-1 text-xs text-muted-foreground">
-                                          <div className="flex items-center gap-2">
-                                            <Check className="h-3 w-3 text-green-500" />
-                                            <span>Multiple specialized views</span>
+                                      return (
+                                        <button
+                                          key={opt.id}
+                                          onClick={() => handleArchitectureModeSelection(opt.id as 'single' | 'multi-view')}
+                                          disabled={isGenerating}
+                                          className={cardClass}
+                                        >
+                                          <div className={`absolute top-4 right-4 w-10 h-10 rounded-full ${isDefault ? 'bg-primary/20' : 'bg-primary/10'} flex items-center justify-center group-hover:scale-110 transition-transform`}>
+                                            <span className="text-2xl">{isMulti ? '🎯' : '📊'}</span>
                                           </div>
-                                          <div className="flex items-center gap-2">
-                                            <Check className="h-3 w-3 text-green-500" />
-                                            <span>Code examples & templates</span>
+                                          <div className="pr-12">
+                                            <div className="flex items-center gap-2 mb-2">
+                                              <h4 className="text-lg font-bold text-foreground">
+                                                {opt.label}
+                                              </h4>
+                                              {isDefault && (
+                                                <span className="text-xs font-semibold px-2 py-0.5 bg-primary text-primary-foreground rounded-full">
+                                                  Recommended
+                                                </span>
+                                              )}
+                                            </div>
+                                            {opt.description && (
+                                              <p className="text-sm text-muted-foreground">
+                                                {opt.description}
+                                              </p>
+                                            )}
                                           </div>
-                                          <div className="flex items-center gap-2">
-                                            <Check className="h-3 w-3 text-green-500" />
-                                            <span>Interview strategy tips</span>
-                                          </div>
-                                        </div>
-                                      </div>
-                                    </button>
+                                        </button>
+                                      );
+                                    })}
                                   </div>
                                 </div>
                               ) : (
@@ -3432,7 +3817,7 @@ export const InterviewAssistant = () => {
                 <TabsContent value="intelligence" className="mt-0">
 
 
-                  <div className="h-[calc(100dvh-85px)] md:h-[calc(100vh-200px)] md:min-h-[600px] pb-4 md:pb-0">
+                  <div className="h-[calc(var(--app-height)-85px)] md:h-[calc(var(--app-height)-200px)] md:min-h-[600px] pb-4 md:pb-0">
                     <InterviewIntelligence
                       onHistoryRefresh={() => loadIntelligenceHistoryTabs({ silent: true })}
                       historyTabs={intelligenceHistoryTabs}
@@ -3443,7 +3828,7 @@ export const InterviewAssistant = () => {
                 </TabsContent>
 
                 <TabsContent value="mock-interview" className="mt-0">
-                  <div className="h-[calc(100dvh-85px)] md:h-[calc(100vh-200px)] md:min-h-[600px] pb-4 md:pb-0">
+                  <div className="h-[calc(var(--app-height)-85px)] md:h-[calc(var(--app-height)-200px)] md:min-h-[600px] pb-4 md:pb-0">
                     <MockInterviewMode
                       selectedHistorySession={selectedMockSession}
                       onHistoryUpdate={loadMockInterviewHistory}
@@ -3482,8 +3867,10 @@ export const InterviewAssistant = () => {
 
       {/* Fixed Search Bar at Bottom - Only show on Answer tab when conversation is active */}
       {
-        activeMainTab === "answer" && (showAnswer || isGenerating) && (
-          <div className="fixed bottom-0 left-0 right-0 z-50 md:left-64">
+        showBottomSearchBar && (
+          <div
+            className={`ia-fixed-bottom fixed bottom-0 left-0 right-0 z-50 ${isDesktopSidebarOpen ? "md:left-64" : "md:left-14"}`}
+          >
             <div className="relative">
               {/* Gradient fade to hide content behind */}
               <div className="absolute bottom-0 left-0 right-0 h-28 md:h-36 bg-gradient-to-t from-background from-35% via-background/90 via-60% to-transparent pointer-events-none -z-10" />
@@ -3509,7 +3896,7 @@ export const InterviewAssistant = () => {
                     size="icon"
                     onClick={handleProfileUploadClick}
                     disabled={isUploadingProfile}
-                    className="mb-1 h-9 w-9 md:h-12 md:w-12 rounded-2xl border-primary/20 bg-background/95 dark:backdrop-blur-xl hover:bg-primary/5 text-primary transition-all shrink-0 shadow-sm"
+                    className="h-12 w-12 rounded-full border-primary/20 bg-background/95 dark:backdrop-blur-xl hover:bg-primary/5 text-primary transition-all shrink-0 shadow-sm"
                     title="Upload Resume/Profile"
                   >
                     {isUploadingProfile ? (
@@ -3549,12 +3936,18 @@ export const InterviewAssistant = () => {
       }
 
       <AnimatePresence>
+        {showOnboardingTour && (
+          <OnboardingOverlay
+            open={showOnboardingTour}
+            onComplete={handleOnboardingTourComplete}
+          />
+        )}
+      </AnimatePresence>
+
+      <AnimatePresence>
         {showKeyOnboarding && (
           <BYOKOnboarding
-            onComplete={() => {
-              setShowKeyOnboarding(false);
-              setHasApiKey(true);
-            }}
+            onComplete={handleApiKeySetupComplete}
           />
         )}
       </AnimatePresence>

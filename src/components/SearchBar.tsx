@@ -1060,9 +1060,9 @@ export const SearchBar = ({ value, onChange, placeholder = "Type your question..
     <div className="relative w-full">
       <div className="relative group">
         {/* ChatGPT-style compact mobile search bar */}
-        <div className="search-bar bg-background/98 backdrop-blur-xl border border-border/50 rounded-2xl shadow-lg focus-within:shadow-xl focus-within:ring-2 focus-within:ring-primary/20 focus-within:border-primary transition-all duration-300 group-hover:border-primary/30">
+        <div className="search-bar bg-background/98 dark:bg-background/90 backdrop-blur-xl border border-border/80 rounded-3xl shadow-md ring-1 ring-border/40 focus-within:ring-2 focus-within:ring-primary/20 focus-within:shadow-lg transition-shadow">
           {/* Main content container - using flex for proper alignment */}
-          <div className="flex items-end gap-1 px-1.5 py-1.5 md:p-2">
+          <div className="flex items-end gap-2 px-3 py-2">
 
             {/* Text area - grows to fill space */}
             <div className="flex-1 min-w-0">
@@ -1075,10 +1075,9 @@ export const SearchBar = ({ value, onChange, placeholder = "Type your question..
                 onBlur={handleBlur}
                 placeholder={placeholder}
                 maxLength={512}
-                className="w-full py-2 pl-1 pr-0 text-sm bg-transparent border-none outline-none resize-none placeholder:text-muted-foreground/70 leading-relaxed overflow-y-auto scrollbar-thin"
+                className="w-full bg-transparent border-none outline-none resize-none placeholder:text-muted-foreground/60 leading-6 overflow-y-auto scrollbar-thin px-0 py-2 text-[16px]"
                 rows={1}
                 style={{
-                  fontSize: '16px', // Prevents zoom on iOS
                   lineHeight: '1.5',
                   minHeight: '32px',
                   maxHeight: '200px',
@@ -1089,20 +1088,20 @@ export const SearchBar = ({ value, onChange, placeholder = "Type your question..
             </div>
 
             {/* Action buttons - right side, always at the far right and bottom */}
-            <div className="flex items-center flex-shrink-0 ml-auto pb-0.5 pr-1 md:pr-0" style={{ gap: isMobile ? '0.125rem' : '0.25rem' }}>
+            <div className="flex items-center flex-shrink-0 ml-auto" style={{ gap: isMobile ? '0.25rem' : '0.375rem' }}>
               {/* Microphone button */}
               {isSupported && (
                 <Button
                   onClick={handleProMicToggle}
                   variant="ghost"
-                  size="sm"
-                  className={`rounded-full h-8 w-8 md:h-6 md:w-6 p-0 touch-manipulation ${isCapturingProMic
+                  size="icon"
+                  className={`rounded-full h-10 w-10 md:h-9 md:w-9 touch-manipulation ${isCapturingProMic
                     ? "text-destructive hover:bg-destructive/10"
                     : "text-muted-foreground hover:text-foreground hover:bg-muted/50"
                     }`}
                   title={isCapturingProMic ? 'Stop microphone' : 'Start microphone'}
                 >
-                  <Mic className="h-4 w-4 md:h-3 md:w-3" />
+                  <Mic className="h-4 w-4" />
                 </Button>
               )}
 
@@ -1110,13 +1109,13 @@ export const SearchBar = ({ value, onChange, placeholder = "Type your question..
               <Button
                 onClick={() => canGenerate && value.trim() && onGenerate && !isGenerating ? onGenerate() : null}
                 disabled={!canGenerate || !value.trim() || isGenerating}
-                className="rounded-full h-8 w-8 md:h-6 md:w-6 p-0 bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed touch-manipulation"
+                className="rounded-full h-8 w-8 md:h-8 md:w-8 p-0 bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed touch-manipulation"
                 title="Send message"
               >
                 {isGenerating ? (
-                  <div className="w-4 h-4 md:w-3 md:h-3 border-2 border-primary-foreground rounded-full border-t-transparent animate-spin"></div>
+                  <div className="w-3.5 h-3.5 border-2 border-primary-foreground rounded-full border-t-transparent animate-spin"></div>
                 ) : (
-                  <svg className="h-4 w-4 md:h-3 md:w-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <svg className="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" />
                   </svg>
                 )}

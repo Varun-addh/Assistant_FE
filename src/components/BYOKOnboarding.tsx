@@ -47,10 +47,13 @@ export const BYOKOnboarding = ({ onComplete }: BYOKOnboardingProps) => {
     }, []);
 
     const handleSave = () => {
-        if (!groqKey.trim()) {
+        const groq = groqKey.trim();
+        const gemini = geminiKey.trim();
+
+        if (!groq && !gemini) {
             toast({
-                title: "Interview Engine Required",
-                description: "Connect your Interview Engine (Groq) to unlock Questions, Mock Interviews, and Search.",
+                title: "API Key Required",
+                description: "Add at least one key (Groq or Gemini) to continue.",
                 variant: "destructive",
             });
             return;
@@ -58,21 +61,29 @@ export const BYOKOnboarding = ({ onComplete }: BYOKOnboardingProps) => {
 
         setIsSubmitting(true);
         setTimeout(() => {
-            localStorage.setItem("user_api_key", groqKey.trim());
-            if (geminiKey.trim()) {
-                localStorage.setItem("gemini_api_key", geminiKey.trim());
-            }
+            if (groq) localStorage.setItem("user_api_key", groq);
+            if (gemini) localStorage.setItem("gemini_api_key", gemini);
+
             setIsSubmitting(false);
 
-            const enginesConnected = geminiKey.trim() ? "both" : "interview";
+            const enginesConnected = groq && gemini ? "both" : groq ? "interview" : "answer";
             toast({
-                title: enginesConnected === "both" ? "🚀 All Engines Connected!" : "⚡ Interview Engine Connected!",
-                description: enginesConnected === "both"
-                    ? "Full platform unlocked. Ready for advanced preparation."
-                    : "Questions, Mock, and Search unlocked. Add Answer Engine anytime for advanced answers.",
+                title:
+                    enginesConnected === "both"
+                        ? "🚀 All Engines Connected!"
+                        : enginesConnected === "interview"
+                            ? "⚡ Interview Engine Connected!"
+                            : "🧠 Answer Engine Connected!",
+                description:
+                    enginesConnected === "both"
+                        ? "Full platform unlocked. Ready for advanced preparation."
+                        : enginesConnected === "interview"
+                            ? "Questions, Mock, and Search unlocked. Add Answer Engine anytime for advanced answers."
+                            : "Advanced Answer Card unlocked. Add Groq anytime for Questions, Mock Interviews, and Search.",
             });
+
             onComplete();
-        }, 1000);
+        }, 900);
     };
 
     if (currentStep === 'intro') {
@@ -350,7 +361,13 @@ export const BYOKOnboarding = ({ onComplete }: BYOKOnboardingProps) => {
                     >
                         {isSubmitting ? "Connecting Engines..." : (
                             <>
-                                {groqKey && geminiKey ? "Connect Both Engines" : "Connect Interview Engine"}
+                                {groqKey.trim() && geminiKey.trim()
+                                    ? "Connect Both Engines"
+                                    : groqKey.trim()
+                                        ? "Connect Interview Engine"
+                                        : geminiKey.trim()
+                                            ? "Connect Answer Engine"
+                                            : "Connect"}
                                 <ArrowRight className="w-5 h-5 ml-2" />
                             </>
                         )}

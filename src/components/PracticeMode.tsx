@@ -8,18 +8,24 @@ import { Separator } from '@/components/ui/separator';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
+import { Textarea } from '@/components/ui/textarea';
 import { useToast } from '@/hooks/use-toast';
+import { useNavigate } from 'react-router-dom';
 import { InterviewCodeEditor } from './InterviewCodeEditor';
+import InstantScoreBreakdown from './InstantScoreBreakdown';
 import {
   AudioRecorder,
   startInterview,
   submitAnswer,
   submitCode,
   acknowledgeFeedback,
+  ratePracticeFeedback,
   playQuestionAudio,
   checkPracticeModeStatus,
   quickStartInterview,
   getSessionEvaluation,
+  getPracticeInsights,
+  type PracticeInsightsResponse,
   type StartInterviewResponse,
   type SubmitAnswerResponse,
   type SubmitCodeResponse,
@@ -35,6 +41,7 @@ import {
   type QuestionType,
   type CodeTestResult,
   type CodeEvaluationFeedback,
+  type PerceivedDifficulty,
   QuestionType as QuestionTypeEnum,
   API_BASE_URL,
 } from '@/lib/practiceModeApi';
@@ -65,20 +72,73 @@ import {
 } from 'lucide-react';
 import RoundSelection from './RoundSelection';
 import type { RoundConfig } from '@/lib/practiceModeApi';
+import { StrataxApiError } from '@/lib/strataxClient';
 
 type PracticePhase = 'welcome' | 'setup' | 'round-selection' | 'question' | 'recording' | 'processing' | 'feedback' | 'complete';
 
+type FeedbackRatingDraft = {
+  usefulnessRating?: number;
+  perceivedDifficulty?: PerceivedDifficulty;
+  comment?: string;
+};
+
+type GuestGateBanner =
+  | { kind: 'limit'; message?: string }
+  | { kind: 'unavailable'; message?: string }
+  | null;
+
 export const PracticeMode = () => {
   const { toast } = useToast();
+  const navigate = useNavigate();
   const audioRecorder = useRef(new AudioRecorder());
   const audioPlayerRef = useRef<HTMLAudioElement | null>(null);
+
+  const viewProgressButton = (className?: string) => (
+    <Button
+      type="button"
+      variant="ghost"
+      size="sm"
+      onClick={() => navigate('/progress')}
+      className={className}
+    >
+      <BarChart3 className="w-4 h-4 mr-2" />
+      View Progress
+    </Button>
+  );
+
+  const [guestGateBanner, setGuestGateBanner] = useState<GuestGateBanner>(null);
+
+  // Show a friendly, professional in-flow message when guest quota/capacity is hit.
+  useEffect(() => {
+    const onLimitReached = (event: Event) => {
+      const detail = (event as CustomEvent).detail as { message?: string };
+      setGuestGateBanner({ kind: 'limit', message: detail?.message });
+    };
+
+    const onUnavailable = (event: Event) => {
+      const detail = (event as CustomEvent).detail as { message?: string };
+      setGuestGateBanner({ kind: 'unavailable', message: detail?.message });
+    };
+
+    window.addEventListener('demo:limit-reached', onLimitReached);
+    window.addEventListener('demo:unavailable', onUnavailable);
+
+    return () => {
+      window.removeEventListener('demo:limit-reached', onLimitReached);
+      window.removeEventListener('demo:unavailable', onUnavailable);
+    };
+  }, []);
+
+  // Optional insights (coach-like nudge)
+  const [practiceInsights, setPracticeInsights] = useState<PracticeInsightsResponse | null>(null);
+  const [practiceInsightsLoading, setPracticeInsightsLoading] = useState(false);
 
   // State
   const [phase, setPhase] = useState<PracticePhase>('welcome');
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [currentQuestion, setCurrentQuestion] = useState<StartInterviewResponse['first_question'] | null>(null);
   const [currentQuestionNumber, setCurrentQuestionNumber] = useState(0);
-  const [totalQuestions, setTotalQuestions] = useState(5);
+  const [totalQuestions, setTotalQuestions] = useState(1);
   const [currentRoundConfig, setCurrentRoundConfig] = useState<RoundConfig | null>(null);
   const [isRecording, setIsRecording] = useState(false);
   const [recordingTime, setRecordingTime] = useState(0);
@@ -87,6 +147,14 @@ export const PracticeMode = () => {
   const [isPlayingAudio, setIsPlayingAudio] = useState(false);
   const [isAudioLoading, setIsAudioLoading] = useState(false);
   const [audioLevel, setAudioLevel] = useState<number>(0);
+
+  // If a next-session plan exists (set from Progress screen), jump straight into round selection.
+  useEffect(() => {
+    try {
+      const raw = window.localStorage.getItem('practice_next_session_plan');
+      if (raw) setPhase('round-selection');
+    } catch { }
+  }, []);
 
   // Quick Start state
   const [useQuickStart, setUseQuickStart] = useState(false);
@@ -99,7 +167,7 @@ export const PracticeMode = () => {
   const [selectedDifficulty, setSelectedDifficulty] = useState<InterviewDifficulty>('easy');
   const [enableTTS, setEnableTTS] = useState(true);
   const [enableAdaptive, setEnableAdaptive] = useState(false);
-  const [questionCount, setQuestionCount] = useState<number>(5);  // NEW - Number of questions
+  const [questionCount, setQuestionCount] = useState<number>(1);  // Default to 1 question
 
   // Adaptive Profile state
   const [profileDomain, setProfileDomain] = useState('');
@@ -109,11 +177,115 @@ export const PracticeMode = () => {
   const [profileCompany, setProfileCompany] = useState('');
   const [profileFocus, setProfileFocus] = useState<string>('');
 
+  // Persist the last domain so we can show insights on next visit even before setup.
+  useEffect(() => {
+    const d = profileDomain?.trim();
+    if (!d) return;
+    try { window.localStorage.setItem('practice_last_domain', d); } catch { }
+  }, [profileDomain]);
+
+  // Load insights (best-effort). Keep UI silent if endpoint isn't available.
+  useEffect(() => {
+    const domain = (profileDomain || (typeof window !== 'undefined' ? window.localStorage.getItem('practice_last_domain') : '') || '').trim();
+    if (!domain) return;
+
+    let cancelled = false;
+    setPracticeInsightsLoading(true);
+    getPracticeInsights({ domain, lookback_days: 30 })
+      .then((data) => {
+        if (cancelled) return;
+        setPracticeInsights(data);
+      })
+      .catch(() => {
+        // Intentionally silent: insights are optional.
+      })
+      .finally(() => {
+        if (cancelled) return;
+        setPracticeInsightsLoading(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [profileDomain]);
+
+  const renderPracticeInsights = () => {
+    const focus = Array.isArray(practiceInsights?.recommended_focus)
+      ? practiceInsights!.recommended_focus!.filter(Boolean).slice(0, 3)
+      : [];
+
+    if (focus.length === 0 && !practiceInsightsLoading) return null;
+
+    const overall = (practiceInsights?.overall || {}) as Record<string, unknown>;
+    const correctness = typeof overall.correctness === 'number' ? overall.correctness : null;
+    const confidence = typeof overall.confidence === 'number' ? overall.confidence : null;
+    const filler = typeof overall.filler === 'number' ? overall.filler : null;
+
+    const labelFromScore = (value: number | null, thresholds: { needsWork: number; steady: number }) => {
+      if (value == null || Number.isNaN(value)) return 'steady';
+      if (value < thresholds.needsWork) return 'needs work';
+      if (value < thresholds.steady) return 'steady';
+      return 'steady';
+    };
+
+    // Avoid claiming trends; give a simple direction-like signal.
+    const correctnessLabel = labelFromScore(correctness, { needsWork: 0.7, steady: 0.85 });
+    const confidenceLabel = labelFromScore(confidence, { needsWork: 0.65, steady: 0.8 });
+    // Filler is inverted (more filler is worse). Keep thresholds conservative.
+    const deliveryLabel = filler != null && filler > 10 ? 'needs work' : 'steady';
+
+    const basedOnLine = (() => {
+      const n = typeof practiceInsights?.lookback_sessions === 'number' ? practiceInsights!.lookback_sessions : null;
+      if (n && n > 0) return `Based on your last ${n} practice sessions.`;
+      return 'Based on your recent practice sessions.';
+    })();
+
+    return (
+      <div className="p-3 bg-muted/30 rounded-2xl border border-border/60">
+        <div className="flex items-center justify-between gap-3">
+          <div>
+            <div className="text-[11px] font-black uppercase tracking-[0.18em] text-muted-foreground">Your focus for next session</div>
+            <div className="text-[10px] text-muted-foreground mt-1">{basedOnLine}</div>
+          </div>
+          {practiceInsightsLoading && (
+            <Loader2 className="w-4 h-4 animate-spin text-muted-foreground" />
+          )}
+        </div>
+
+        {focus.length > 0 && (
+          <div className="mt-2 space-y-1.5">
+            {focus.map((x, idx) => (
+              <div key={`${x}-${idx}`} className="flex items-start gap-2 text-[12px]">
+                <div className="mt-1 h-1.5 w-1.5 rounded-full bg-primary/70" />
+                <div className="text-foreground/90 font-medium leading-snug">{x}</div>
+              </div>
+            ))}
+          </div>
+        )}
+
+        <div className="mt-3 pt-3 border-t border-border/50">
+          <div className="text-[11px] font-black uppercase tracking-[0.18em] text-muted-foreground">Recent performance</div>
+          <div className="mt-2 grid grid-cols-1 gap-1 text-[12px] text-muted-foreground">
+            <div className="flex items-center justify-between"><span>Correctness</span><span className="text-foreground/80">{correctnessLabel}</span></div>
+            <div className="flex items-center justify-between"><span>Confidence</span><span className="text-foreground/80">{confidenceLabel}</span></div>
+            <div className="flex items-center justify-between"><span>Delivery clarity</span><span className="text-foreground/80">{deliveryLabel}</span></div>
+          </div>
+        </div>
+      </div>
+    );
+  };
+
   // Feedback state
   const [transcription, setTranscription] = useState<string>('');
   const [speechMetrics, setSpeechMetrics] = useState<SpeechMetrics | null>(null);
   const [microFeedback, setMicroFeedback] = useState<MicroFeedback | null>(null);
   const [evaluation, setEvaluation] = useState<Evaluation | null>(null);
+  const [completionPending, setCompletionPending] = useState(false);
+
+  // Phase 3: human feedback rating (best-effort)
+  const [feedbackRatingDraftByQuestion, setFeedbackRatingDraftByQuestion] = useState<Record<number, FeedbackRatingDraft>>({});
+  const [ratedByQuestion, setRatedByQuestion] = useState<Record<number, boolean>>({});
+  const [ratingSubmittingByQuestion, setRatingSubmittingByQuestion] = useState<Record<number, boolean>>({});
 
   // Code submission state (for coding questions)
   const [codeTestResults, setCodeTestResults] = useState<CodeTestResult[] | null>(null);
@@ -225,6 +397,7 @@ export const PracticeMode = () => {
       setCurrentQuestionNumber(1);
       setTotalQuestions(response.total_questions);  // Use total from API response
       setTimeRemaining(response.first_question.time_limit);
+      setCompletionPending(false);
       setPhase('question');
 
       // DO NOT start countdown timer here - it starts when user clicks "Start Recording"
@@ -280,7 +453,7 @@ export const PracticeMode = () => {
 
       toast({
         title: '🎯 Interview Started!',
-        description: `Question 1 of 5`,
+        description: `Question 1 of ${response.total_questions}`,
       });
     } catch (error: any) {
       console.error('❌ [Practice Mode] Start Interview Error:', error);
@@ -310,8 +483,8 @@ export const PracticeMode = () => {
       const response = await quickStartInterview(
         quickStartInput,
         true,
-        enableTTS
-        // NO questionCount or targetCompany - AI extracts from voice input
+        enableTTS,
+        1
       );
       console.log('🚀 [Quick Start] Response:', response);
       console.log('📊 [Quick Start] Inferred Profile:', response.inferred_profile);
@@ -332,6 +505,7 @@ export const PracticeMode = () => {
       }
 
       setTimeRemaining(response.first_question.time_limit);
+      setCompletionPending(false);
       setPhase('question');
 
       // Play TTS audio if available
@@ -477,16 +651,18 @@ export const PracticeMode = () => {
       setSpeechMetrics(response.metrics);  // Changed from 'speech_metrics' to 'metrics'
       setMicroFeedback(response.micro_feedback);
 
+      setCompletionPending(!!response.complete);
+
       if (response.complete) {
-        // Interview complete - show evaluation
-        console.log('🎉 [Practice Mode] Interview Complete! Final Evaluation:', response.evaluation_report);
+        // Session is complete, but always show the final feedback first.
+        console.log('🎉 [Practice Mode] Session marked complete; showing final feedback before completion.');
 
         if (!response.evaluation_report) {
           console.warn('⚠️ [Practice Mode] No evaluation_report in response, attempting diagnostic fetch...');
 
           // Try to fetch evaluation using diagnostic endpoint
           try {
-            const diagnosticData = await getSessionEvaluation(sessionId!);
+            const diagnosticData = await getSessionEvaluation(sessionId);
             console.log('📊 [Diagnostic] Evaluation data:', diagnosticData);
 
             if (diagnosticData.evaluation) {
@@ -507,19 +683,12 @@ export const PracticeMode = () => {
           setEvaluation(response.evaluation_report);
         }
 
-        setPhase('complete');
-
-        toast({
-          title: '🎉 Interview Complete!',
-          description: `Completed all ${totalQuestions} questions successfully!`,
-        });
+        setPhase('feedback');
       } else {
-        // Show feedback - user must click "Next Question" to continue
+        // Show feedback - user must click to continue
         console.log('✅ [Practice Mode] Answer submitted, showing feedback');
         console.log('🔄 [Practice Mode] Requires acknowledgment:', response.requires_acknowledgment);
         setPhase('feedback');
-
-        // No auto-advance - wait for user to click "Next Question" button
       }
     } catch (error: any) {
       console.error('❌ [Practice Mode] Submit Answer Error:', error);
@@ -569,20 +738,17 @@ export const PracticeMode = () => {
       setCodeTestResults(response.test_results);
       setCodeEvaluation(response.evaluation);
 
+      setCompletionPending(!!response.complete);
+
       if (response.complete) {
-        // Interview complete
-        console.log('🎉 [Practice Mode] Interview Complete!');
+        // Session is complete, but always show the final code feedback first.
+        console.log('🎉 [Practice Mode] Session marked complete; showing final feedback before completion.');
         if (response.evaluation_report) {
           setEvaluation(response.evaluation_report);
         }
-        setPhase('complete');
-
-        toast({
-          title: '🎉 Interview Complete!',
-          description: `Completed all ${totalQuestions} questions successfully!`,
-        });
+        setPhase('feedback');
       } else {
-        // Show code feedback - user must review results and click "Next Question"
+        // Show code feedback - user must review results and click to continue
         console.log('✅ [Practice Mode] Code evaluated, showing results');
         setPhase('feedback');
 
@@ -645,6 +811,7 @@ export const PracticeMode = () => {
     setSpeechMetrics(null);
     setMicroFeedback(null);
     setEvaluation(null);
+    setCompletionPending(false);
     setRecordingTime(0);
   };
 
@@ -700,6 +867,50 @@ export const PracticeMode = () => {
     return 'text-orange-500';
   };
 
+  const updateFeedbackRatingDraft = (questionId: number, patch: Partial<FeedbackRatingDraft>) => {
+    setFeedbackRatingDraftByQuestion((prev) => ({
+      ...prev,
+      [questionId]: {
+        ...(prev[questionId] ?? {}),
+        ...patch,
+      },
+    }));
+  };
+
+  const submitFeedbackRatingBestEffort = (opts: {
+    sessionId: string;
+    questionId: number;
+  }) => {
+    const { sessionId, questionId } = opts;
+
+    if (!sessionId || !questionId) return;
+    if (ratedByQuestion[questionId]) return;
+    if (ratingSubmittingByQuestion[questionId]) return;
+
+    const draft = feedbackRatingDraftByQuestion[questionId];
+    const usefulnessRating = draft?.usefulnessRating;
+    if (!usefulnessRating) return; // optional; only send if user selected one
+
+    setRatingSubmittingByQuestion((prev) => ({ ...prev, [questionId]: true }));
+
+    ratePracticeFeedback({
+      session_id: sessionId,
+      question_id: questionId,
+      usefulness_rating: usefulnessRating,
+      perceived_difficulty: draft?.perceivedDifficulty,
+      comment: draft?.comment?.trim() ? draft.comment.trim() : undefined,
+    })
+      .then(() => {
+        setRatedByQuestion((prev) => ({ ...prev, [questionId]: true }));
+      })
+      .catch((err) => {
+        console.warn('⚠️ [Practice Mode] Feedback rating submit failed (non-blocking):', err);
+      })
+      .finally(() => {
+        setRatingSubmittingByQuestion((prev) => ({ ...prev, [questionId]: false }));
+      });
+  };
+
   const handleNextQuestion = async () => {
     if (!sessionId) {
       console.error('❌ [Practice Mode] No session ID available');
@@ -714,6 +925,10 @@ export const PracticeMode = () => {
     setIsProcessing(true);
 
     try {
+      // Phase 3: best-effort rate feedback right before user advances.
+      // Do not block Next Question if this fails.
+      submitFeedbackRatingBestEffort({ sessionId, questionId: currentQuestion.id });
+
       console.log('🔄 [Practice Mode] Acknowledging feedback for session:', sessionId, 'question:', currentQuestion.id);
       console.log('📊 [Practice Mode] Current state:', {
         currentQuestionNumber,
@@ -740,6 +955,7 @@ export const PracticeMode = () => {
         }
 
         setPhase('complete');
+  setCompletionPending(false);
 
         toast({
           title: '🎉 Interview Complete!',
@@ -764,6 +980,7 @@ export const PracticeMode = () => {
         setCurrentQuestion(response.next_question);
         setCurrentQuestionNumber(prev => prev + 1);
         setTimeRemaining(response.next_question.time_limit);
+        setCompletionPending(false);
         setPhase('question');
         setTranscription('');
         setSpeechMetrics(null);
@@ -823,6 +1040,22 @@ export const PracticeMode = () => {
       console.error('❌ [Practice Mode] Error stack:', error.stack);
       console.error('❌ [Practice Mode] Error message:', error.message);
 
+      // Guest gating: avoid scary red toasts; the global modal + inline banner handle this.
+      if (error instanceof StrataxApiError) {
+        const detail = error.detail as any;
+        const code = detail?.error;
+
+        if (error.status === 429 && code === 'DEMO_LIMIT_REACHED') {
+          setGuestGateBanner({ kind: 'limit', message: detail?.message });
+          return;
+        }
+
+        if (error.status === 503 && code === 'DEMO_UNAVAILABLE') {
+          setGuestGateBanner({ kind: 'unavailable', message: detail?.message });
+          return;
+        }
+      }
+
       toast({
         title: '❌ Failed to Load Next Question',
         description: error.message || 'Could not load the next question. Please try again.',
@@ -833,7 +1066,7 @@ export const PracticeMode = () => {
     }
   };
 
-  const handleRoundStart = (sessionId: string, roundConfig: RoundConfig, firstQuestion: any, ttsAudioUrl?: string) => {
+  const handleRoundStart = (sessionId: string, roundConfig: RoundConfig, firstQuestion: any, ttsAudioUrl?: string, totalQuestionsFromApi?: number) => {
     console.log('🎯 [Round-Based] Round started:', roundConfig);
     console.log('📝 [Round-Based] First question structure:', firstQuestion);
     console.log('🔍 [Question Type Debug]:', {
@@ -849,7 +1082,11 @@ export const PracticeMode = () => {
     setCurrentRoundConfig(roundConfig);
     setCurrentQuestion(firstQuestion);
     setCurrentQuestionNumber(1);
-    setTotalQuestions(roundConfig.question_count);
+    setCompletionPending(false);
+    const resolvedTotal = typeof totalQuestionsFromApi === 'number' && totalQuestionsFromApi >= 1
+      ? totalQuestionsFromApi
+      : roundConfig.question_count;
+    setTotalQuestions(resolvedTotal);
     setTimeRemaining(firstQuestion.time_limit);
     setPhase('question');
 
@@ -903,7 +1140,7 @@ export const PracticeMode = () => {
 
     toast({
       title: `🎯 ${roundConfig.name} Started!`,
-      description: `${roundConfig.question_count} questions • ${roundConfig.duration_minutes} minutes`,
+      description: `${(typeof totalQuestionsFromApi === 'number' && totalQuestionsFromApi >= 1) ? totalQuestionsFromApi : roundConfig.question_count} questions • ${roundConfig.duration_minutes} minutes`,
     });
   };
 
@@ -922,6 +1159,9 @@ export const PracticeMode = () => {
   if (phase === 'welcome') {
     return (
       <div className="max-w-4xl mx-auto w-full px-4">
+        <div className="flex justify-end pt-2">
+          {viewProgressButton("h-8 px-3 md:hidden")}
+        </div>
         <Card className="w-full border-2 shadow-lg">
           <CardHeader className="text-center space-y-2 pb-3 pt-6 px-4">
             <div className="mx-auto w-12 h-12 md:w-14 md:h-14 bg-gradient-to-br from-purple-500 to-pink-500 rounded-2xl flex items-center justify-center shadow-lg shadow-purple-500/20">
@@ -938,6 +1178,7 @@ export const PracticeMode = () => {
           </CardHeader>
 
           <CardContent className="space-y-4 pb-6">
+            {renderPracticeInsights()}
             {/* Navigation Toggle - More compact for mobile */}
             <div className="grid grid-cols-3 gap-1 p-1 bg-muted/40 rounded-xl border border-border/50">
               <Button
@@ -1256,6 +1497,12 @@ export const PracticeMode = () => {
           </Button>
         </div>
 
+        <div className="absolute top-3 right-2 z-[60]">
+          {viewProgressButton(
+            "h-9 px-3 md:hidden rounded-xl bg-background/60 backdrop-blur-md border border-white/10 hover:bg-background/80 hover:border-white/20 text-muted-foreground hover:text-foreground transition-all duration-300 shadow-lg"
+          )}
+        </div>
+
         {/* Scrollable Content Container */}
         <div
           ref={scrollContainerRef}
@@ -1279,6 +1526,9 @@ export const PracticeMode = () => {
   if (phase === 'setup') {
     return (
       <div className="max-w-4xl mx-auto w-full px-4">
+        <div className="flex justify-end pt-2">
+          {viewProgressButton("h-8 px-3 md:hidden")}
+        </div>
         <Card className="w-full">
           <CardHeader className="text-center pb-3">
             <CardTitle className="text-xl">
@@ -1687,11 +1937,27 @@ export const PracticeMode = () => {
   }
 
   if (phase === 'feedback') {
+    const questionId = currentQuestion?.id;
+    const ratingDraft = questionId ? feedbackRatingDraftByQuestion[questionId] : undefined;
+    const usefulnessRating = ratingDraft?.usefulnessRating;
+    const perceivedDifficulty = ratingDraft?.perceivedDifficulty;
+    const comment = ratingDraft?.comment ?? '';
+
+    const ratingSubmitted = !!(questionId && ratedByQuestion[questionId]);
+    const ratingSubmitting = !!(questionId && ratingSubmittingByQuestion[questionId]);
+
     return (
       <div className="max-w-4xl mx-auto w-full px-3 sm:px-4 flex flex-col space-y-3 sm:space-y-4 pb-6">
         {/* Header */}
         <div className="flex items-center justify-between pt-2">
-          <h2 className="text-lg sm:text-2xl font-bold">Answer Feedback</h2>
+          <div className="flex items-center gap-2">
+            <h2 className="text-lg sm:text-2xl font-bold">Answer Feedback</h2>
+            {completionPending && (
+              <Badge className="bg-primary/10 text-primary border-primary/20" variant="outline">
+                Final
+              </Badge>
+            )}
+          </div>
           <Badge variant="outline" className="text-xs sm:text-sm">
             Question {currentQuestionNumber} / {totalQuestions}
           </Badge>
@@ -1969,10 +2235,126 @@ export const PracticeMode = () => {
           </CardContent>
         </Card>
 
+        {/* Phase 3: Feedback usefulness rating (optional) */}
+        {questionId && (
+          <Card className="border-muted">
+            <CardHeader className="px-3 sm:px-6 pt-4 sm:pt-6 pb-3">
+              <CardTitle className="text-base sm:text-lg">Was this feedback useful?</CardTitle>
+              <CardDescription className="text-xs sm:text-sm">Optional — helps us improve the coach.</CardDescription>
+            </CardHeader>
+            <CardContent className="px-3 sm:px-6 pb-4 sm:pb-6 space-y-3">
+              <div className="flex items-center gap-2">
+                <div className="flex items-center gap-1">
+                  {[1, 2, 3, 4, 5].map((v) => {
+                    const active = (usefulnessRating ?? 0) >= v;
+                    return (
+                      <Button
+                        key={v}
+                        type="button"
+                        variant="ghost"
+                        size="icon"
+                        disabled={ratingSubmitted || ratingSubmitting}
+                        className="h-9 w-9"
+                        onClick={() => updateFeedbackRatingDraft(questionId, { usefulnessRating: v })}
+                        aria-label={`Rate usefulness ${v} out of 5`}
+                      >
+                        <Star className={active ? 'text-yellow-500 fill-yellow-500' : 'text-muted-foreground'} />
+                      </Button>
+                    );
+                  })}
+                </div>
+                {ratingSubmitted ? (
+                  <span className="text-xs text-muted-foreground">Thanks — saved.</span>
+                ) : ratingSubmitting ? (
+                  <span className="text-xs text-muted-foreground">Saving…</span>
+                ) : usefulnessRating ? (
+                  <span className="text-xs text-muted-foreground">{usefulnessRating}/5</span>
+                ) : (
+                  <span className="text-xs text-muted-foreground">(tap to rate)</span>
+                )}
+              </div>
+
+              <div className="space-y-2">
+                <Label className="text-xs sm:text-sm">Felt difficulty (optional)</Label>
+                <div className="flex gap-2">
+                  {(['easy', 'medium', 'hard'] as const).map((d) => {
+                    const selected = perceivedDifficulty === d;
+                    return (
+                      <Button
+                        key={d}
+                        type="button"
+                        variant={selected ? 'secondary' : 'outline'}
+                        size="sm"
+                        disabled={ratingSubmitted || ratingSubmitting}
+                        onClick={() => updateFeedbackRatingDraft(questionId, { perceivedDifficulty: d })}
+                        className="capitalize"
+                      >
+                        {d}
+                      </Button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                <Label className="text-xs sm:text-sm">Comment (optional)</Label>
+                <Textarea
+                  value={comment}
+                  disabled={ratingSubmitted || ratingSubmitting}
+                  onChange={(e) => updateFeedbackRatingDraft(questionId, { comment: e.target.value })}
+                  placeholder="What helped? What was missing?"
+                  className="min-h-[56px]"
+                  maxLength={500}
+                />
+              </div>
+            </CardContent>
+          </Card>
+        )}
+
+        {guestGateBanner && (
+          <Card className="border-2 border-amber-500/30 bg-amber-500/5">
+            <CardContent className="pt-5">
+              <div className="flex items-start gap-3">
+                <AlertCircle className="w-5 h-5 text-amber-500 mt-0.5" />
+                <div className="flex-1 min-w-0">
+                  <div className="font-semibold">
+                    {guestGateBanner.kind === 'limit'
+                      ? 'Guest usage limit reached'
+                      : 'Guest mode temporarily unavailable'}
+                  </div>
+                  <p className="text-sm text-muted-foreground mt-1">
+                    {guestGateBanner.message?.trim()
+                      ? guestGateBanner.message
+                      : guestGateBanner.kind === 'limit'
+                        ? 'You’ve used all guest credits for now. Sign in to continue, or connect your own API keys for unlimited usage.'
+                        : 'Guest capacity is currently full right now. Please try again later, or sign in and use your own API keys.'}
+                  </p>
+                  <div className="mt-3 flex flex-wrap gap-2 justify-end">
+                    <Button variant="outline" onClick={() => setGuestGateBanner(null)}>
+                      Dismiss
+                    </Button>
+                    <Button
+                      onClick={() => {
+                        try {
+                          window.location.assign('/login?mode=signin');
+                        } catch {
+                          window.location.href = '/login?mode=signin';
+                        }
+                      }}
+                    >
+                      Sign in
+                    </Button>
+                  </div>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        )}
+
         <div className="flex justify-center gap-4">
           <Button
             onClick={handleNextQuestion}
-            disabled={isProcessing}
+            disabled={isProcessing || !!guestGateBanner}
             size="lg"
             className="px-8"
           >
@@ -1986,8 +2368,12 @@ export const PracticeMode = () => {
               </>
             ) : (
               <>
-                Next Question
-                <ArrowRight className="ml-2 w-4 h-4" />
+                {completionPending ? 'Finish' : 'Next Question'}
+                {completionPending ? (
+                  <CheckCircle2 className="ml-2 w-4 h-4" />
+                ) : (
+                  <ArrowRight className="ml-2 w-4 h-4" />
+                )}
               </>
             )}
           </Button>
@@ -2032,43 +2418,53 @@ export const PracticeMode = () => {
               </CardContent>
             </Card>
 
-            {/* Score Card */}
-            <Card className="border-2">
-              <CardHeader>
-                <CardTitle className="text-2xl">Overall Performance</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="flex items-center justify-between">
-                  <div className="flex-1">
-                    <div className="flex items-baseline gap-3 mb-2">
-                      <span className={`text-6xl font-bold ${getScoreColor(score)}`}>
-                        {score}
-                      </span>
-                      <span className="text-3xl text-muted-foreground">/100</span>
-                      <Badge className="text-xl px-4 py-2 ml-4">{grade}</Badge>
-                    </div>
-                    <Progress value={score} className="h-3 mt-4" />
-                    <p className="text-xs text-muted-foreground mt-2">
-                      Based on average confidence score: {avgConfidence.toFixed(2)}{avgConfidence <= 1 ? ' (0-1 scale)' : '/10'}
-                    </p>
-                  </div>
-                  <div className="flex flex-col items-center gap-2 ml-8">
-                    <div className="relative w-16 h-16">
-                      <Star className="w-16 h-16 text-gray-300 absolute" />
-                      <div
-                        className="overflow-hidden absolute inset-0"
-                        style={{ clipPath: `inset(0 ${100 - score}% 0 0)` }}
-                      >
-                        <Star className="w-16 h-16 text-yellow-500 fill-yellow-500" />
+            {/* Instant Score Breakdown */}
+            {sessionId && (
+              <InstantScoreBreakdown 
+                sessionId={sessionId} 
+                onViewProgress={() => navigate('/progress')}
+              />
+            )}
+
+            {/* Fallback: Legacy Score Card (only if instant score fails) */}
+            {!sessionId && (
+              <Card className="border-2">
+                <CardHeader>
+                  <CardTitle className="text-2xl">Overall Performance</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="flex items-center justify-between">
+                    <div className="flex-1">
+                      <div className="flex items-baseline gap-3 mb-2">
+                        <span className={`text-6xl font-bold ${getScoreColor(score)}`}>
+                          {score}
+                        </span>
+                        <span className="text-3xl text-muted-foreground">/100</span>
+                        <Badge className="text-xl px-4 py-2 ml-4">{grade}</Badge>
                       </div>
+                      <Progress value={score} className="h-3 mt-4" />
+                      <p className="text-xs text-muted-foreground mt-2">
+                        Based on average confidence score: {avgConfidence.toFixed(2)}{avgConfidence <= 1 ? ' (0-1 scale)' : '/10'}
+                      </p>
                     </div>
-                    <span className="text-xs text-muted-foreground font-medium">
-                      {score >= 80 ? 'Excellent!' : score >= 60 ? 'Good!' : score >= 40 ? 'Fair' : 'Keep Practicing'}
-                    </span>
+                    <div className="flex flex-col items-center gap-2 ml-8">
+                      <div className="relative w-16 h-16">
+                        <Star className="w-16 h-16 text-gray-300 absolute" />
+                        <div
+                          className="overflow-hidden absolute inset-0"
+                          style={{ clipPath: `inset(0 ${100 - score}% 0 0)` }}
+                        >
+                          <Star className="w-16 h-16 text-yellow-500 fill-yellow-500" />
+                        </div>
+                      </div>
+                      <span className="text-xs text-muted-foreground font-medium">
+                        {score >= 80 ? 'Excellent!' : score >= 60 ? 'Good!' : score >= 40 ? 'Fair' : 'Keep Practicing'}
+                      </span>
+                    </div>
                   </div>
-                </div>
-              </CardContent>
-            </Card>
+                </CardContent>
+              </Card>
+            )}
 
             {/* Strengths */}
             <Card>

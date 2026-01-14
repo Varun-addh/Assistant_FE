@@ -157,11 +157,11 @@ export const ApiKeySettings = () => {
                         />
                         <div className="flex gap-1.5 shrink-0">
                             <Button onClick={handleSaveGroq} size="icon" className="h-8 w-8 bg-orange-600 hover:bg-orange-700 shadow-md" title="Save Groq Key">
-                                <Save className="h-3.5 h-3.5" />
+                                <Save className="h-3.5 w-3.5" />
                             </Button>
                             {hasGroqKey && (
                                 <Button onClick={handleClearGroq} variant="outline" size="icon" className="h-8 w-8 border-destructive/20 text-destructive hover:bg-destructive/10" title="Remove Groq Key">
-                                    <Trash2 className="h-3.5 h-3.5" />
+                                    <Trash2 className="h-3.5 w-3.5" />
                                 </Button>
                             )}
                         </div>
@@ -194,11 +194,11 @@ export const ApiKeySettings = () => {
                         />
                         <div className="flex gap-1.5 shrink-0">
                             <Button onClick={handleSaveGemini} size="icon" className="h-8 w-8 bg-blue-600 hover:bg-blue-700 shadow-md" title="Save Gemini Key">
-                                <Save className="h-3.5 h-3.5" />
+                                <Save className="h-3.5 w-3.5" />
                             </Button>
                             {hasGeminiKey && (
                                 <Button onClick={handleClearGemini} variant="outline" size="icon" className="h-8 w-8 border-destructive/20 text-destructive hover:bg-destructive/10" title="Remove Gemini Key">
-                                    <Trash2 className="h-3.5 h-3.5" />
+                                    <Trash2 className="h-3.5 w-3.5" />
                                 </Button>
                             )}
                         </div>

@@ -3,7 +3,14 @@
  * Real-time voice interview practice with AI evaluation
  */
 
-export const API_BASE_URL = (import.meta as any).env?.VITE_API_BASE_URL || "https://intvmate-interview-assistant.hf.space";
+import {
+  STRATAX_API_BASE_URL,
+  StrataxApiError,
+  strataxFetch,
+  strataxFetchJson,
+} from './strataxClient';
+
+export const API_BASE_URL = STRATAX_API_BASE_URL;
 
 // ============================================================================
 // TypeScript Types
@@ -175,6 +182,72 @@ export interface Evaluation {
     average_confidence: number;
   };
   areas_for_improvement?: string[];
+}
+
+// ============================================================================
+// Practice Insights (optional UI surface)
+// ============================================================================
+
+export interface PracticeInsightsResponse {
+  recommended_focus?: string[];
+  overall?: {
+    correctness?: number;
+    confidence?: number;
+    filler?: number;
+    wpm?: number;
+    [key: string]: unknown;
+  };
+  by_category?: Record<string, unknown>;
+  by_difficulty?: Record<string, unknown>;
+  lookback_days?: number;
+  lookback_sessions?: number;
+  [key: string]: unknown;
+}
+
+// ============================================================================
+// Feedback Rating (Phase 3)
+// ============================================================================
+
+export type PerceivedDifficulty = 'easy' | 'medium' | 'hard';
+
+export interface RatePracticeFeedbackRequest {
+  session_id: string;
+  question_id: number;
+  usefulness_rating: number; // 1-5
+  perceived_difficulty?: PerceivedDifficulty;
+  comment?: string;
+}
+
+export interface RatePracticeFeedbackResponse {
+  ok: true;
+}
+
+export async function getPracticeInsights(params: { domain: string; lookback_days?: number }): Promise<PracticeInsightsResponse> {
+  const domain = params.domain?.trim();
+  if (!domain) throw new Error("Domain is required");
+
+  const qs = new URLSearchParams();
+  qs.set("domain", domain);
+  qs.set("lookback_days", String(params.lookback_days ?? 30));
+
+  return await strataxFetchJson(`${API_BASE_URL}/api/practice/insights?${qs.toString()}`, {
+    method: "GET",
+  });
+}
+
+export async function ratePracticeFeedback(
+  payload: RatePracticeFeedbackRequest
+): Promise<RatePracticeFeedbackResponse> {
+  if (!payload?.session_id) throw new Error('session_id is required');
+  if (payload?.question_id === undefined || payload?.question_id === null) throw new Error('question_id is required');
+  if (!payload?.usefulness_rating || payload.usefulness_rating < 1 || payload.usefulness_rating > 5) {
+    throw new Error('usefulness_rating must be between 1 and 5');
+  }
+
+  return await strataxFetchJson(`${API_BASE_URL}/api/practice/interview/rate-feedback`, {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  });
 }
 
 // ============================================================================
@@ -506,14 +579,7 @@ export class AudioRecorder {
 // ============================================================================
 
 export async function checkPracticeModeStatus(): Promise<PracticeModeStatus> {
-  const response = await fetch(`${API_BASE_URL}/api/practice/status`);
-
-  if (!response.ok) {
-    const error = await response.json().catch(() => ({ detail: 'Failed to check status' }));
-    throw new Error(error.detail || 'Failed to check practice mode status');
-  }
-
-  return await response.json();
+  return await strataxFetchJson(`${API_BASE_URL}/api/practice/status`, { method: 'GET' });
 }
 
 export async function startInterview(
@@ -544,20 +610,10 @@ export async function startInterview(
     requestBody.user_profile = userProfile;
   }
 
-  const response = await fetch(`${API_BASE_URL}/api/practice/interview/start`, {
+  return await strataxFetchJson(`${API_BASE_URL}/api/practice/interview/start`, {
     method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-    },
     body: JSON.stringify(requestBody),
   });
-
-  if (!response.ok) {
-    const error = await response.json().catch(() => ({ detail: 'Failed to start interview' }));
-    throw new Error(error.detail || 'Failed to start interview');
-  }
-
-  return await response.json();
 }
 
 export async function submitAnswer(
@@ -570,16 +626,11 @@ export async function submitAnswer(
   formData.append('question_id', questionId.toString());
   formData.append('audio', audioBlob, 'answer.wav');
 
-  const response = await fetch(`${API_BASE_URL}/api/practice/interview/submit-answer`, {
+  const response = await strataxFetch(`${API_BASE_URL}/api/practice/interview/submit-answer`, {
     method: 'POST',
     body: formData,
     // Don't set Content-Type header - browser sets it automatically with boundary
   });
-
-  if (!response.ok) {
-    const error = await response.json().catch(() => ({ detail: 'Failed to submit answer' }));
-    throw new Error(error.detail || 'Failed to submit answer');
-  }
 
   return await response.json();
 }
@@ -601,33 +652,29 @@ export async function acknowledgeFeedback(
   };
   console.log('📤 [API] Request body:', JSON.stringify(requestBody));
 
-  const response = await fetch(`${API_BASE_URL}/api/practice/interview/acknowledge-feedback`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify(requestBody),
-  });
+  let data: any;
+  try {
+    const response = await strataxFetch(`${API_BASE_URL}/api/practice/interview/acknowledge-feedback`, {
+      method: 'POST',
+      body: JSON.stringify(requestBody),
+    });
 
-  console.log('📡 [API] Acknowledge feedback response status:', response.status, response.statusText);
+    console.log('📡 [API] Acknowledge feedback response status:', response.status, response.statusText);
+    data = await response.json();
+  } catch (err) {
+    console.error('❌ [API] Acknowledge feedback error:', err);
 
-  if (!response.ok) {
-    const error = await response.json().catch(() => ({ detail: 'Failed to acknowledge feedback' }));
-    console.error('❌ [API] Acknowledge feedback error:', error);
-
-    // Parse validation errors
-    if (Array.isArray(error.detail)) {
-      const validationErrors = error.detail.map((e: any) =>
-        `${e.loc?.join('.')}: ${e.msg} (input: ${JSON.stringify(e.input)})`
-      ).join('; ');
+    if (err instanceof StrataxApiError && Array.isArray(err.detail)) {
+      const validationErrors = err.detail
+        .map((e: any) => `${e.loc?.join('.')}: ${e.msg} (input: ${JSON.stringify(e.input)})`)
+        .join('; ');
       console.error('📋 [API] Validation errors:', validationErrors);
       throw new Error(`Validation error: ${validationErrors}`);
     }
 
-    throw new Error(error.detail || 'Failed to acknowledge feedback');
+    throw err;
   }
 
-  const data = await response.json();
   console.log('✅ [API] Acknowledge feedback response data:', data);
   console.log('📊 [API] Response structure:', {
     hasNextQuestion: !!data.next_question,
@@ -661,33 +708,29 @@ export async function submitCode(
     time_taken: timeTaken,
   };
 
-  const response = await fetch(`${API_BASE_URL}/api/practice/interview/submit-code`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify(requestBody),
-  });
+  let data: any;
+  try {
+    const response = await strataxFetch(`${API_BASE_URL}/api/practice/interview/submit-code`, {
+      method: 'POST',
+      body: JSON.stringify(requestBody),
+    });
 
-  console.log('📡 [API] Submit code response status:', response.status);
+    console.log('📡 [API] Submit code response status:', response.status);
+    data = await response.json();
+  } catch (err) {
+    console.error('❌ [API] Code submission error:', err);
 
-  if (!response.ok) {
-    const error = await response.json().catch(() => ({ detail: 'Failed to submit code' }));
-    console.error('❌ [API] Code submission error:', error);
-
-    // Parse validation errors
-    if (Array.isArray(error.detail)) {
-      const validationErrors = error.detail.map((e: any) =>
-        `${e.loc?.join('.')}: ${e.msg} (input: ${JSON.stringify(e.input)})`
-      ).join('; ');
+    if (err instanceof StrataxApiError && Array.isArray(err.detail)) {
+      const validationErrors = err.detail
+        .map((e: any) => `${e.loc?.join('.')}: ${e.msg} (input: ${JSON.stringify(e.input)})`)
+        .join('; ');
       console.error('📋 [API] Validation errors:', validationErrors);
       throw new Error(`Validation error: ${validationErrors}`);
     }
 
-    throw new Error(error.detail || 'Failed to submit code');
+    throw err;
   }
 
-  const data = await response.json();
   console.log('✅ [API] Code submission response:', {
     testsPassed: data.test_results?.filter((t: CodeTestResult) => t.passed).length,
     testsTotal: data.test_results?.length,
@@ -711,28 +754,13 @@ export async function playQuestionAudio(audioPath: string): Promise<HTMLAudioEle
 }
 
 export async function getSessionDetails(sessionId: string): Promise<any> {
-  const response = await fetch(`${API_BASE_URL}/api/practice/session/${sessionId}`);
-
-  if (!response.ok) {
-    const error = await response.json().catch(() => ({ detail: 'Failed to get session' }));
-    throw new Error(error.detail || 'Failed to get session details');
-  }
-
-  return await response.json();
+  return await strataxFetchJson(`${API_BASE_URL}/api/practice/session/${sessionId}`, { method: 'GET' });
 }
 
 export async function getSessionEvaluation(sessionId: string): Promise<any> {
   console.log(`🔍 [Diagnostic] Fetching evaluation for session: ${sessionId}`);
 
-  const response = await fetch(`${API_BASE_URL}/api/practice/session/${sessionId}/evaluation`);
-
-  if (!response.ok) {
-    const error = await response.json().catch(() => ({ detail: 'Failed to get evaluation' }));
-    console.error('❌ [Diagnostic] Evaluation fetch error:', error);
-    throw new Error(error.detail || 'Failed to get evaluation details');
-  }
-
-  const data = await response.json();
+  const data = await strataxFetchJson(`${API_BASE_URL}/api/practice/session/${sessionId}/evaluation`, { method: 'GET' });
   console.log('✅ [Diagnostic] Evaluation response:', data);
   return data;
 }
@@ -752,7 +780,7 @@ export async function quickStartInterview(
   };
 
   // Add optional parameters if provided
-  if (questionCount !== undefined && questionCount >= 3 && questionCount <= 10) {
+  if (questionCount !== undefined && questionCount >= 1 && questionCount <= 10) {
     requestBody.question_count = questionCount;
   }
 
@@ -764,20 +792,10 @@ export async function quickStartInterview(
     requestBody.target_round = targetRound;
   }
 
-  const response = await fetch(`${API_BASE_URL}/api/practice/interview/quick-start`, {
+  return await strataxFetchJson(`${API_BASE_URL}/api/practice/interview/quick-start`, {
     method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-    },
     body: JSON.stringify(requestBody),
   });
-
-  if (!response.ok) {
-    const error = await response.json().catch(() => ({ detail: 'Failed to start quick interview' }));
-    throw new Error(error.detail || 'Failed to start quick interview');
-  }
-
-  return await response.json();
 }
 
 /**
@@ -799,16 +817,8 @@ export async function getAvailableRounds(
   console.log('🌐 [API] Fetching rounds from:', url);
   console.log('📊 [API] Parameters:', { experienceYears, domain });
 
-  const response = await fetch(url);
-  console.log('📡 [API] Response status:', response.status, response.statusText);
-
-  if (!response.ok) {
-    const error = await response.json().catch(() => ({ detail: 'Failed to fetch rounds' }));
-    console.error('❌ [API] Error response:', error);
-    throw new Error(error.detail || 'Failed to fetch rounds');
-  }
-
-  const data = await response.json();
+  const data = await strataxFetchJson<AvailableRoundsResponse>(url, { method: 'GET' });
+  console.log('📡 [API] Response status: 200 OK');
   console.log('✅ [API] Response data:', data);
   return data;
 }
@@ -821,20 +831,10 @@ export async function startRoundInterview(
 ): Promise<StartRoundResponse> {
   console.log('🚀 [API] Starting round interview:', request);
 
-  const response = await fetch(`${API_BASE_URL}/api/practice/interview/start-round`, {
+  const data = await strataxFetchJson<StartRoundResponse>(`${API_BASE_URL}/api/practice/interview/start-round`, {
     method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-    },
     body: JSON.stringify(request),
   });
-
-  if (!response.ok) {
-    const error = await response.json().catch(() => ({ detail: 'Failed to start round' }));
-    throw new Error(error.detail || 'Failed to start round');
-  }
-
-  const data = await response.json();
   console.log('✅ [API] Start round response:', data);
   return data;
 }

@@ -45,7 +45,7 @@ import {
 import { useToast } from '@/hooks/use-toast';
 
 interface RoundSelectionProps {
-  onRoundStart: (sessionId: string, roundConfig: RoundConfig, firstQuestion: any, ttsAudioUrl?: string) => void;
+  onRoundStart: (sessionId: string, roundConfig: RoundConfig, firstQuestion: any, ttsAudioUrl?: string, totalQuestionsFromApi?: number) => void;
   userProfile?: UserProfile;
 }
 
@@ -217,17 +217,70 @@ const filterRoundsByDomain = (rounds: RoundConfig[], domain: string): RoundConfi
 
 export default function RoundSelection({ onRoundStart, userProfile }: RoundSelectionProps) {
   const { toast } = useToast();
+
+  // If the user clicks "Start next targeted session" from Progress, we store a plan in localStorage.
+  // RoundSelection will best-effort apply it (select round, set question count, set domain) and can auto-start.
+  const [nextSessionPrefill] = useState<any | null>(() => {
+    try {
+      const raw = window.localStorage.getItem('practice_next_session_plan');
+      if (!raw) return null;
+      return JSON.parse(raw);
+    } catch {
+      return null;
+    }
+  });
+  const [prefillApplied, setPrefillApplied] = useState(false);
+
   const [loading, setLoading] = useState(true);
   const [allRounds, setAllRounds] = useState<RoundConfig[]>([]);
   const [recommendedRounds, setRecommendedRounds] = useState<RoundConfig[]>([]);
   const [recommendedSequence, setRecommendedSequence] = useState<RoundConfig[]>([]);
   const [selectedRound, setSelectedRound] = useState<RoundConfig | null>(null);
   const [companySpecific, setCompanySpecific] = useState('');
-  const [domain, setDomain] = useState(userProfile?.domain || '');
+  const [domain, setDomain] = useState(
+    userProfile?.domain ||
+    (typeof window !== 'undefined' ? window.localStorage.getItem('practice_last_domain') : '') ||
+    nextSessionPrefill?.domain ||
+    ''
+  );
   const [experienceYears, setExperienceYears] = useState(userProfile?.experience_years || 0);
-  const [questionCount, setQuestionCount] = useState(0); // 0 = use backend default
+  const [questionCount, setQuestionCount] = useState<number>(
+    typeof nextSessionPrefill?.question_count === 'number' && nextSessionPrefill.question_count >= 1
+      ? nextSessionPrefill.question_count
+      : 1
+  );
   const [starting, setStarting] = useState(false);
   const [view, setView] = useState<'recommended' | 'all'>('recommended');
+
+  const normalizeRoundType = (value: unknown): string => {
+    if (!value) return '';
+    return String(value).trim().toLowerCase().replace(/\s+/g, '_').replace(/-+/g, '_');
+  };
+
+  // Apply any stored next-session plan once rounds are loaded.
+  useEffect(() => {
+    if (loading) return;
+    if (!nextSessionPrefill || prefillApplied) return;
+
+    if (typeof nextSessionPrefill?.domain === 'string' && nextSessionPrefill.domain.trim() && !domain.trim()) {
+      setDomain(nextSessionPrefill.domain.trim());
+    }
+    if (typeof nextSessionPrefill?.question_count === 'number' && nextSessionPrefill.question_count >= 1) {
+      setQuestionCount(nextSessionPrefill.question_count);
+    }
+
+    const desired = normalizeRoundType(nextSessionPrefill?.recommended_round);
+    if (desired) {
+      const candidates = [...recommendedRounds, ...recommendedSequence, ...allRounds];
+      const match = candidates.find((r) => normalizeRoundType(r.round_type) === desired);
+      if (match) {
+        setSelectedRound(match);
+        setView('recommended');
+      }
+    }
+
+    setPrefillApplied(true);
+  }, [loading, nextSessionPrefill, prefillApplied, allRounds, recommendedRounds, recommendedSequence, domain]);
 
   useEffect(() => {
     loadRounds();
@@ -357,6 +410,11 @@ export default function RoundSelection({ onRoundStart, userProfile }: RoundSelec
         description: `${selectedRound.name} interview has begun`,
       });
 
+      // Clear the prefill so we don't auto-apply it on future visits.
+      try {
+        window.localStorage.removeItem('practice_next_session_plan');
+      } catch { }
+
       // Use round_config from response, or fallback to selectedRound
       const roundConfig = response.round_config || selectedRound;
 
@@ -365,7 +423,8 @@ export default function RoundSelection({ onRoundStart, userProfile }: RoundSelec
         response.session_id,
         roundConfig,
         response.first_question,
-        response.tts_audio_url  // ✅ Pass TTS audio URL
+        response.tts_audio_url,
+        response.total_questions
       );
     } catch (error: any) {
       console.error('❌ [Round Selection] Failed to start round:', error);
@@ -400,6 +459,22 @@ export default function RoundSelection({ onRoundStart, userProfile }: RoundSelec
       setStarting(false);
     }
   };
+
+  // If the progress CTA requested auto-start, start once prefill is applied and we have a selected round.
+  useEffect(() => {
+    const autostart = !!nextSessionPrefill?._autostart;
+    if (!autostart) return;
+    if (!prefillApplied) return;
+    if (starting) return;
+    if (!selectedRound) return;
+
+    const effectiveDomain = (domain || userProfile?.domain || '').trim();
+    if (!effectiveDomain) return;
+
+    // Fire once; handleStartRound sets `starting`.
+    handleStartRound();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [nextSessionPrefill, prefillApplied, selectedRound, domain]);
 
   const RoundCard = ({ round, isRecommended = false }: { round: RoundConfig; isRecommended?: boolean }) => {
     const Icon = ROUND_ICONS[round.round_type] || Target;

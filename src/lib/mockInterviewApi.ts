@@ -1,20 +1,30 @@
 // Mock Interview API Client
 // Follows the same patterns as api.ts for consistency
 
-const BASE_URL = (import.meta as any).env?.VITE_API_BASE_URL || "https://intvmate-interview-assistant.hf.space";
+import { STRATAX_API_BASE_URL, StrataxApiError, buildStrataxHeaders, strataxFetch } from "./strataxClient";
+
+const BASE_URL = STRATAX_API_BASE_URL;
 
 function buildHeaders(): HeadersInit {
-  const headers: Record<string, string> = {
-    "Content-Type": "application/json",
-  };
+  // Back-compat helper; uses unified header logic (JWT + user keys only if authenticated)
+  return buildStrataxHeaders({ json: true });
+}
 
-  // User-provided API key (Bring Your Own Key)
-  const userKey = typeof window !== 'undefined' ? localStorage.getItem("user_api_key") : null;
-  if (userKey) {
-    headers["X-API-Key"] = userKey;
-  }
+async function safeReadText(res: Response): Promise<string> {
+  return await res.text().catch(() => "");
+}
 
-  return headers;
+async function safeReadJson(res: Response): Promise<any> {
+  return await res.json().catch(() => null);
+}
+
+async function buildErrorMessage(prefix: string, res: Response): Promise<string> {
+  const body = await safeReadJson(res);
+  const detail = body?.detail ?? body;
+  const msg = typeof detail === "string" ? detail : detail?.message;
+  if (msg) return `${prefix}: ${res.status} ${msg}`;
+  const text = await safeReadText(res);
+  return `${prefix}: ${res.status} ${text}`.trim();
 }
 
 // Request/Response Types
@@ -153,7 +163,7 @@ export async function apiStartMockInterview(
   console.log("[MockInterviewAPI] Starting interview, request:", request);
   console.log("[MockInterviewAPI] URL:", `${BASE_URL}/api/mock-interview/sessions/start`);
 
-  const res = await fetch(`${BASE_URL}/api/mock-interview/sessions/start`, {
+  const res = await strataxFetch(`${BASE_URL}/api/mock-interview/sessions/start`, {
     method: "POST",
     headers: buildHeaders(),
     body: JSON.stringify(request),
@@ -162,9 +172,9 @@ export async function apiStartMockInterview(
   console.log("[MockInterviewAPI] Response status:", res.status, res.statusText);
 
   if (!res.ok) {
-    const text = await res.text().catch(() => "");
-    console.error("[MockInterviewAPI] Error response:", text);
-    throw new Error(`Failed to start mock interview: ${res.status} ${text}`);
+    const msg = await buildErrorMessage("Failed to start mock interview", res);
+    console.error("[MockInterviewAPI] Error response:", msg);
+    throw new Error(msg);
   }
 
   const data = await res.json();
@@ -177,7 +187,7 @@ export async function apiSubmitMockAnswer(
 ): Promise<SubmitAnswerResponse> {
   console.log("[MockInterviewAPI] Submitting answer, request:", request);
 
-  const res = await fetch(`${BASE_URL}/api/mock-interview/sessions/submit-answer`, {
+  const res = await strataxFetch(`${BASE_URL}/api/mock-interview/sessions/submit-answer`, {
     method: "POST",
     headers: buildHeaders(),
     body: JSON.stringify(request),
@@ -186,9 +196,9 @@ export async function apiSubmitMockAnswer(
   console.log("[MockInterviewAPI] Submit response status:", res.status, res.statusText);
 
   if (!res.ok) {
-    const text = await res.text().catch(() => "");
-    console.error("[MockInterviewAPI] Submit error response:", text);
-    throw new Error(`Failed to submit answer: ${res.status} ${text}`);
+    const msg = await buildErrorMessage("Failed to submit answer", res);
+    console.error("[MockInterviewAPI] Submit error response:", msg);
+    throw new Error(msg);
   }
 
   const data = await res.json();
@@ -199,14 +209,13 @@ export async function apiSubmitMockAnswer(
 export async function apiGetSessionStatus(
   sessionId: string
 ): Promise<SessionStatusResponse> {
-  const res = await fetch(`${BASE_URL}/api/mock-interview/sessions/${encodeURIComponent(sessionId)}`, {
+  const res = await strataxFetch(`${BASE_URL}/api/mock-interview/sessions/${encodeURIComponent(sessionId)}`, {
     method: "GET",
     headers: buildHeaders(),
   });
 
   if (!res.ok) {
-    const text = await res.text().catch(() => "");
-    throw new Error(`Failed to get session status: ${res.status} ${text}`);
+    throw new Error(await buildErrorMessage("Failed to get session status", res));
   }
 
   return res.json();
@@ -215,7 +224,7 @@ export async function apiGetSessionStatus(
 export async function apiGetSessionSummary(
   sessionId: string
 ): Promise<SessionSummaryResponse> {
-  const res = await fetch(
+  const res = await strataxFetch(
     `${BASE_URL}/api/mock-interview/sessions/${encodeURIComponent(sessionId)}/summary`,
     {
       method: "GET",
@@ -224,15 +233,14 @@ export async function apiGetSessionSummary(
   );
 
   if (!res.ok) {
-    const text = await res.text().catch(() => "");
-    throw new Error(`Failed to get session summary: ${res.status} ${text}`);
+    throw new Error(await buildErrorMessage("Failed to get session summary", res));
   }
 
   return res.json();
 }
 
 export async function apiEndSession(sessionId: string): Promise<{ message: string }> {
-  const res = await fetch(
+  const res = await strataxFetch(
     `${BASE_URL}/api/mock-interview/sessions/${encodeURIComponent(sessionId)}/end`,
     {
       method: "POST",
@@ -241,8 +249,7 @@ export async function apiEndSession(sessionId: string): Promise<{ message: strin
   );
 
   if (!res.ok) {
-    const text = await res.text().catch(() => "");
-    throw new Error(`Failed to end session: ${res.status} ${text}`);
+    throw new Error(await buildErrorMessage("Failed to end session", res));
   }
 
   return res.json();
@@ -254,7 +261,7 @@ export async function apiGetHint(
 ): Promise<HintResponse> {
   console.log("[MockInterviewAPI] Requesting hint, level:", hintLevel);
 
-  const res = await fetch(
+  const res = await strataxFetch(
     `${BASE_URL}/api/mock-interview/sessions/${encodeURIComponent(sessionId)}/hint?hint_level=${hintLevel}`,
     {
       method: "POST",
@@ -265,9 +272,9 @@ export async function apiGetHint(
   console.log("[MockInterviewAPI] Hint response status:", res.status, res.statusText);
 
   if (!res.ok) {
-    const text = await res.text().catch(() => "");
-    console.error("[MockInterviewAPI] Hint error response:", text);
-    throw new Error(`Failed to get hint: ${res.status} ${text}`);
+    const msg = await buildErrorMessage("Failed to get hint", res);
+    console.error("[MockInterviewAPI] Hint error response:", msg);
+    throw new Error(msg);
   }
 
   const data = await res.json();
@@ -278,7 +285,7 @@ export async function apiGetHint(
 export async function apiGetProgress(
   sessionId: string
 ): Promise<ProgressResponse> {
-  const res = await fetch(
+  const res = await strataxFetch(
     `${BASE_URL}/api/mock-interview/sessions/${encodeURIComponent(sessionId)}/progress`,
     {
       method: "GET",
@@ -287,8 +294,7 @@ export async function apiGetProgress(
   );
 
   if (!res.ok) {
-    const text = await res.text().catch(() => "");
-    throw new Error(`Failed to get progress: ${res.status} ${text}`);
+    throw new Error(await buildErrorMessage("Failed to get progress", res));
   }
 
   return res.json();
@@ -321,7 +327,7 @@ export async function apiGetMockInterviewHistory(
   console.log("[MockInterviewAPI] Fetching history for userId:", userId);
   console.log("[MockInterviewAPI] URL:", `${BASE_URL}/api/mock-interview/history/${encodeURIComponent(userId)}`);
 
-  const res = await fetch(
+  const res = await strataxFetch(
     `${BASE_URL}/api/mock-interview/history/${encodeURIComponent(userId)}?include_evaluations=true`,
     {
       method: "GET",
@@ -332,7 +338,7 @@ export async function apiGetMockInterviewHistory(
   console.log("[MockInterviewAPI] History response status:", res.status, res.statusText);
 
   if (!res.ok) {
-    const text = await res.text().catch(() => "");
+    const text = await safeReadText(res);
     console.error("[MockInterviewAPI] History error response:", text);
     // Return empty array if endpoint doesn't exist yet
     if (res.status === 404) {
@@ -353,7 +359,7 @@ export async function apiDeleteMockInterviewSession(
 ): Promise<{ message: string }> {
   console.log("[MockInterviewAPI] Deleting session:", sessionId, "for user:", userId);
 
-  const res = await fetch(
+  const res = await strataxFetch(
     `${BASE_URL}/api/mock-interview/history/${encodeURIComponent(userId)}/sessions/${encodeURIComponent(sessionId)}`,
     {
       method: "DELETE",
@@ -368,7 +374,7 @@ export async function apiDeleteMockInterviewSession(
       console.log("[MockInterviewAPI] 404 - treating as deleted");
       return { message: "Session deleted" };
     }
-    const text = await res.text().catch(() => "");
+    const text = await safeReadText(res);
     console.error("[MockInterviewAPI] Delete error response:", text);
     if (res.status === 403) {
       throw new Error("You don't have permission to delete this session");
@@ -386,7 +392,7 @@ export async function apiDeleteAllMockInterviewSessions(
 ): Promise<{ message: string; deleted_count: number }> {
   console.log("[MockInterviewAPI] Deleting all sessions for user:", userId);
 
-  const res = await fetch(
+  const res = await strataxFetch(
     `${BASE_URL}/api/mock-interview/history/${encodeURIComponent(userId)}`,
     {
       method: "DELETE",
@@ -401,7 +407,7 @@ export async function apiDeleteAllMockInterviewSessions(
       console.log("[MockInterviewAPI] 404 - treating as deleted");
       return { message: "All sessions deleted", deleted_count: 0 };
     }
-    const text = await res.text().catch(() => "");
+    const text = await safeReadText(res);
     console.error("[MockInterviewAPI] Delete all error response:", text);
     throw new Error(`Failed to delete all sessions: ${res.status} ${text}`);
   }

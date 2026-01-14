@@ -33,6 +33,7 @@ import {
   intelligenceFeatureDefaults,
   intelligenceFeatureGates,
 } from "@/lib/intelligenceConfig";
+import { STRATAX_API_BASE_URL } from "@/lib/strataxClient";
 
 // Syntax highlighting helper functions
 const applyHighlighting = (token: string, tokenType: string): string => {
@@ -675,7 +676,7 @@ export const InterviewIntelligence = ({
       setSearchResults([]); // Clear previous results
 
       // Determine WebSocket URL based on current API URL
-      const apiUrl = import.meta.env.VITE_API_URL || 'https://intvmate-interview-assistant.hf.space';
+      const apiUrl = STRATAX_API_BASE_URL;
       const wsUrl = apiUrl.replace(/^http/, 'ws') + '/api/intelligence/ws/search';
 
       const ws = new WebSocket(wsUrl);
@@ -1384,7 +1385,7 @@ export const InterviewIntelligence = ({
 
         {/* Selected Question Answer - Desktop view */}
         {selectedQuestion && (
-          <div className="md:flex w-[50%] min-w-[400px] flex flex-col overflow-hidden animate-in fade-in duration-500">
+          <div className="hidden md:flex w-[50%] min-w-[400px] flex-col overflow-hidden animate-in fade-in duration-500">
             <Card className="flex-1 flex flex-col overflow-hidden bg-card/30 backdrop-blur-sm border-border/50">
               <CardHeader className="pb-3 flex-shrink-0">
                 <div className="flex items-center justify-between">

@@ -5,7 +5,9 @@
  * @see API Documentation for complete reference
  */
 
-const BASE_URL = (import.meta as any).env?.VITE_API_BASE_URL || "http://localhost:8000";
+import { STRATAX_API_BASE_URL, buildStrataxHeaders, strataxFetch } from "./strataxClient";
+
+const BASE_URL = STRATAX_API_BASE_URL;
 
 // ============================================================================
 // TypeScript Types
@@ -126,17 +128,7 @@ export interface ApiError {
 // ============================================================================
 
 function buildHeaders(): HeadersInit {
-    const headers: Record<string, string> = {
-        "Content-Type": "application/json",
-    };
-
-    // User-provided API key (Bring Your Own Key)
-    const userKey = typeof window !== 'undefined' ? localStorage.getItem("user_api_key") : null;
-    if (userKey) {
-        headers["X-API-Key"] = userKey;
-    }
-
-    return headers;
+    return buildStrataxHeaders({ json: true });
 }
 
 function handleApiError(error: ApiError): string {
@@ -184,7 +176,7 @@ export async function generateArchitecture(
     console.log('[ArchitectureAPI] Generating architecture, request:', request);
     console.log('[ArchitectureAPI] URL:', `${BASE_URL}/api/diagrams/generate_architecture`);
 
-    const response = await fetch(`${BASE_URL}/api/diagrams/generate_architecture`, {
+    const response = await strataxFetch(`${BASE_URL}/api/diagrams/generate_architecture`, {
         method: 'POST',
         headers: buildHeaders(),
         body: JSON.stringify(request),
@@ -228,8 +220,9 @@ export async function getAvailableViews(): Promise<AvailableViewsResponse> {
     console.log('[ArchitectureAPI] Fetching available views');
     console.log('[ArchitectureAPI] URL:', `${BASE_URL}/api/diagrams/architecture/available_views`);
 
-    const response = await fetch(`${BASE_URL}/api/diagrams/architecture/available_views`, {
+    const response = await strataxFetch(`${BASE_URL}/api/diagrams/architecture/available_views`, {
         method: 'GET',
+        headers: buildHeaders(),
     });
 
     console.log('[ArchitectureAPI] Response status:', response.status, response.statusText);
@@ -271,11 +264,9 @@ export async function getRecommendedViews(
     console.log('[ArchitectureAPI] Getting recommended views, request:', request);
     console.log('[ArchitectureAPI] URL:', `${BASE_URL}/api/diagrams/architecture/recommend_views`);
 
-    const response = await fetch(`${BASE_URL}/api/diagrams/architecture/recommend_views`, {
+    const response = await strataxFetch(`${BASE_URL}/api/diagrams/architecture/recommend_views`, {
         method: 'POST',
-        headers: {
-            'Content-Type': 'application/json',
-        },
+        headers: buildHeaders(),
         body: JSON.stringify(request),
     });
 
@@ -323,11 +314,9 @@ export async function exportToMarkdown(
     console.log('[ArchitectureAPI] Exporting to markdown');
     console.log('[ArchitectureAPI] URL:', `${BASE_URL}/api/diagrams/architecture/export_markdown`);
 
-    const response = await fetch(`${BASE_URL}/api/diagrams/architecture/export_markdown`, {
+    const response = await strataxFetch(`${BASE_URL}/api/diagrams/architecture/export_markdown`, {
         method: 'POST',
-        headers: {
-            'Content-Type': 'application/json',
-        },
+        headers: buildHeaders(),
         body: JSON.stringify(architecturePackage),
     });
 
@@ -371,11 +360,9 @@ export async function renderMermaidDiagram(
     console.log('[ArchitectureAPI] URL:', `${BASE_URL}/api/diagrams/render_mermaid`);
     console.log('[ArchitectureAPI] Code length:', request.code.length);
 
-    const response = await fetch(`${BASE_URL}/api/diagrams/render_mermaid`, {
+    const response = await strataxFetch(`${BASE_URL}/api/diagrams/render_mermaid`, {
         method: 'POST',
-        headers: {
-            'Content-Type': 'application/json',
-        },
+        headers: buildHeaders(),
         body: JSON.stringify(request),
     });
 
