@@ -78,6 +78,23 @@ Install on mobile:
 - Any static host works (Firebase Hosting, Vercel, Netlify, Cloudflare Pages).
 - Ensure HTTPS and that `/.well-known` and `manifest.webmanifest` are served without redirects.
 
+### Hugging Face Spaces (Private) — Host UI inside the Space
+
+If you make the Space **private**, the frontend must be served from the **same origin** as the backend (through HF’s authenticated reverse proxy), otherwise the browser will see `404` for API calls.
+
+This repo includes a Docker Space setup (`Dockerfile` + `nginx.conf`) that serves the built Vite app on port `7860` with SPA routing.
+
+Steps:
+1) Create a new Hugging Face Space → **SDK: Docker**
+2) Push this repo to that Space (or connect GitHub)
+3) In Space Settings → Variables:
+  - Set `VITE_API_BASE_URL` to an empty value (or leave it unset; when hosted on `*.hf.space` it defaults to same-origin)
+4) Rebuild the Space
+
+Notes:
+- When hosted on HF, API requests should be relative (`/api/...`) so they go through HF auth.
+- If you need your backend to be private too, it must be served from the same Space/origin as these `/api/...` routes.
+
 ### Firebase Hosting (example)
 ```bash
 # after firebase init hosting

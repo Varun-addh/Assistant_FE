@@ -1,4 +1,4 @@
-import { STRATAX_API_BASE_URL } from "./strataxClient";
+import { STRATAX_API_BASE_URL, STRATAX_CLIENT_ID_HEADER, STRATAX_GUEST_ID_HEADER, getOrCreateStrataxGuestId } from "./strataxClient";
 
 // Keep VITE_AUTH_API_URL as an explicit override, but default to STRATAX_API_BASE_URL.
 // If auth points to a different backend than /api/*, the JWT won't validate and backend logs auth=false.
@@ -37,11 +37,14 @@ export async function apiCall<T = any>(
   body: any = null
 ): Promise<T> {
   const token = localStorage.getItem('token');
+  const guestId = getOrCreateStrataxGuestId();
 
   const options: RequestInit = {
     method,
     headers: {
       'Content-Type': 'application/json',
+      [STRATAX_GUEST_ID_HEADER]: guestId,
+      [STRATAX_CLIENT_ID_HEADER]: guestId,
     }
   };
 

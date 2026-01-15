@@ -10,7 +10,17 @@
 
 import { isDevelopmentMode } from "./devUtils";
 
-export const STRATAX_API_BASE_URL = (import.meta as any).env?.VITE_API_BASE_URL || "https://intvmate-interview-assistant.hf.space";
+// NOTE:
+// - Use nullish coalescing so an explicitly empty `VITE_API_BASE_URL=` is respected.
+// - If VITE_API_BASE_URL is *unset* and we're running on `*.hf.space`, default to
+//   same-origin (""), so `/api/...` routes go through Hugging Face's authenticated proxy.
+const VITE_API_BASE_URL = (import.meta as any).env?.VITE_API_BASE_URL as string | undefined;
+
+export const STRATAX_API_BASE_URL =
+  VITE_API_BASE_URL ??
+  (typeof window !== "undefined" && window.location?.hostname?.endsWith(".hf.space")
+    ? ""
+    : "https://intvmate-interview-assistant.hf.space");
 
 export type DemoRemaining = {
   questions?: number;
@@ -50,14 +60,56 @@ export class StrataxApiError extends Error {
   }
 }
 
-function getOrCreateUserId(): string {
-  if (typeof window === "undefined") return "guest";
-  let userId = localStorage.getItem("stratax_user_id");
-  if (!userId) {
-    userId = `user_${Math.random().toString(36).substring(2, 15)}_${Date.now().toString(36)}`;
-    localStorage.setItem("stratax_user_id", userId);
+export const STRATAX_GUEST_ID_STORAGE_KEY = "stratax_guest_id";
+export const STRATAX_GUEST_ID_HEADER = "X-Stratax-Guest-Id";
+export const STRATAX_CLIENT_ID_HEADER = "X-Client-Id";
+
+function generateStableId(prefix: string): string {
+  try {
+    const cryptoAny = (globalThis as any)?.crypto;
+    if (cryptoAny?.randomUUID) {
+      return `${prefix}_${cryptoAny.randomUUID()}`;
+    }
+  } catch {
+    // ignore
   }
-  return userId;
+  return `${prefix}_${Math.random().toString(36).slice(2)}_${Date.now().toString(36)}`;
+}
+
+/**
+ * Stable client identity for guests.
+ *
+ * Backend prefers this (or cookie) to keep history/sessions stable even if IP/UA changes.
+ */
+export function getOrCreateStrataxGuestId(): string {
+  if (typeof window === "undefined") return "guest";
+
+  let guestId =
+    localStorage.getItem(STRATAX_GUEST_ID_STORAGE_KEY) ||
+    // Back-compat: older builds stored only `stratax_user_id`
+    localStorage.getItem("stratax_user_id");
+
+  if (!guestId) {
+    guestId = generateStableId("guest");
+  }
+
+  // Persist in the new key (and keep legacy key populated for older code paths).
+  try {
+    localStorage.setItem(STRATAX_GUEST_ID_STORAGE_KEY, guestId);
+    if (!localStorage.getItem("stratax_user_id")) {
+      localStorage.setItem("stratax_user_id", guestId);
+    }
+  } catch {
+    // ignore
+  }
+
+  return guestId;
+}
+
+function getOrCreateUserId(): string {
+  // Keep existing X-User-ID behavior stable, but align it with the guest id so
+  // all identity-related headers refer to the same bucket.
+  return getOrCreateStrataxGuestId();
 }
 
 function getJwtToken(): string | null {
@@ -86,6 +138,12 @@ export function buildStrataxHeaders(options?: BuildHeadersOptions): HeadersInit 
 
   // Per-user isolation
   headers["X-User-ID"] = getOrCreateUserId();
+
+  // Guest identity stability (for cross-origin deployments where cookies may not stick)
+  // Backend will prefer these to avoid IP/UA-derived instability.
+  const guestId = getOrCreateStrataxGuestId();
+  headers[STRATAX_GUEST_ID_HEADER] = guestId;
+  headers[STRATAX_CLIENT_ID_HEADER] = guestId;
 
   // Auth: JWT only (never put LLM keys in Authorization)
   const jwt = getJwtToken();

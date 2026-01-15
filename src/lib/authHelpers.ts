@@ -9,10 +9,20 @@
  * Enhances headers with JWT token from localStorage
  * Call this function to add authentication to any existing buildHeaders() result
  */
+import { STRATAX_CLIENT_ID_HEADER, STRATAX_GUEST_ID_HEADER, getOrCreateStrataxGuestId } from "./strataxClient";
+
 export function addAuthHeaders(headers: HeadersInit): HeadersInit {
   const token = localStorage.getItem('token');
   
   const enhancedHeaders = { ...headers } as Record<string, string>;
+
+  try {
+    const guestId = getOrCreateStrataxGuestId();
+    enhancedHeaders[STRATAX_GUEST_ID_HEADER] = guestId;
+    enhancedHeaders[STRATAX_CLIENT_ID_HEADER] = guestId;
+  } catch {
+    // ignore
+  }
   
   if (token) {
     enhancedHeaders['Authorization'] = `Bearer ${token}`;
@@ -30,11 +40,14 @@ export async function authenticatedFetch(
   options: RequestInit = {}
 ): Promise<Response> {
   const token = localStorage.getItem('token');
+  const guestId = getOrCreateStrataxGuestId();
   
   const enhancedOptions: RequestInit = {
     ...options,
     headers: {
       ...options.headers,
+      [STRATAX_GUEST_ID_HEADER]: guestId,
+      [STRATAX_CLIENT_ID_HEADER]: guestId,
       ...(token ? { 'Authorization': `Bearer ${token}` } : {})
     }
   };
