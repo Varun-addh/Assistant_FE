@@ -123,9 +123,9 @@ export const UnlockAnswerEngine = ({ open, onClose, onUnlock }: UnlockAnswerEngi
                                     <ShieldCheck className="w-4 h-4 text-green-400" />
                                 </div>
                                 <div className="flex-1">
-                                    <h4 className="text-sm font-semibold text-white mb-1">Free Forever</h4>
+                                    <h4 className="text-sm font-semibold text-white mb-1">Free tier</h4>
                                     <p className="text-xs text-zinc-500 leading-relaxed">
-                                        Your key, your control. No hidden costs or quotas
+                                        Your key, your control. Provider rate limits/quotas may apply
                                     </p>
                                 </div>
                             </div>

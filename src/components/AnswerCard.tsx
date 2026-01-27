@@ -26,6 +26,7 @@ import { replaceDiagramSvgWithImg } from "@/lib/utils";
 interface AnswerCardProps {
   answer: string;
   question: string;
+  mode?: "answer" | "mirror";
   // When false, render instantly without typewriter/streaming effect (used for history)
   streaming?: boolean;
   // Whether evaluation (the Evaluate button) is allowed for this question.
@@ -45,7 +46,7 @@ interface AnswerCardProps {
   id?: string; // Unique identifier for the answer (e.g. timestamp or UUID) to enable correct caching
 }
 
-export const AnswerCard = ({ answer, question, streaming = true, onEdit, onSubmitEdit, canPrev, canNext, onPrev, onNext, versionLabel, isGenerating, versionIndex, versionTotal, evaluationAllowed = null, evaluationReason = null, onShowUpgrade, id }: AnswerCardProps) => {
+export const AnswerCard = ({ answer, question, mode, streaming = true, onEdit, onSubmitEdit, canPrev, canNext, onPrev, onNext, versionLabel, isGenerating, versionIndex, versionTotal, evaluationAllowed = null, evaluationReason = null, onShowUpgrade, id }: AnswerCardProps) => {
   const [copied, setCopied] = useState(false);
   const [isDetailed] = useState(true);
   const [typedText, setTypedText] = useState("");
@@ -2775,7 +2776,11 @@ export const AnswerCard = ({ answer, question, streaming = true, onEdit, onSubmi
                 ) : (
                   <>
                     <div className="flex items-start gap-2 ml-6 sm:ml-0">
-                      {/* Removed redundant question text since it's displayed in a separate bubble now */}
+                      {mode === "mirror" ? (
+                        <span className="inline-flex items-center rounded-full border border-border bg-muted/40 px-2 py-0.5 text-[10px] font-semibold text-muted-foreground">
+                          Mirror Mode
+                        </span>
+                      ) : null}
                     </div>
                     {/* Mobile-only quick copy button to avoid right-side overlap */}
                     <button

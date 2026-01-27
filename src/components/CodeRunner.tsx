@@ -1,8 +1,7 @@
 import { useEffect, useMemo, useState, useRef, useCallback } from "react";
-import { listLanguages, submitRun, pollResult, type Judge0Language } from "@/lib/runner";
 import { Button } from "@/components/ui/button";
 import { Link } from "react-router-dom";
-import { ArrowLeft, Clock, StickyNote, Zap, Cpu, HardDrive, Keyboard, ChevronDown, StopCircle, RotateCcw, Code2, Play, Terminal } from "lucide-react";
+import { ArrowLeft, Clock, StickyNote, Zap, Cpu, HardDrive, Keyboard, ChevronDown, StopCircle, RotateCcw, Code2, Terminal, Activity, ChevronLeft, ChevronRight, Search, Eye, EyeOff } from "lucide-react";
 import { Textarea } from "@/components/ui/textarea";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -10,14 +9,30 @@ import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { ScrollArea } from "@/components/ui/scroll-area";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { useToast } from "@/hooks/use-toast";
-import { runPythonClientSide, isPyodideSupported, tracePythonClientSide, type PyodideTraceResult } from "@/lib/pyodideRunner";
-import MemoryStackView from "@/components/MemoryStackView";
-import ExecutionVisualizer from "@/components/ExecutionVisualizer";
 import OutputExplanation from "@/components/OutputExplanation";
-import { apiCreateSession } from "@/lib/api";
+import { apiCreateSession, apiExecuteCode, type CodeExecuteTraceEvent } from "@/lib/api";
 import { useSearchParams } from "react-router-dom";
 import { MonacoEditor } from "./MonacoEditor";
+
+type RunnerLanguage = {
+  id: 'python' | 'javascript' | 'java' | 'cpp' | 'c' | 'csharp' | 'go' | 'sql';
+  name: string;
+  sampleKind: 'python' | 'node' | 'java' | 'cpp' | 'c' | 'go' | 'sql';
+};
+
+const RUNNER_LANGUAGES: RunnerLanguage[] = [
+  { id: 'python', name: 'Python', sampleKind: 'python' },
+  { id: 'javascript', name: 'JavaScript (Node.js)', sampleKind: 'node' },
+  { id: 'java', name: 'Java (OpenJDK)', sampleKind: 'java' },
+  { id: 'cpp', name: 'C++ (GCC)', sampleKind: 'cpp' },
+  { id: 'c', name: 'C (GCC)', sampleKind: 'c' },
+  { id: 'csharp', name: 'C# (.NET)', sampleKind: 'c' },
+  { id: 'go', name: 'Go', sampleKind: 'go' },
+  { id: 'sql', name: 'SQL (SQLite)', sampleKind: 'sql' },
+];
 
 const STORAGE_KEYS = {
   CODE_SOURCE: 'code-runner-source',
@@ -25,13 +40,22 @@ const STORAGE_KEYS = {
   CODE_LANGUAGE: 'code-runner-language',
   CODE_RESULT: 'code-runner-result',
   CODE_EXPLANATION: 'code-runner-explanation',
+  CODE_TRACE_EVENTS: 'code-runner-trace-events',
+  CODE_TRACE_ENABLED: 'code-runner-trace-enabled',
+  CODE_TRACE_MAX_EVENTS: 'code-runner-trace-max-events',
   TIMER_SECONDS: 'code-runner-timer-seconds',
   TIMER_ACTIVE: 'code-runner-timer-active',
 };
 
 export const CodeRunner = () => {
-  const [languages, setLanguages] = useState<Judge0Language[]>([]);
-  const [languageId, setLanguageId] = useState<number | null>(null);
+  const [languages, setLanguages] = useState<RunnerLanguage[]>(RUNNER_LANGUAGES);
+  const [languageId, setLanguageId] = useState<RunnerLanguage['id']>(() => {
+    try {
+      const saved = localStorage.getItem(STORAGE_KEYS.CODE_LANGUAGE);
+      if (saved && RUNNER_LANGUAGES.some(l => l.id === saved)) return saved as RunnerLanguage['id'];
+    } catch {}
+    return 'python';
+  });
   const [source, setSource] = useState<string>(() => {
     try {
       const stored = localStorage.getItem(STORAGE_KEYS.CODE_SOURCE);
@@ -63,13 +87,41 @@ export const CodeRunner = () => {
       return '';
     }
   });
-  const [activeTab, setActiveTab] = useState<'input' | 'output' | 'compile' | 'errors' | 'visualize' | 'debug' | 'explain'>("output");
-  const [executionMode, setExecutionMode] = useState<'server' | 'client'>('server');
+  const [activeTab, setActiveTab] = useState<'input' | 'output' | 'compile' | 'errors' | 'explain' | 'visualize'>("output");
   const [sessionId, setSessionId] = useState<string>("");
   const RUNNER_SESSION_KEY = 'ia_runner_session_id';
-  // Visualization state
-  const [traceEvents, setTraceEvents] = useState<any[]>([]);
-  const [isTracing, setIsTracing] = useState(false);
+
+  const [traceEnabled, setTraceEnabled] = useState<boolean>(() => {
+    try { return localStorage.getItem(STORAGE_KEYS.CODE_TRACE_ENABLED) === '1'; } catch { return false; }
+  });
+  const [traceMaxEvents, setTraceMaxEvents] = useState<number>(() => {
+    try {
+      const raw = localStorage.getItem(STORAGE_KEYS.CODE_TRACE_MAX_EVENTS);
+      const n = raw ? Number(raw) : 2000;
+      return Number.isFinite(n) && n > 0 ? n : 2000;
+    } catch {
+      return 2000;
+    }
+  });
+  const [traceEvents, setTraceEvents] = useState<CodeExecuteTraceEvent[] | null>(() => {
+    try {
+      const raw = localStorage.getItem(STORAGE_KEYS.CODE_TRACE_EVENTS);
+      return raw ? (JSON.parse(raw) as CodeExecuteTraceEvent[]) : null;
+    } catch {
+      return null;
+    }
+  });
+
+  const [lineExplanations, setLineExplanations] = useState<Record<string, string> | null>(null);
+
+  const [selectedTraceIndex, setSelectedTraceIndex] = useState(0);
+  const [localsQuery, setLocalsQuery] = useState('');
+  const [localsMode, setLocalsMode] = useState<'changed' | 'all'>('changed');
+  const [showSystemLocals, setShowSystemLocals] = useState(false);
+
+  useEffect(() => {
+    if (traceEvents && traceEvents.length > 0) setSelectedTraceIndex(0);
+  }, [traceEvents]);
 
   // Professional features state
   const [panelWidth, setPanelWidth] = useState(50); // Percentage
@@ -108,44 +160,17 @@ export const CodeRunner = () => {
       if (stored) setSessionId(stored);
     } catch { }
 
-    (async () => {
-      try {
-        const langs = await listLanguages();
-        setLanguages(langs);
-
-        // 1. Check for suggested language from Execute button
-        const suggestedLang = localStorage.getItem('code-runner-language-suggest');
-        if (suggestedLang) {
-          localStorage.removeItem('code-runner-language-suggest');
-          const match = langs.find(l =>
-            l.name.toLowerCase().includes(suggestedLang.toLowerCase()) ||
-            suggestedLang.toLowerCase().includes(l.name.toLowerCase().split(' ')[0])
-          );
-          if (match) {
-            setLanguageId(match.id);
-            return;
-          }
-        }
-
-        // 2. Try to restore saved language ID
-        try {
-          const savedLangId = localStorage.getItem(STORAGE_KEYS.CODE_LANGUAGE);
-          if (savedLangId && langs.find(l => l.id === Number(savedLangId))) {
-            setLanguageId(Number(savedLangId));
-          } else {
-            throw new Error('Saved language not found');
-          }
-        } catch {
-          // 3. Fallback: Prefer Python
-          const py311 = langs.find(l => /python/i.test(l.name) && /3\.11(\.2)?/i.test(l.name));
-          const py = langs.find(l => /python/i.test(l.name));
-          setLanguageId(py311?.id || py?.id || langs[0]?.id || null);
-        }
-
-      } catch (e) {
-        console.error("runner: languages", e);
+    // Backend-only runner: language list is static and code executes via /api/code/execute.
+    // If another feature suggests a language, adopt it.
+    try {
+      const suggestedLang = localStorage.getItem('code-runner-language-suggest');
+      if (suggestedLang) {
+        localStorage.removeItem('code-runner-language-suggest');
+        const s = suggestedLang.toLowerCase();
+        const match = RUNNER_LANGUAGES.find(l => l.id === s || l.name.toLowerCase().includes(s));
+        if (match) setLanguageId(match.id);
       }
-    })();
+    } catch {}
   }, []);
 
   // Ensure we have a valid session for Explain tab
@@ -163,17 +188,6 @@ export const CodeRunner = () => {
       }
     })();
   }, [sessionId]);
-
-  // Auto-set execution mode when language changes
-  useEffect(() => {
-    if (!languageId || languages.length === 0) return;
-    const selectedLang = languages.find(l => l.id === languageId);
-    if (selectedLang && /python/i.test(selectedLang.name) && isPyodideSupported()) {
-      setExecutionMode('client');
-    } else {
-      setExecutionMode('server');
-    }
-  }, [languageId, languages]);
 
   // Initialize timer input from saved timer seconds
   useEffect(() => {
@@ -244,83 +258,72 @@ export const CodeRunner = () => {
 
   const langLabel = useMemo(() => languages.find(l => l.id === languageId)?.name || "Language", [languages, languageId]);
 
-  const onRun = useCallback(async () => {
-    if (!languageId && executionMode === 'server') return;
-
+  const onRun = useCallback(async (opts?: { forceTrace?: boolean }) => {
     // Clear any previous explanation before a new run starts
     try { localStorage.removeItem(STORAGE_KEYS.CODE_EXPLANATION); } catch { }
     setExplanation('');
-    // Tracing temporarily removed
 
     const currentLangLabel = languages.find(l => l.id === languageId)?.name || "Language";
-    const isPython = currentLangLabel.toLowerCase().includes('python');
-    const useClientSide = executionMode === 'client' && isPython && isPyodideSupported();
 
     setIsRunning(true);
     setResult(null);
+    setTraceEvents(null);
+    setLineExplanations(null);
+    try { localStorage.removeItem(STORAGE_KEYS.CODE_TRACE_EVENTS); } catch { }
 
     try {
-      if (useClientSide) {
-        // Client-side execution with Pyodide
-        toast({ title: "Running client-side...", description: "Executing Python in browser." });
-        const pyResult = await runPythonClientSide(source, stdin);
-        setResult({
-          stdout: pyResult.stdout || undefined,
-          stderr: pyResult.stderr || undefined,
-          time: pyResult.executionTime?.toFixed(3) || undefined,
-          variables: pyResult.variables,
-        } as any);
-        if (pyResult.stdout) setActiveTab('output');
-        else if (pyResult.stderr) setActiveTab('errors');
-      } else {
-        // Server-side execution with Judge0
-        // For Java on Judge0: ensure the main class is named Main and no package line
-        let sendSource = source;
-        const langLabelLower = (languages.find(l => l.id === languageId)?.name || '').toLowerCase();
-        if (/java\b/.test(langLabelLower)) {
-          sendSource = transformJavaForJudge0(source);
-        }
-        const { token } = await submitRun({ languageId: languageId!, source: sendSource, stdin });
-        const r = await pollResult(token, { timeoutMs: 25000 });
-        setResult({
-          stdout: r.stdout || undefined,
-          stderr: r.stderr || undefined,
-          compile: r.compile_output || undefined,
-          time: r.time,
-          memory: r.memory,
-        });
-        // Auto-focus the most relevant tab
-        if (r.stdout) setActiveTab('output');
-        else if (r.compile_output) setActiveTab('compile');
-        else if (r.stderr) setActiveTab('errors');
+      // Backend-only execution.
+      // For Java: normalize to a Main class for single-file runners.
+      let sendSource = source;
+      const langLabelLower = currentLangLabel.toLowerCase();
+      if (langLabelLower.includes('java')) {
+        sendSource = transformJavaForSingleFileRunner(source);
       }
+
+      const doTrace = (opts?.forceTrace ?? traceEnabled) && languageId === 'python';
+
+      const r = await apiExecuteCode({
+        language: languageId,
+        code: sendSource,
+        stdin,
+        store_code: false,
+        trace: doTrace,
+        trace_max_events: doTrace ? traceMaxEvents : undefined,
+        explain_trace: doTrace,
+        explain_max_lines: doTrace ? 200 : undefined,
+      });
+
+      if (!r || r.success === false) {
+        const msg = (r as any)?.stderr || (r as any)?.status || 'Execution failed';
+        setResult({ stderr: String(msg) });
+        setActiveTab('errors');
+        return;
+      }
+
+      setResult({
+        stdout: r.stdout || undefined,
+        stderr: r.stderr || undefined,
+        time: typeof r.time_seconds === 'number' ? r.time_seconds.toFixed(3) : undefined,
+        memory: typeof r.memory_kb === 'number' ? r.memory_kb : undefined,
+      });
+
+      if (doTrace && languageId === 'python') {
+        const events = Array.isArray(r.trace_events) ? r.trace_events : null;
+        setTraceEvents(events);
+        setLineExplanations(r.line_explanations && typeof r.line_explanations === 'object' ? (r.line_explanations as Record<string, string>) : null);
+        try { localStorage.setItem(STORAGE_KEYS.CODE_TRACE_EVENTS, JSON.stringify(events || [])); } catch { }
+        if (events && events.length > 0) setActiveTab('visualize');
+      }
+
+      if (r.stdout) setActiveTab('output');
+      else if (r.stderr) setActiveTab('errors');
     } catch (e: any) {
       setResult({ stderr: String(e?.message || e) });
       setActiveTab('errors');
     } finally {
       setIsRunning(false);
     }
-  }, [languageId, source, stdin, executionMode, languages, toast]);
-
-  const onVisualize = useCallback(async () => {
-    const currentLangLabel = languages.find(l => l.id === languageId)?.name || "Language";
-    const isPython = currentLangLabel.toLowerCase().includes('python');
-    if (!(isPython && isPyodideSupported())) {
-      toast({ title: 'Visualization not available', description: 'Step visualization currently supports Python in-browser.', variant: 'destructive' });
-      return;
-    }
-    setIsTracing(true);
-    setActiveTab('visualize');
-    try {
-      const res: PyodideTraceResult = await tracePythonClientSide(source, stdin);
-      setTraceEvents(res.events || []);
-    } catch (e: any) {
-      toast({ title: 'Trace failed', description: String(e?.message || e) });
-      setTraceEvents([]);
-    } finally {
-      setIsTracing(false);
-    }
-  }, [languages, languageId, source, stdin, toast]);
+  }, [languageId, source, stdin, languages, traceEnabled, traceMaxEvents]);
 
   // Tracing removed
 
@@ -435,6 +438,356 @@ export const CodeRunner = () => {
     return name.split(' ')[0];
   };
 
+  const setTraceEnabledPersisted = useCallback((enabled: boolean) => {
+    setTraceEnabled(enabled);
+    try { localStorage.setItem(STORAGE_KEYS.CODE_TRACE_ENABLED, enabled ? '1' : '0'); } catch { }
+  }, []);
+
+  const onToggleTrace = useCallback(() => {
+    const next = !traceEnabled;
+    setTraceEnabledPersisted(next);
+    if (next && languageId !== 'python') {
+      toast({
+        title: 'Visualize is Python-only',
+        description: 'Switch to Python to get line-by-line trace events from the backend.',
+      });
+    }
+  }, [traceEnabled, languageId, toast, setTraceEnabledPersisted]);
+
+  const enableTraceAndRun = useCallback(() => {
+    setActiveTab('visualize');
+    setTraceEnabledPersisted(true);
+    // Force trace for this run (avoids React state timing)
+    onRun({ forceTrace: true });
+  }, [onRun, setTraceEnabledPersisted]);
+
+  const jumpToLine = useCallback((line: number) => {
+    const editor = monacoRef.current as any;
+    if (!editor || !line || line <= 0) return;
+    try {
+      editor.revealLineInCenter(line);
+      editor.setPosition({ lineNumber: line, column: 1 });
+      editor.focus();
+    } catch { }
+  }, []);
+
+  const sourceLines = useMemo(() => String(source || '').split('\n'), [source]);
+
+  const sanitizeLocals = useCallback((locals: Record<string, unknown> | undefined, includeSystem: boolean) => {
+    if (!locals) return {} as Record<string, string>;
+    const ignoredExact = new Set([
+      '__builtins__',
+      '__name__',
+      '__doc__',
+      '__package__',
+      '__loader__',
+      '__spec__',
+      '__annotations__',
+      '__cached__',
+      '__file__',
+    ]);
+
+    const entries = Object.entries(locals)
+      .filter(([k]) => {
+        if (ignoredExact.has(k)) return false;
+        if (!includeSystem && (k.startsWith('__') || k.startsWith('_'))) return false;
+        return true;
+      })
+      .slice(0, 200);
+
+    const out: Record<string, string> = {};
+    for (const [k, v] of entries) {
+      let s: string;
+      try {
+        if (v === null || v === undefined) s = String(v);
+        else if (typeof v === 'string') s = v;
+        else if (typeof v === 'number' || typeof v === 'boolean') s = String(v);
+        else s = JSON.stringify(v);
+      } catch {
+        s = String(v);
+      }
+      s = s.replace(/\s+/g, ' ').trim();
+      if (s.length > 220) s = s.slice(0, 220) + '…';
+      out[k] = s;
+    }
+    return out;
+  }, []);
+
+  const traceView = useMemo(() => {
+    const events = Array.isArray(traceEvents) ? traceEvents : [];
+    const mapped = events.map((ev) => ({
+      step: Number((ev as any).step ?? 0),
+      line: Number((ev as any).line ?? 0),
+      event: String((ev as any).event ?? 'line'),
+      explanation: String((ev as any).explanation ?? ''),
+      locals: sanitizeLocals((ev as any).locals as any, showSystemLocals),
+    }));
+    return mapped.map((m, i) => {
+      const prev = i > 0 ? mapped[i - 1].locals : {};
+      const changedKeys = new Set<string>();
+      for (const k of Object.keys(m.locals)) {
+        if (prev[k] !== m.locals[k]) changedKeys.add(k);
+      }
+      for (const k of Object.keys(prev)) {
+        if (!(k in m.locals)) changedKeys.add(k);
+      }
+      return { ...m, changedKeys };
+    });
+  }, [traceEvents, sanitizeLocals, showSystemLocals]);
+
+  const selectedTrace = traceView[Math.min(Math.max(selectedTraceIndex, 0), Math.max(traceView.length - 1, 0))];
+  const selectedLineText = selectedTrace?.line ? (sourceLines[selectedTrace.line - 1] ?? '') : '';
+
+  const selectedExplanation = useMemo(() => {
+    const line = selectedTrace?.line;
+    if (!line) return '';
+    const stepExp = (selectedTrace as any)?.explanation ? String((selectedTrace as any).explanation) : '';
+    if (stepExp.trim()) return stepExp;
+    return lineExplanations?.[String(line)] ?? '';
+  }, [selectedTrace, lineExplanations]);
+
+  const visibleLocalsRows = useMemo(() => {
+    const locals = selectedTrace?.locals ?? {};
+    const q = localsQuery.trim().toLowerCase();
+    let rows = Object.entries(locals);
+    if (q) rows = rows.filter(([k, v]) => k.toLowerCase().includes(q) || String(v).toLowerCase().includes(q));
+    if (localsMode === 'changed') rows = rows.filter(([k]) => selectedTrace?.changedKeys?.has(k));
+    rows.sort(([a], [b]) => a.localeCompare(b));
+    return rows;
+  }, [selectedTrace, localsQuery, localsMode]);
+
+  const renderVisualizePanel = (variant: 'desktop' | 'mobile') => {
+    const isPython = languageId === 'python';
+    const hasEvents = traceView.length > 0;
+
+    if (!isPython) {
+      return (
+        <div className="rounded-lg border p-4 bg-card flex-1 overflow-hidden">
+          <div className="text-sm font-semibold">Visualize</div>
+          <div className="mt-1 text-xs text-muted-foreground">Python-only right now. Switch language to Python to get line-by-line trace events.</div>
+        </div>
+      );
+    }
+
+    if (!traceEnabled) {
+      return (
+        <div className="rounded-lg border p-4 bg-card flex-1 overflow-hidden">
+          <div className="flex items-start justify-between gap-3">
+            <div>
+              <div className="text-sm font-semibold">Visualize</div>
+              <div className="mt-1 text-xs text-muted-foreground">Enable tracing and run to capture a professional execution timeline.</div>
+            </div>
+            <div className="flex items-center gap-2">
+              <Button size="sm" variant="outline" onClick={() => setTraceEnabledPersisted(true)}>Enable</Button>
+              <Button size="sm" onClick={enableTraceAndRun} disabled={isRunning}>Enable & Run</Button>
+            </div>
+          </div>
+          <div className="mt-4 rounded-md border bg-background/40 p-3">
+            <div className="text-xs font-semibold">What you’ll see</div>
+            <div className="mt-1 text-xs text-muted-foreground">A step timeline, line preview, and a clean locals table (system noise hidden by default).</div>
+          </div>
+        </div>
+      );
+    }
+
+    if (!hasEvents) {
+      return (
+        <div className="rounded-lg border p-4 bg-card flex-1 overflow-hidden">
+          <div className="flex items-start justify-between gap-3">
+            <div>
+              <div className="text-sm font-semibold">Visualize</div>
+              <div className="mt-1 text-xs text-muted-foreground">No trace events yet. Run your Python code with Visualize enabled.</div>
+            </div>
+            <Button size="sm" onClick={() => onRun({ forceTrace: true })} disabled={isRunning}>Run (Trace)</Button>
+          </div>
+        </div>
+      );
+    }
+
+    const maxIdx = Math.max(traceView.length - 1, 0);
+    const idx = Math.min(Math.max(selectedTraceIndex, 0), maxIdx);
+
+    const timelineHeight = variant === 'desktop' ? 'h-[calc(100vh-360px)]' : 'h-40';
+    const localsHeight = variant === 'desktop' ? 'h-[calc(100vh-600px)]' : 'h-56';
+
+    return (
+      <div className="rounded-lg border p-4 bg-card flex-1 overflow-hidden flex flex-col">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div className="flex items-center gap-2">
+            <Button
+              size="icon"
+              variant="outline"
+              className="h-8 w-8"
+              onClick={() => setSelectedTraceIndex(Math.max(0, idx - 1))}
+              disabled={idx === 0}
+              title="Previous step"
+            >
+              <ChevronLeft className="h-4 w-4" />
+            </Button>
+            <Button
+              size="icon"
+              variant="outline"
+              className="h-8 w-8"
+              onClick={() => setSelectedTraceIndex(Math.min(maxIdx, idx + 1))}
+              disabled={idx === maxIdx}
+              title="Next step"
+            >
+              <ChevronRight className="h-4 w-4" />
+            </Button>
+            <div className="text-xs text-muted-foreground font-mono">
+              Step {selectedTrace?.step ?? idx} / {traceView.length - 1}
+            </div>
+          </div>
+
+          <div className="flex items-center gap-2">
+            <div className="relative">
+              <Search className="h-3.5 w-3.5 text-muted-foreground absolute left-2 top-1/2 -translate-y-1/2" />
+              <Input
+                value={localsQuery}
+                onChange={(e) => setLocalsQuery(e.target.value)}
+                placeholder="Search locals"
+                className="h-8 pl-7 w-[180px]"
+              />
+            </div>
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => setLocalsMode(m => (m === 'changed' ? 'all' : 'changed'))}
+              className="h-8"
+              title={localsMode === 'changed' ? 'Showing changed locals' : 'Showing all locals'}
+            >
+              {localsMode === 'changed' ? 'Changed' : 'All'}
+            </Button>
+            <Button
+              size="icon"
+              variant="outline"
+              className="h-8 w-8"
+              onClick={() => setShowSystemLocals(v => !v)}
+              title={showSystemLocals ? 'Hide system locals' : 'Show system locals'}
+            >
+              {showSystemLocals ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+            </Button>
+          </div>
+        </div>
+
+        <div className="mt-3 flex items-center gap-3">
+          <input
+            type="range"
+            min={0}
+            max={maxIdx}
+            value={idx}
+            onChange={(e) => setSelectedTraceIndex(Number(e.target.value))}
+            className="w-full"
+          />
+          <div className="text-[10px] text-muted-foreground font-mono w-[64px] text-right">#{idx}</div>
+        </div>
+
+        <div className={variant === 'desktop' ? 'mt-4 grid grid-cols-5 gap-3 flex-1 min-h-0' : 'mt-4 grid grid-cols-1 gap-3 flex-1 min-h-0'}>
+          <div className={variant === 'desktop' ? 'col-span-2 min-h-0' : 'min-h-0'}>
+            <div className="rounded-lg border bg-card overflow-hidden h-full flex flex-col">
+              <div className="px-3 py-2 border-b">
+                <div className="text-xs font-semibold">Timeline</div>
+                <div className="text-[10px] text-muted-foreground">Click a step to inspect state</div>
+              </div>
+              <ScrollArea className={`p-2 ${timelineHeight}`}>
+                <div className="space-y-1">
+                  {traceView.map((ev, i) => {
+                    const selected = i === idx;
+                    const exp = (ev as any).explanation ? String((ev as any).explanation) : (lineExplanations?.[String(ev.line)] ?? '');
+                    return (
+                      <button
+                        key={`${ev.step}-${ev.line}-${ev.event}-${i}`}
+                        onClick={() => {
+                          setSelectedTraceIndex(i);
+                          if (ev.line) jumpToLine(ev.line);
+                        }}
+                        className={`w-full text-left rounded-md border px-2 py-1 transition-colors ${selected ? 'bg-primary/10 border-primary/30' : 'bg-background/40 hover:bg-background'}`}
+                        title={`Step ${ev.step} · Line ${ev.line}`}
+                      >
+                        <div className="flex items-center justify-between gap-2">
+                          <span className="text-xs font-mono">#{ev.step}</span>
+                          <span className="text-xs font-mono text-muted-foreground">L{ev.line}</span>
+                          <span className="text-[10px] text-muted-foreground truncate">{ev.event}</span>
+                        </div>
+                        {exp ? (
+                          <div className="mt-0.5 text-[10px] text-muted-foreground truncate">{exp}</div>
+                        ) : null}
+                      </button>
+                    );
+                  })}
+                </div>
+              </ScrollArea>
+            </div>
+          </div>
+
+          <div className={variant === 'desktop' ? 'col-span-3 min-h-0' : 'min-h-0'}>
+            <div className="rounded-lg border bg-card overflow-hidden h-full flex flex-col min-h-0">
+              <div className="px-3 py-2 border-b flex items-center justify-between gap-2">
+                <div>
+                  <div className="text-xs font-semibold">State</div>
+                  <div className="text-[10px] text-muted-foreground font-mono">Line {selectedTrace?.line ?? 0} · {selectedTrace?.event ?? ''}</div>
+                </div>
+                <Button size="sm" variant="outline" className="h-8" onClick={() => selectedTrace?.line && jumpToLine(selectedTrace.line)} disabled={!selectedTrace?.line}>
+                  Jump to line
+                </Button>
+              </div>
+
+              <div className="p-3 border-b bg-background/30">
+                <div className="text-[10px] text-muted-foreground">Current line</div>
+                <div className="mt-1 rounded-md border bg-background px-2 py-1 font-mono text-xs whitespace-pre overflow-auto">
+                  {selectedTrace?.line ? `${selectedTrace.line}: ${selectedLineText}` : '(no line)'}
+                </div>
+                {selectedExplanation ? (
+                  <div className="mt-2 rounded-md border bg-background px-2 py-1">
+                    <div className="text-[10px] text-muted-foreground">Explanation</div>
+                    <div className="mt-0.5 text-xs">{selectedExplanation}</div>
+                  </div>
+                ) : null}
+              </div>
+
+              <div className="p-3 flex-1 min-h-0">
+                <div className="flex items-center justify-between gap-2">
+                  <div className="text-xs font-semibold">Locals</div>
+                  <div className="text-[10px] text-muted-foreground">{visibleLocalsRows.length} vars</div>
+                </div>
+
+                {visibleLocalsRows.length === 0 ? (
+                  <div className="mt-3 text-xs text-muted-foreground">
+                    {localsMode === 'changed' ? 'No local changes at this step.' : 'No locals to display.'}
+                  </div>
+                ) : (
+                  <div className="mt-2 rounded-md border overflow-hidden">
+                    <ScrollArea className={localsHeight}>
+                      <Table className="text-xs">
+                        <TableHeader>
+                          <TableRow>
+                            <TableHead className="h-10 w-[180px]">Variable</TableHead>
+                            <TableHead className="h-10">Value</TableHead>
+                          </TableRow>
+                        </TableHeader>
+                        <TableBody>
+                          {visibleLocalsRows.map(([k, v]) => {
+                            const changed = selectedTrace?.changedKeys?.has(k);
+                            return (
+                              <TableRow key={k} data-state={changed ? 'selected' : undefined}>
+                                <TableCell className="py-2 px-3 font-mono align-top">{k}</TableCell>
+                                <TableCell className="py-2 px-3 font-mono text-muted-foreground align-top whitespace-pre-wrap break-words">{v}</TableCell>
+                              </TableRow>
+                            );
+                          })}
+                        </TableBody>
+                      </Table>
+                    </ScrollArea>
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  };
+
   return (
     <div className="w-screen max-w-none px-0 h-screen md:h-[calc(100vh-48px)]">
       {/* Top toolbar - Mobile Optimized */}
@@ -450,6 +803,20 @@ export const CodeRunner = () => {
         
         {/* Mobile: Compact Controls */}
         <div className="flex items-center gap-1 md:gap-2 flex-1 justify-end">
+          {/* Visualize (Python-only) */}
+          <Button
+            variant={traceEnabled ? 'default' : 'ghost'}
+            size="sm"
+            onClick={() => {
+              setActiveTab('visualize');
+              onToggleTrace();
+            }}
+            className="gap-1.5 px-2 md:px-3 hidden sm:flex"
+            title="Backend trace (Python-only)"
+          >
+            <Activity className="h-3.5 w-3.5" />
+            <span className="hidden md:inline">Visualize</span>
+          </Button>
           {/* Timer - Compact on mobile */}
           <div className="flex items-center gap-1">
             <Button
@@ -498,18 +865,12 @@ export const CodeRunner = () => {
           
           {/* Language Selector - Compact on mobile */}
           <Select value={languageId ? String(languageId) : undefined} onValueChange={(v) => {
-            const id = Number(v);
+            const id = v as RunnerLanguage['id'];
             setLanguageId(id);
             try { localStorage.removeItem(STORAGE_KEYS.CODE_EXPLANATION); } catch { }
             setExplanation('');
-            const label = (languages.find(l => l.id === id)?.name || '').toLowerCase();
-            if (/python/.test(label)) setSource(sampleCode('python'));
-            else if (/node|javascript/.test(label)) setSource(sampleCode('node'));
-            else if (/c\+\+/.test(label)) setSource(sampleCode('cpp'));
-            else if (/\bc\b/.test(label)) setSource(sampleCode('c'));
-            else if (/java\b/.test(label)) setSource(sampleCode('java'));
-            else if (/go\b/.test(label)) setSource(sampleCode('go'));
-            else if (/sql/.test(label)) setSource(sampleCode('sql'));
+            const lang = RUNNER_LANGUAGES.find(l => l.id === id);
+            if (lang) setSource(sampleCode(lang.sampleKind));
           }}>
             <SelectTrigger className="w-[120px] md:w-[260px] text-xs md:text-sm">
               <SelectValue placeholder="Language" />
@@ -522,7 +883,7 @@ export const CodeRunner = () => {
           </Select>
           
           {/* Run Button */}
-          <Button onClick={onRun} disabled={!languageId || isRunning} size="sm" className="shadow-sm gap-1 px-2 md:px-3">
+          <Button onClick={() => onRun()} disabled={isRunning} size="sm" className="shadow-sm gap-1 px-2 md:px-3">
             <Zap className="h-3.5 w-3.5" />
             <span className="hidden sm:inline">{isRunning ? 'Running…' : 'Run'}</span>
           </Button>
@@ -590,7 +951,6 @@ export const CodeRunner = () => {
                 <TabsTrigger value="compile" className="whitespace-nowrap flex-shrink-0">Compiler</TabsTrigger>
                 <TabsTrigger value="errors" className="whitespace-nowrap flex-shrink-0">Errors</TabsTrigger>
                 <TabsTrigger value="visualize" className="whitespace-nowrap flex-shrink-0">Visualize</TabsTrigger>
-                <TabsTrigger value="debug" className="whitespace-nowrap flex-shrink-0">Debug</TabsTrigger>
                 <TabsTrigger value="explain" className="whitespace-nowrap flex-shrink-0">Explain</TabsTrigger>
               </TabsList>
             </div>
@@ -637,35 +997,7 @@ export const CodeRunner = () => {
                 </div>
               </TabsContent>
               <TabsContent value="visualize" className="flex-1 flex flex-col mt-0 data-[state=active]:flex data-[state=inactive]:hidden overflow-hidden">
-                <div className="rounded-lg border p-3 bg-card flex-1 overflow-auto min-h-0 scrollbar-professional">
-                  <ExecutionVisualizer
-                    editor={monacoRef.current}
-                    code={source}
-                    events={traceEvents as any}
-                    isTracing={isTracing}
-                    onTrace={onVisualize}
-                  />
-                </div>
-              </TabsContent>
-
-              <TabsContent value="debug" className="flex-1 flex flex-col mt-0 data-[state=active]:flex data-[state=inactive]:hidden overflow-hidden">
-                <div className="rounded-lg border p-3 bg-card flex-1 overflow-auto min-h-0 scrollbar-professional">
-                  <MemoryStackView
-                    frames={[]}
-                    variables={
-                      result
-                        ? {
-                          ...((result as any).variables || {}),
-                          output: result.stdout || 'N/A',
-                          error: result.stderr || 'N/A'
-                        }
-                        : {}
-                    }
-                    code={source}
-                    output={result?.stdout || ''}
-                    isActive={activeTab === 'debug'}
-                  />
-                </div>
+                {renderVisualizePanel('desktop')}
               </TabsContent>
               <TabsContent value="explain" className="flex-1 flex flex-col mt-0 data-[state=active]:flex data-[state=inactive]:hidden overflow-hidden">
                 <div className="flex-1 overflow-auto scrollbar-professional">
@@ -765,6 +1097,7 @@ export const CodeRunner = () => {
                   <TabsTrigger value="output" className="text-xs px-2">Output</TabsTrigger>
                   <TabsTrigger value="errors" className="text-xs px-2">Errors</TabsTrigger>
                   <TabsTrigger value="compile" className="text-xs px-2">Compile</TabsTrigger>
+                  <TabsTrigger value="visualize" className="text-xs px-2">Visualize</TabsTrigger>
                   <TabsTrigger value="explain" className="text-xs px-2">Explain</TabsTrigger>
                 </TabsList>
               </div>
@@ -795,6 +1128,9 @@ export const CodeRunner = () => {
                       <div className="text-xs text-muted-foreground">No compiler messages</div>
                     )}
                   </div>
+                </TabsContent>
+                <TabsContent value="visualize" className="flex-1 flex flex-col mt-0 data-[state=active]:flex data-[state=inactive]:hidden overflow-hidden">
+                  {renderVisualizePanel('mobile')}
                 </TabsContent>
                 <TabsContent value="explain" className="flex-1 flex flex-col mt-0 data-[state=active]:flex data-[state=inactive]:hidden overflow-hidden">
                   <div className="flex-1 overflow-auto scrollbar-professional">
@@ -943,9 +1279,9 @@ function sampleCode(kind: 'python' | 'node' | 'cpp' | 'c' | 'java' | 'go' | 'sql
 export default CodeRunner;
 
 
-// Judge0 runs single-file Java; filename is assumed Main.java. If the user's
-// class name doesn't match, we normalize to `class Main` and strip package lines.
-function transformJavaForJudge0(src: string): string {
+// Many sandboxes run single-file Java with an assumed entry file (e.g. Main.java).
+// If the class name doesn't match, we normalize to `class Main` and strip package lines.
+function transformJavaForSingleFileRunner(src: string): string {
   let out = src;
   try {
     // Remove package declarations which break single-file execution
@@ -968,7 +1304,7 @@ function transformJavaForJudge0(src: string): string {
       out += `\n\npublic class Main { public static void main(String[] args) { ${cls}.main(args); } }\n`;
       return out;
     }
-    // No main found anywhere: append a no-op Main so Judge0 can run without error
+    // No main found anywhere: append a no-op Main so execution doesn't error
     if (!/\bclass\s+Main\b/.test(out)) {
       out += "\n\npublic class Main { public static void main(String[] args) { } }\n";
     }

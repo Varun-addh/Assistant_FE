@@ -14,9 +14,11 @@ VITE_API_URL=https://intvmate-interview-assistant.hf.space
 VITE_INTELLIGENCE_API_URL=https://intvmate-interview-assistant.hf.space/api/intelligence
 VITE_HISTORY_API_URL=https://intvmate-interview-assistant.hf.space/api/history/
 
-# Judge0 (optional, for code execution)
-VITE_JUDGE0_BASE_URL=https://judge0-ce.p.rapidapi.com
-VITE_JUDGE0_API_KEY=your_rapidapi_key_here
+# Code execution
+# Code execution is backend-only via POST /api/code/execute.
+# Do NOT put RapidAPI/Judge0 keys in any VITE_* variable (Vite embeds them into the browser bundle).
+# Configure any sandbox providers (Judge0/RapidAPI, Piston, etc.) in your BACKEND environment instead.
+# Visualize tracing + per-line explanations are enabled by request flags (e.g. trace=true, explain_trace=true) and require no additional frontend env vars.
 ```
 
 ## Production Deployment

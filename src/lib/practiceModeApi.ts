@@ -13,6 +13,64 @@ import {
 export const API_BASE_URL = STRATAX_API_BASE_URL;
 
 // ============================================================================
+// Practice Proctoring (Client-side camera; event-only backend)
+// ============================================================================
+
+export type ProctoringSeverity = 'info' | 'warning' | 'violation';
+
+export type ProctoringEventType =
+  | 'camera_started'
+  | 'camera_stopped'
+  | 'camera_heartbeat'
+  | 'face_missing'
+  | 'multiple_faces'
+  | 'tab_switch'
+  | 'window_blur'
+  | 'user_left_frame';
+
+export type ProctoringEventIn = {
+  session_id: string;
+  event_type: ProctoringEventType;
+  severity?: ProctoringSeverity;
+  metadata?: Record<string, unknown>;
+  client_timestamp?: string;
+};
+
+export type ProctoringEventPostResult =
+  | { ok: true; status: number }
+  | { ok: false; status: number };
+
+/**
+ * Best-effort proctoring event ingest.
+ *
+ * Privacy model:
+ * - No video/audio blobs are ever uploaded.
+ * - Event-only timeline signals tied to an existing practice session.
+ */
+export async function postPracticeProctoringEvent(
+  payload: ProctoringEventIn
+): Promise<ProctoringEventPostResult> {
+  if (!payload?.session_id) throw new Error('session_id is required');
+  if (!payload?.event_type) throw new Error('event_type is required');
+
+  const body = {
+    session_id: payload.session_id,
+    event_type: payload.event_type,
+    severity: payload.severity ?? 'info',
+    metadata: payload.metadata ?? {},
+    client_timestamp: payload.client_timestamp ?? new Date().toISOString(),
+  };
+
+  const res = await strataxFetch(`${API_BASE_URL}/api/practice/proctoring/event`, {
+    method: 'POST',
+    body: JSON.stringify(body),
+    throwOnError: false,
+  });
+
+  return { ok: res.ok, status: res.status };
+}
+
+// ============================================================================
 // TypeScript Types
 // ============================================================================
 
@@ -76,8 +134,6 @@ export interface StartRoundResponse {
   progress: string;
 }
 
-// ============================================================================
-// Question Type Support (Voice, Coding, System Design)
 // ============================================================================
 
 export enum QuestionType {
@@ -708,38 +764,55 @@ export async function submitCode(
     time_taken: timeTaken,
   };
 
-  let data: any;
-  try {
-    const response = await strataxFetch(`${API_BASE_URL}/api/practice/interview/submit-code`, {
+  const safeReadJson = async (res: Response): Promise<any> => {
+    return await res.json().catch(() => null);
+  };
+
+  const endpoints = [
+    `${API_BASE_URL}/api/practice/interview/submit-code`,
+    `${API_BASE_URL}/api/practice/interview/submit_code`,
+  ];
+
+  let last404 = false;
+  for (const url of endpoints) {
+    const response = await strataxFetch(url, {
       method: 'POST',
       body: JSON.stringify(requestBody),
+      throwOnError: false,
     });
 
-    console.log('📡 [API] Submit code response status:', response.status);
-    data = await response.json();
-  } catch (err) {
-    console.error('❌ [API] Code submission error:', err);
+    console.log('📡 [API] Submit code response status:', response.status, response.statusText);
 
-    if (err instanceof StrataxApiError && Array.isArray(err.detail)) {
-      const validationErrors = err.detail
-        .map((e: any) => `${e.loc?.join('.')}: ${e.msg} (input: ${JSON.stringify(e.input)})`)
-        .join('; ');
-      console.error('📋 [API] Validation errors:', validationErrors);
-      throw new Error(`Validation error: ${validationErrors}`);
+    if (response.ok) {
+      const data = (await response.json()) as SubmitCodeResponse;
+      console.log('✅ [API] Code submission response:', {
+        testsPassed: data.test_results?.filter((t: CodeTestResult) => t.passed).length,
+        testsTotal: data.test_results?.length,
+        overallScore: data.evaluation?.overall_score,
+        isCorrect: data.evaluation?.is_correct,
+        complete: data.complete,
+      });
+      return data;
     }
 
-    throw err;
+    if (response.status === 404) {
+      last404 = true;
+      continue;
+    }
+
+    const body = await safeReadJson(response);
+    const detail = body?.detail ?? body;
+    const message = typeof detail === 'string' ? detail : detail?.message || `Request failed (${response.status})`;
+    throw new Error(`Code submission failed: ${message}`);
   }
 
-  console.log('✅ [API] Code submission response:', {
-    testsPassed: data.test_results?.filter((t: CodeTestResult) => t.passed).length,
-    testsTotal: data.test_results?.length,
-    overallScore: data.evaluation?.overall_score,
-    isCorrect: data.evaluation?.is_correct,
-    complete: data.complete,
-  });
+  if (last404) {
+    throw new Error(
+      'Coding submission endpoint not found (404). Backend must implement POST /api/practice/interview/submit-code (or /submit_code) to support coding questions.'
+    );
+  }
 
-  return data;
+  throw new Error('Code submission failed: unexpected error');
 }
 
 export function getAudioUrl(audioPath: string): string {

@@ -77,8 +77,10 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { useToast } from "@/hooks/use-toast";
 import { Button } from "@/components/ui/button";
+import { Textarea } from "@/components/ui/textarea";
+import { Label } from "@/components/ui/label";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, DropdownMenuSeparator, DropdownMenuLabel } from "@/components/ui/dropdown-menu";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, DropdownMenuSeparator, DropdownMenuLabel, DropdownMenuRadioGroup, DropdownMenuRadioItem } from "@/components/ui/dropdown-menu";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import { startEvaluationOverlay } from "@/overlayHost";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
@@ -100,7 +102,6 @@ interface BeforeInstallPromptEvent extends Event {
 
 export const InterviewAssistant = () => {
   const { user, loading: authLoading, logout } = useAuth();
-  const canvasRef = useRef<HTMLCanvasElement>(null);
   const mainScrollRef = useRef<HTMLDivElement>(null);
   const viewportBaseHeightRef = useRef<number>(0);
   const [question, setQuestion] = useState("");
@@ -111,6 +112,17 @@ export const InterviewAssistant = () => {
   const [showAnswer, setShowAnswer] = useState(false);
   const [sessionId, setSessionId] = useState<string>("");
   const [style, setStyle] = useState<AnswerStyle>("detailed");
+  const [questionMode, setQuestionMode] = useState<"answer" | "mirror">(() => {
+    try {
+      const raw = window.localStorage.getItem("ia_question_mode");
+      return raw === "mirror" ? "mirror" : "answer";
+    } catch {
+      return "answer";
+    }
+  });
+  const [mirrorUserAnswer, setMirrorUserAnswer] = useState<string>("");
+  const [mirrorDialogOpen, setMirrorDialogOpen] = useState(false);
+  const [pendingMirrorQuestion, setPendingMirrorQuestion] = useState<string | null>(null);
   const [resetToken, setResetToken] = useState(0);
   const [lastQuestion, setLastQuestion] = useState("");
   const [answerTruncated, setAnswerTruncated] = useState(false);
@@ -167,6 +179,15 @@ export const InterviewAssistant = () => {
       window.localStorage.setItem("ia_desktop_sidebar_open", String(isDesktopSidebarOpen));
     } catch { }
   }, [isDesktopSidebarOpen]);
+
+  // Persist question mode so refresh keeps Answer vs Mirror.
+  useEffect(() => {
+    try {
+      window.localStorage.setItem("ia_question_mode", questionMode);
+    } catch {
+      // ignore
+    }
+  }, [questionMode]);
 
   const showBottomSearchBar =
     activeMainTab === "answer" &&
@@ -654,21 +675,36 @@ export const InterviewAssistant = () => {
     }
 
     // Production (authenticated): Check onboarding completion status
-    const onboardingTourCompleted = localStorage.getItem("onboarding_tour_completed");
-    const apiKeysConnected = localStorage.getItem("api_keys_connected");
+    const userIdentity = (user as any)?.id || (user as any)?.email || "unknown";
+    const onboardingTourKey = `onboarding_tour_completed:${userIdentity}`;
+
     const groqKey = localStorage.getItem("user_api_key");
     const geminiKey = localStorage.getItem("gemini_api_key");
+
+    // Onboarding completion is per-account (not per-browser), otherwise a previous guest/other-user session
+    // can cause brand new signups to skip the tour and jump directly to BYOK.
+    let onboardingTourCompleted = localStorage.getItem(onboardingTourKey);
+
+    // Best-effort migration: if legacy global flag is set AND keys exist, treat as completed for this user.
+    if (!onboardingTourCompleted) {
+      const legacy = localStorage.getItem("onboarding_tour_completed");
+      if (legacy === "true" && (groqKey || geminiKey)) {
+        localStorage.setItem(onboardingTourKey, "true");
+        onboardingTourCompleted = "true";
+      }
+    }
 
     // Step 1: Check if onboarding tour is completed
     if (!onboardingTourCompleted) {
       console.log('📚 First time user - showing onboarding tour');
       setShowOnboardingTour(true);
       setHasApiKey(false);
+      setShowKeyOnboarding(false);
       return;
     }
 
     // Step 2: Check if API keys are connected
-    if (!apiKeysConnected || (!groqKey && !geminiKey)) {
+    if (!groqKey && !geminiKey) {
       console.log('🔑 Onboarding complete, but no API keys - showing API key setup');
       setShowKeyOnboarding(true);
       setHasApiKey(false);
@@ -685,6 +721,10 @@ export const InterviewAssistant = () => {
   // Handle onboarding tour completion
   const handleOnboardingTourComplete = () => {
     console.log('✅ Onboarding tour completed');
+    const userIdentity = (user as any)?.id || (user as any)?.email || "unknown";
+    const onboardingTourKey = `onboarding_tour_completed:${userIdentity}`;
+    localStorage.setItem(onboardingTourKey, "true");
+    // Keep legacy key set for older builds / back-compat.
     localStorage.setItem("onboarding_tour_completed", "true");
     setShowOnboardingTour(false);
     
@@ -1418,6 +1458,8 @@ export const InterviewAssistant = () => {
         session_id: sid,
         question: pendingArchitectureQuestion,
         style: style,
+        mode: questionMode,
+        user_answer: questionMode === "mirror" ? mirrorUserAnswer : undefined,
         architecture_mode: mode
       });
 
@@ -1452,7 +1494,8 @@ export const InterviewAssistant = () => {
             question: pendingArchitectureQuestion,
             answer: res.answer,
             style: res.style,
-            created_at: base[existingIdx].created_at
+            created_at: base[existingIdx].created_at,
+            mode: (it as any)?.mode ?? (res as any)?.mode ?? questionMode
           }) : it);
           return { session_id: effectiveSid, items: next } as GetHistoryResponse;
         } else {
@@ -1461,7 +1504,8 @@ export const InterviewAssistant = () => {
             question: pendingArchitectureQuestion,
             answer: res.answer,
             style: res.style,
-            created_at: new Date().toISOString()
+            created_at: new Date().toISOString(),
+            mode: (res as any)?.mode ?? questionMode
           }, ...base];
           return { session_id: effectiveSid, items: next } as GetHistoryResponse;
         }
@@ -1567,7 +1611,8 @@ export const InterviewAssistant = () => {
                   question: cachedQ,
                   answer: cachedA,
                   style: 'detailed' as AnswerStyle,
-                  created_at: new Date().toISOString()
+                      created_at: new Date().toISOString(),
+                      mode: 'answer'
                 }, ...items]
               } as GetHistoryResponse;
             }
@@ -1578,10 +1623,10 @@ export const InterviewAssistant = () => {
             try {
               const archiveKey = `ia_history_archive_${sessionId}`;
               const raw = window.localStorage.getItem(archiveKey);
-              const list = raw ? (JSON.parse(raw) as Array<{ question: string; answer: string; ts: number }>) : [];
+              const list = raw ? (JSON.parse(raw) as Array<{ question: string; answer: string; ts: number; mode?: "answer" | "mirror" }>) : [];
               const exists = list.some(x => x.question === cachedQ && x.answer === cachedA);
               if (!exists) {
-                list.unshift({ question: cachedQ, answer: cachedA, ts: Date.now() });
+                list.unshift({ question: cachedQ, answer: cachedA, ts: Date.now(), mode: "answer" });
                 const CUTOFF = 1000;
                 window.localStorage.setItem(archiveKey, JSON.stringify(list.slice(0, CUTOFF)));
               }
@@ -1675,7 +1720,7 @@ export const InterviewAssistant = () => {
           const archiveKey = `ia_history_archive_${sessionId}`;
           const rawArch = window.localStorage.getItem(archiveKey);
           if (rawArch) {
-            const archived = JSON.parse(rawArch) as Array<{ question: string; answer: string; ts: number }>;
+            const archived = JSON.parse(rawArch) as Array<{ question: string; answer: string; ts: number; mode?: "answer" | "mirror" }>;
             if (Array.isArray(archived) && archived.length > 0) {
               // Filter out incomplete entries (empty answer) - these are failed optimistic inserts
               const complete = archived.filter(it => {
@@ -1685,7 +1730,7 @@ export const InterviewAssistant = () => {
                 return true;
               });
               if (complete.length > 0) {
-                const items = complete.map(it => ({ question: it.question, answer: it.answer })) as any;
+                const items = complete.map(it => ({ question: it.question, answer: it.answer, mode: it.mode })) as any;
                 setHistory({ session_id: sessionId, items } as any);
                 // Update archive to remove incomplete entries
                 if (complete.length !== archived.length) {
@@ -1711,8 +1756,8 @@ export const InterviewAssistant = () => {
           const archiveKey = `ia_history_archive_${sessionId}`;
           const raw = window.localStorage.getItem(archiveKey);
           if (raw) {
-            const archived = JSON.parse(raw) as Array<{ question: string; answer: string; ts: number }>;
-            const serverItems = (h?.items || []).map(it => ({ question: it.question, answer: it.answer, ts: Date.now() }));
+            const archived = JSON.parse(raw) as Array<{ question: string; answer: string; ts: number; mode?: "answer" | "mirror" }>;
+            const serverItems = (h?.items || []).map(it => ({ question: it.question, answer: it.answer, ts: Date.now(), mode: (it as any)?.mode })) as any;
             const combined = [...archived, ...serverItems];
             // De-duplicate by question+answer
             const seen = new Set<string>();
@@ -1729,7 +1774,7 @@ export const InterviewAssistant = () => {
             });
             // Sort by timestamp descending if available
             unique.sort((a, b) => (b.ts || 0) - (a.ts || 0));
-            merged = { session_id: sessionId, items: unique.map(it => ({ question: it.question, answer: it.answer })) } as any;
+            merged = { session_id: sessionId, items: unique.map(it => ({ question: it.question, answer: it.answer, mode: (it as any)?.mode })) } as any;
             // Write back merged archive for durability
             window.localStorage.setItem(archiveKey, JSON.stringify(unique));
           }
@@ -1851,6 +1896,117 @@ export const InterviewAssistant = () => {
 
   // Removed aggressive auto-scroll behavior to allow free scrolling
 
+  const submitMirrorAnswer = async () => {
+    const q = String(pendingMirrorQuestion || lastQuestion || "").trim();
+    const ua = mirrorUserAnswer.trim();
+    if (!q || !ua) return;
+
+    try {
+      setStreaming(true);
+      setIsGenerating(true);
+      setShowAnswer(true);
+      setAnswer(GENERATING_PLACEHOLDER);
+
+      const sid = await ensureSession();
+      let res;
+      try {
+        res = await apiSubmitQuestion({
+          session_id: sid,
+          question: q,
+          style,
+          mode: "mirror",
+          user_answer: ua,
+        });
+      } catch (err: any) {
+        const msg = String(err?.message || "");
+        if (msg.includes("Session not found")) {
+          try { window.localStorage.removeItem("ia_session_id"); } catch { }
+          const newSid = await ensureSession({ forceNew: true });
+          res = await apiSubmitQuestion({
+            session_id: newSid,
+            question: q,
+            style,
+            mode: "mirror",
+            user_answer: ua,
+          });
+        } else {
+          throw err;
+        }
+      }
+
+      const effectiveSid = (res as any)?.session_id && typeof (res as any).session_id === "string" ? (res as any).session_id : sid;
+      if (effectiveSid && effectiveSid !== sid) {
+        try {
+          setSessionId(effectiveSid);
+          window.localStorage.setItem("ia_session_id", effectiveSid);
+        } catch { }
+      }
+
+      if (res?.ui_action === "collect_mirror_answer") {
+        setPendingMirrorQuestion(q);
+        setMirrorDialogOpen(true);
+        setAnswer("Mirror mode needs your draft answer. Please paste it to analyze.");
+        return;
+      }
+
+      setMirrorDialogOpen(false);
+      setPendingMirrorQuestion(null);
+      setLastQuestion(q);
+      setAnswer(res.answer);
+
+      setHistory((prev) => {
+        const base = prev?.items ? [...prev.items] : [];
+        const pendingIdx = base.findIndex((it) => it.question === q && it.answer === "");
+        if (pendingIdx >= 0) {
+          const next = base.map((it, i) =>
+            i === pendingIdx
+              ? {
+                  question: q,
+                  answer: res.answer,
+                  style: res.style,
+                  created_at: base[pendingIdx].created_at,
+                  mode: (it as any)?.mode ?? (res as any)?.mode ?? "mirror",
+                }
+              : it
+          );
+          return { session_id: effectiveSid, items: next } as GetHistoryResponse;
+        }
+        const next: HistoryItem[] = [
+          { question: q, answer: res.answer, style: res.style, created_at: new Date().toISOString(), mode: (res as any)?.mode ?? "mirror" },
+          ...base,
+        ];
+        return { session_id: effectiveSid, items: next } as GetHistoryResponse;
+      });
+
+      try {
+        const archiveKey = `ia_history_archive_${effectiveSid}`;
+        const raw = window.localStorage.getItem(archiveKey);
+        const list = raw ? (JSON.parse(raw) as Array<{ question: string; answer: string; ts: number; mode?: "answer" | "mirror" }>) : [];
+        const pendingIndex = list.findIndex((x) => x.question === q && x.answer === "");
+        if (pendingIndex >= 0) list[pendingIndex] = { question: q, answer: res.answer, ts: Date.now(), mode: (res as any)?.mode ?? "mirror" } as any;
+        else list.unshift({ question: q, answer: res.answer, ts: Date.now(), mode: (res as any)?.mode ?? "mirror" } as any);
+        const CUTOFF = 1000;
+        window.localStorage.setItem(archiveKey, JSON.stringify(list.slice(0, CUTOFF)));
+      } catch { }
+
+      loadSessions();
+      
+      // Clear the mirror answer so next question will prompt again
+      setMirrorUserAnswer("");
+    } catch (err: any) {
+      console.error("[mirror] submit error", err);
+      try {
+        (toast as any) && toast({
+          title: "Mirror analysis failed",
+          description: String(err?.body ?? err?.message ?? "Unknown error"),
+          variant: "destructive",
+        });
+      } catch { }
+    } finally {
+      setIsGenerating(false);
+    }
+  };
+
   const handleGenerateAnswer = async (overrideQuestion?: string) => {
     // Reset navigation states immediately
     setIsNavigatingVersion(false);
@@ -1859,6 +2015,13 @@ export const InterviewAssistant = () => {
     const currentQuestion = (overrideQuestion ?? question).trim();
     if (!currentQuestion) return;
 
+    // 🪞 Mirror Mode: if user hasn't provided their answer yet, open dialog to collect it
+    if (questionMode === "mirror" && !mirrorUserAnswer.trim()) {
+      setPendingMirrorQuestion(currentQuestion);
+      setMirrorDialogOpen(true);
+      return;
+    }
+
     try {
       // Ensure streaming is enabled for the new generation
       setStreaming(true);
@@ -1866,23 +2029,19 @@ export const InterviewAssistant = () => {
 
       console.log('[Generation] Starting, streaming enabled');
 
-      // Get the CURRENT session ID from state and localStorage
-      const currentSessionId = sessionId || (typeof window !== 'undefined' ? window.localStorage.getItem("ia_session_id") : null) || "";
+      // Tab/session binding: prefer in-memory sessionId (selected tab) over localStorage.
+      // Only treat as a new session if BOTH ids are present and mismatched.
+      const historySid = (history as any)?.session_id as string | undefined;
+      const immediateSid = sessionId || historySid || "";
+      const isSessionMismatch = Boolean(immediateSid) && Boolean(historySid) && historySid !== immediateSid;
 
-      // CRITICAL: Check if we're in a fresh session (history should be empty for new chats)
-      // If history session_id doesn't match current session, clear the history first
-      const isNewSession = !history || history.session_id !== currentSessionId;
-
-      if (isNewSession) {
-        console.log('[Generation] New session detected, clearing old history. Current:', currentSessionId, 'History:', history?.session_id);
+      if (isSessionMismatch) {
+        console.log('[Generation] Session mismatch detected, clearing old history. Current:', immediateSid, 'History:', historySid);
         setHistory(null);
         setShowAnswer(false);
       } else if (!history?.items?.length) {
         setShowAnswer(false);
       }
-
-      // Use existing SID if available for immediate optimistic update
-      const immediateSid = currentSessionId;
 
       // Optimistic history insert (empty answer until completion)
       // Do this BEFORE the await ensureSession to prevent flicker
@@ -1890,7 +2049,10 @@ export const InterviewAssistant = () => {
         // If session changed, start fresh
         if (prev && prev.session_id !== immediateSid) {
           console.log('[Generation] Session mismatch in history update, starting fresh');
-          return { session_id: immediateSid || "pending", items: [{ question: currentQuestion, answer: '', style, created_at: new Date().toISOString() }] } as GetHistoryResponse;
+          return {
+            session_id: immediateSid || "pending",
+            items: [{ question: currentQuestion, answer: '', style, created_at: new Date().toISOString(), mode: questionMode }],
+          } as GetHistoryResponse;
         }
 
         const nowIso = new Date().toISOString();
@@ -1900,7 +2062,7 @@ export const InterviewAssistant = () => {
 
         const next: HistoryItem[] = hasPending || hasAnswered
           ? [...items]
-          : [{ question: currentQuestion, answer: '', style, created_at: nowIso }];
+          : [{ question: currentQuestion, answer: '', style, created_at: nowIso, mode: questionMode }];
 
         if (!hasPending && !hasAnswered) {
           next.push(...items);
@@ -1923,7 +2085,7 @@ export const InterviewAssistant = () => {
         const hasPending = list.some(x => x.question === currentQuestion && x.answer === '');
         const hasAnswered = list.some(x => x.question === currentQuestion && x.answer && x.answer.trim());
         if (!hasPending && !hasAnswered) {
-          list.unshift({ question: currentQuestion, answer: '', ts: Date.now() });
+          list.unshift({ question: currentQuestion, answer: '', ts: Date.now(), mode: questionMode } as any);
           const CUTOFF = 1000;
           window.localStorage.setItem(archiveKey, JSON.stringify(list.slice(0, CUTOFF)));
         }
@@ -1937,15 +2099,33 @@ export const InterviewAssistant = () => {
           // Old direct frontend generation removed - backend handles choice flow
           
           // Debug: log outgoing payload so we can inspect it in network/console
-          console.log('[api] POST /api/question payload', { session_id: sid, question: currentQuestion, style });
-          res = await apiSubmitQuestion({ session_id: sid, question: currentQuestion, style });
+          console.log('[api] POST /api/question payload', {
+            session_id: sid,
+            question: currentQuestion,
+            style,
+            mode: questionMode,
+            has_user_answer: questionMode === "mirror" ? Boolean(mirrorUserAnswer.trim()) : undefined,
+          });
+          res = await apiSubmitQuestion({
+            session_id: sid,
+            question: currentQuestion,
+            style,
+            mode: questionMode,
+            user_answer: questionMode === "mirror" ? mirrorUserAnswer : undefined,
+          });
         } catch (err: any) {
           const msg = String(err?.message || "");
           const looksLikeMissing = msg.includes("Session not found");
           if (looksLikeMissing) {
             try { window.localStorage.removeItem("ia_session_id"); } catch { }
             const newSid = await ensureSession({ forceNew: true });
-            res = await apiSubmitQuestion({ session_id: newSid, question: currentQuestion, style });
+            res = await apiSubmitQuestion({
+              session_id: newSid,
+              question: currentQuestion,
+              style,
+              mode: questionMode,
+              user_answer: questionMode === "mirror" ? mirrorUserAnswer : undefined,
+            });
           } else {
             // Surface backend diagnostics in dev: show a toast with error body if available
             console.error('[question] submit error details', err);
@@ -2000,6 +2180,8 @@ export const InterviewAssistant = () => {
           } catch { }
         }
 
+        const effectiveMode = ((res as any)?.mode as ("answer" | "mirror" | undefined)) ?? questionMode;
+
         // Note: Truncation handling removed to match ChatGPT/Claude behavior
         // Responses are shown in full without upgrade prompts
         setAnswerTruncated(false);
@@ -2035,6 +2217,7 @@ export const InterviewAssistant = () => {
                       answer: "",
                       style: res.style,
                       created_at: base[pendingIdx].created_at,
+                      mode: (it as any)?.mode ?? ((res as any)?.mode as ("answer" | "mirror" | undefined)) ?? questionMode,
                     }
                   : it
               );
@@ -2043,6 +2226,15 @@ export const InterviewAssistant = () => {
             return prev;
           });
 
+          return;
+        }
+
+        // 🪞 Mirror Mode: backend detected Mirror but user_answer was missing/empty
+        if (res?.ui_action === "collect_mirror_answer") {
+          setPendingMirrorQuestion(currentQuestion);
+          setMirrorDialogOpen(true);
+          setAnswer("Mirror mode: paste your answer to analyze.");
+          setIsGenerating(false);
           return;
         }
 
@@ -2073,14 +2265,16 @@ export const InterviewAssistant = () => {
               question: currentQuestion,
               answer: res.answer,
               style: res.style,
-              created_at: base[pendingIdx].created_at
+              created_at: base[pendingIdx].created_at,
+              mode: (it as any)?.mode ?? effectiveMode
             }) : it);
           } else {
             next = [{
               question: currentQuestion,
               answer: res.answer,
               style: res.style,
-              created_at: new Date().toISOString()
+              created_at: new Date().toISOString(),
+              mode: effectiveMode
             }, ...base];
           }
           // Remove any other duplicates of the same question (both answered and pending), keeping the first occurrence
@@ -2100,10 +2294,10 @@ export const InterviewAssistant = () => {
         try {
           const archiveKey = `ia_history_archive_${effectiveSid}`;
           const raw = window.localStorage.getItem(archiveKey);
-          const list = raw ? (JSON.parse(raw) as Array<{ question: string; answer: string; ts: number }>) : [];
+          const list = raw ? (JSON.parse(raw) as Array<{ question: string; answer: string; ts: number; mode?: "answer" | "mirror" }>) : [];
           const pendingIndex = list.findIndex(x => x.question === currentQuestion && x.answer === '');
-          if (pendingIndex >= 0) list[pendingIndex] = { question: currentQuestion, answer: res.answer, ts: Date.now() };
-          else list.unshift({ question: currentQuestion, answer: res.answer, ts: Date.now() });
+          if (pendingIndex >= 0) list[pendingIndex] = { question: currentQuestion, answer: res.answer, ts: Date.now(), mode: effectiveMode };
+          else list.unshift({ question: currentQuestion, answer: res.answer, ts: Date.now(), mode: effectiveMode });
           const CUTOFF = 1000;
           window.localStorage.setItem(archiveKey, JSON.stringify(list.slice(0, CUTOFF)));
         } catch { }
@@ -2315,94 +2509,28 @@ export const InterviewAssistant = () => {
     return "That's a great question. Let me think about this systematically. Based on my experience, I would approach this by first understanding the core requirements and constraints. I'd then evaluate different solutions, considering factors like scalability, maintainability, and user impact. I believe in data-driven decision making, so I'd also look at relevant metrics and feedback to guide the best path forward.";
   };
 
-  // Animated background effect
-  useEffect(() => {
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-
-    const ctx = canvas.getContext('2d');
-    if (!ctx) return;
-
-    canvas.width = window.innerWidth;
-    canvas.height = window.innerHeight;
-
-    const particles: Array<{
-      x: number;
-      y: number;
-      vx: number;
-      vy: number;
-      radius: number;
-    }> = [];
-
-    for (let i = 0; i < 50; i++) {
-      particles.push({
-        x: Math.random() * canvas.width,
-        y: Math.random() * canvas.height,
-        vx: (Math.random() - 0.5) * 0.3,
-        vy: (Math.random() - 0.5) * 0.3,
-        radius: Math.random() * 1.5 + 0.5,
-      });
-    }
-
-    let animationFrameId: number;
-
-    const animate = () => {
-      ctx.fillStyle = 'rgba(0, 0, 0, 0.035)';
-      ctx.fillRect(0, 0, canvas.width, canvas.height);
-
-      particles.forEach((p, i) => {
-        p.x += p.vx;
-        p.y += p.vy;
-
-        if (p.x < 0 || p.x > canvas.width) p.vx *= -1;
-        if (p.y < 0 || p.y > canvas.height) p.vy *= -1;
-
-        ctx.beginPath();
-        ctx.arc(p.x, p.y, p.radius, 0, Math.PI * 2);
-        // Subtle, pro dark-mode accent (blue/cyan) to avoid strong pink/purple glow.
-        ctx.fillStyle = 'rgba(59, 130, 246, 0.28)';
-        ctx.fill();
-
-        particles.slice(i + 1).forEach((p2) => {
-          const dx = p.x - p2.x;
-          const dy = p.y - p2.y;
-          const dist = Math.sqrt(dx * dx + dy * dy);
-
-          if (dist < 100) {
-            ctx.beginPath();
-            ctx.strokeStyle = `rgba(56, 189, 248, ${0.10 * (1 - dist / 100)})`;
-            ctx.lineWidth = 0.5;
-            ctx.moveTo(p.x, p.y);
-            ctx.lineTo(p2.x, p2.y);
-            ctx.stroke();
-          }
-        });
-      });
-
-      animationFrameId = requestAnimationFrame(animate);
-    };
-
-    animate();
-
-    const handleResize = () => {
-      canvas.width = window.innerWidth;
-      canvas.height = window.innerHeight;
-    };
-
-    window.addEventListener('resize', handleResize);
-    return () => {
-      window.removeEventListener('resize', handleResize);
-      cancelAnimationFrame(animationFrameId);
-    };
-  }, []);
+  // World-class futuristic design - no particle animations needed
 
   return (
     <div className="relative h-[var(--app-height)] overflow-hidden overflow-x-hidden bg-background" style={{ overscrollBehavior: 'none' }}>
-      {/* Animated Background - Only visible in dark mode */}
-      <canvas
-        ref={canvasRef}
-        className="absolute inset-0 hidden dark:block dark:opacity-20"
-      />
+      {/* World-Class Futuristic Background - Glassmorphism + Gradient Mesh */}
+      <div className="absolute inset-0 pointer-events-none overflow-hidden">
+        {/* Primary gradient mesh */}
+        <div className="absolute inset-0 bg-gradient-to-br from-background via-background to-background" />
+        
+        {/* Sophisticated gradient orbs - Always visible with theme-appropriate opacity */}
+        <div className="absolute -top-20 -right-20 sm:-top-40 sm:-right-40 w-[300px] h-[300px] sm:w-[500px] sm:h-[500px] bg-gradient-to-br from-blue-500/[0.07] via-cyan-500/[0.05] to-transparent rounded-full blur-3xl dark:opacity-100 opacity-0 transition-opacity duration-300 animate-float-slow" />
+        <div className="absolute -bottom-20 -left-20 sm:-bottom-40 sm:-left-40 w-[300px] h-[300px] sm:w-[500px] sm:h-[500px] bg-gradient-to-tr from-violet-500/[0.07] via-purple-500/[0.05] to-transparent rounded-full blur-3xl dark:opacity-100 opacity-0 transition-opacity duration-300 animate-float-slower" />
+        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[400px] h-[400px] sm:w-[600px] sm:h-[600px] bg-gradient-to-r from-indigo-500/[0.04] via-transparent to-cyan-500/[0.04] rounded-full blur-3xl dark:opacity-100 opacity-0 transition-opacity duration-300" />
+        
+        {/* Subtle grid pattern overlay for tech feel */}
+        <div className="absolute inset-0 dark:opacity-100 opacity-0 transition-opacity duration-300" style={{ backgroundImage: 'radial-gradient(circle at 1px 1px, rgba(255,255,255,0.02) 1px, transparent 0)', backgroundSize: '40px 40px' }} />
+        
+        {/* Light mode elegant gradient - Always rendered */}
+        <div className="absolute inset-0 bg-gradient-to-br from-blue-50/40 via-transparent to-purple-50/30 dark:opacity-0 opacity-100 transition-opacity duration-300" />
+        <div className="absolute top-1/4 right-1/4 w-[250px] h-[250px] sm:w-[400px] sm:h-[400px] bg-gradient-to-br from-blue-400/15 via-cyan-300/8 to-transparent rounded-full blur-3xl dark:opacity-0 opacity-100 transition-opacity duration-300 animate-float-slow" />
+        <div className="absolute bottom-1/4 left-1/4 w-[250px] h-[250px] sm:w-[400px] sm:h-[400px] bg-gradient-to-tr from-violet-400/15 via-purple-300/8 to-transparent rounded-full blur-3xl dark:opacity-0 opacity-100 transition-opacity duration-300 animate-float-slower" />
+      </div>
 
       {/* Premium Install Notification Banner */}
       <AnimatePresence>
@@ -3644,6 +3772,8 @@ export const InterviewAssistant = () => {
                         // The array is reversed to show Oldest -> Newest (top to bottom)
                         // In this layout, the very bottom item is the most recent.
                         const isLatest = idx === arr.length - 1;
+                        const itemMode = (item as any)?.mode as ("answer" | "mirror" | undefined);
+                        const isMirrorItem = itemMode === "mirror";
                         return (
                           <div
                             key={item.created_at || `idx-${idx}`}
@@ -3723,6 +3853,7 @@ export const InterviewAssistant = () => {
                                   answer={item.answer}
                                   question=""
                                   id={item.created_at || `idx-${idx}`}
+                                  mode={itemMode}
                                   streaming={isLatest && streaming}
                                   evaluationAllowed={isLatest && evaluationAllowed}
                                   evaluationReason={isLatest ? evaluationReason : null}
@@ -3759,20 +3890,45 @@ export const InterviewAssistant = () => {
 
                         {/* Centered Search Bar */}
                         <div className="flex items-end gap-3">
-                          <Button
-                            variant="outline"
-                            size="icon"
-                            onClick={handleProfileUploadClick}
-                            disabled={isUploadingProfile}
-                            className="h-12 w-12 rounded-2xl border-primary/20 bg-background/95 backdrop-blur-xl hover:bg-primary/5 text-primary transition-all shrink-0"
-                            title="Upload Resume/Profile"
-                          >
-                            {isUploadingProfile ? (
-                              <Loader2 className="h-5 w-5 animate-spin" />
-                            ) : (
-                              <Plus className="h-6 w-6" />
-                            )}
-                          </Button>
+                          <DropdownMenu>
+                            <DropdownMenuTrigger asChild>
+                              <Button
+                                variant="outline"
+                                size="icon"
+                                disabled={isUploadingProfile}
+                                className="h-12 w-12 rounded-2xl border-primary/20 bg-background/95 backdrop-blur-xl hover:bg-primary/5 text-primary transition-all shrink-0"
+                                title="Actions"
+                              >
+                                {isUploadingProfile ? (
+                                  <Loader2 className="h-5 w-5 animate-spin" />
+                                ) : (
+                                  <Plus className="h-6 w-6" />
+                                )}
+                              </Button>
+                            </DropdownMenuTrigger>
+                            <DropdownMenuContent align="start" className="w-56">
+                              <DropdownMenuItem
+                                onSelect={(e) => {
+                                  e.preventDefault();
+                                  handleProfileUploadClick();
+                                }}
+                              >
+                                Upload Resume/Profile
+                              </DropdownMenuItem>
+                              <DropdownMenuSeparator />
+                              <DropdownMenuLabel>Mode</DropdownMenuLabel>
+                              <DropdownMenuRadioGroup
+                                value={questionMode}
+                                onValueChange={(v) => setQuestionMode(v as "answer" | "mirror")}
+                              >
+                                <DropdownMenuRadioItem value="answer">Answer</DropdownMenuRadioItem>
+                                <DropdownMenuRadioItem value="mirror">Mirror (Feedback)</DropdownMenuRadioItem>
+                              </DropdownMenuRadioGroup>
+                              <div className="px-2 py-1.5 text-xs text-muted-foreground">
+                                Mirror Mode: enter the question, then paste your draft answer for critique + a stronger rewrite.
+                              </div>
+                            </DropdownMenuContent>
+                          </DropdownMenu>
 
                           <div className="flex-1">
                             <SearchBar
@@ -3787,6 +3943,8 @@ export const InterviewAssistant = () => {
                               onGenerate={handleGenerateAnswer}
                               isGenerating={isGenerating}
                               canGenerate={!viewingHistory}
+                              mode={questionMode}
+                              onModeClick={() => setQuestionMode(questionMode === "answer" ? "mirror" : "answer")}
                             />
                           </div>
                         </div>
@@ -3890,21 +4048,45 @@ export const InterviewAssistant = () => {
                 )}
 
                 <div className="max-w-4xl mx-auto flex items-end gap-2 md:gap-3">
-                  {/* Separate Upload Button */}
-                  <Button
-                    variant="outline"
-                    size="icon"
-                    onClick={handleProfileUploadClick}
-                    disabled={isUploadingProfile}
-                    className="h-12 w-12 rounded-full border-primary/20 bg-background/95 dark:backdrop-blur-xl hover:bg-primary/5 text-primary transition-all shrink-0 shadow-sm"
-                    title="Upload Resume/Profile"
-                  >
-                    {isUploadingProfile ? (
-                      <Loader2 className="h-4 w-4 md:h-5 md:w-5 animate-spin" />
-                    ) : (
-                      <Plus className="h-5 w-5 md:h-6 md:w-6" />
-                    )}
-                  </Button>
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <Button
+                        variant="outline"
+                        size="icon"
+                        disabled={isUploadingProfile}
+                        className="h-12 w-12 rounded-full border-primary/20 bg-background/95 dark:backdrop-blur-xl hover:bg-primary/5 text-primary transition-all shrink-0 shadow-sm"
+                        title="Actions"
+                      >
+                        {isUploadingProfile ? (
+                          <Loader2 className="h-4 w-4 md:h-5 md:w-5 animate-spin" />
+                        ) : (
+                          <Plus className="h-5 w-5 md:h-6 md:w-6" />
+                        )}
+                      </Button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="start" className="w-56">
+                      <DropdownMenuItem
+                        onSelect={(e) => {
+                          e.preventDefault();
+                          handleProfileUploadClick();
+                        }}
+                      >
+                        Upload Resume/Profile
+                      </DropdownMenuItem>
+                      <DropdownMenuSeparator />
+                      <DropdownMenuLabel>Mode</DropdownMenuLabel>
+                      <DropdownMenuRadioGroup
+                        value={questionMode}
+                        onValueChange={(v) => setQuestionMode(v as "answer" | "mirror")}
+                      >
+                        <DropdownMenuRadioItem value="answer">Answer</DropdownMenuRadioItem>
+                        <DropdownMenuRadioItem value="mirror">Mirror (Feedback)</DropdownMenuRadioItem>
+                      </DropdownMenuRadioGroup>
+                      <div className="px-2 py-1.5 text-xs text-muted-foreground">
+                        Mirror Mode: enter the question, then paste your draft answer for critique + a stronger rewrite.
+                      </div>
+                    </DropdownMenuContent>
+                  </DropdownMenu>
 
                   <div className="flex-1">
                     <SearchBar
@@ -3919,6 +4101,8 @@ export const InterviewAssistant = () => {
                       onGenerate={handleGenerateAnswer}
                       isGenerating={isGenerating}
                       canGenerate={!viewingHistory}
+                      mode={questionMode}
+                      onModeClick={() => setQuestionMode(questionMode === "answer" ? "mirror" : "answer")}
                     />
                   </div>
                 </div>
@@ -3934,6 +4118,58 @@ export const InterviewAssistant = () => {
           </div>
         )
       }
+
+      {/* Mirror Mode: collect candidate's draft answer */}
+      <Dialog open={mirrorDialogOpen} onOpenChange={setMirrorDialogOpen}>
+        <DialogContent className="sm:max-w-[720px]">
+          <DialogHeader>
+            <DialogTitle>Mirror Mode</DialogTitle>
+          </DialogHeader>
+
+          <div className="space-y-3">
+            <p className="text-sm text-muted-foreground">
+              Paste your draft answer and Stratax will critique it (clarity, structure, missing points) and suggest a stronger version.
+            </p>
+            <p className="text-sm text-muted-foreground">
+              Paste your answer to analyze{pendingMirrorQuestion ? `: ${pendingMirrorQuestion}` : "."}
+            </p>
+
+            <div className="space-y-2">
+              <Label htmlFor="mirror-user-answer">Your answer</Label>
+              <Textarea
+                id="mirror-user-answer"
+                value={mirrorUserAnswer}
+                onChange={(e) => setMirrorUserAnswer(e.target.value)}
+                placeholder="Paste your answer to analyze"
+                className="min-h-[200px]"
+              />
+            </div>
+
+            <div className="flex justify-end gap-2">
+              <Button
+                variant="outline"
+                onClick={() => setMirrorDialogOpen(false)}
+                disabled={isGenerating}
+              >
+                Cancel
+              </Button>
+              <Button
+                onClick={submitMirrorAnswer}
+                disabled={isGenerating || !mirrorUserAnswer.trim()}
+              >
+                {isGenerating ? (
+                  <>
+                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                    Analyzing...
+                  </>
+                ) : (
+                  "Analyze"
+                )}
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
 
       <AnimatePresence>
         {showOnboardingTour && (

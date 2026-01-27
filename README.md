@@ -5,6 +5,7 @@ A mobile‑first React + Vite application that helps users prepare and perform i
 ## Highlights
 - Mobile‑first UX with a fixed composer and compact reading experience
 - AI answer generation with streaming display and rich formatting
+- Backend-only code runner with Visualize (trace timeline + locals)
 - Inline edit‑and‑compare flow (Original vs Latest)
 - Resume/profile upload for context (PDF/DOC/TXT)0
 - Voice capture (Web Speech API when available)
@@ -115,6 +116,7 @@ Use Trusted Web Activity (Bubblewrap) to ship the PWA as a Play Store app.
 - `SearchBar` manages input, mic, upload, and send controls.
 - `AnswerCard` renders streamed content with robust sanitization and formatting, plus inline edit controls.
 - API layer (`lib/api.ts`) centralizes HTTP calls and response types.
+- Code execution is backend-only via `POST /api/code/execute` (no browser-side Pyodide/Judge0).
 
 ## Accessibility & Performance
 - Keyboard and touch‑friendly controls; large hit targets on mobile.

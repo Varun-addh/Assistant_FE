@@ -1,8 +1,8 @@
-import { useState, useEffect } from "react";
+import { useMemo, useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Key, Save, Trash2, ShieldCheck, AlertCircle, Zap, Brain } from "lucide-react";
+import { Key, Save, Trash2, ShieldCheck, Zap, Brain, Globe } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { isDevelopmentMode } from "@/lib/devUtils";
 
@@ -26,7 +26,14 @@ export const ApiKeySettings = () => {
     const [geminiKey, setGeminiKey] = useState("");
     const [hasGroqKey, setHasGroqKey] = useState(false);
     const [hasGeminiKey, setHasGeminiKey] = useState(false);
+    const [showGuide, setShowGuide] = useState(false);
+    const [videoError, setVideoError] = useState(false);
     const { toast } = useToast();
+
+    const demoVideoUrl = useMemo(() => {
+        const envUrl = (import.meta as any)?.env?.VITE_BYOK_DEMO_VIDEO_URL as string | undefined;
+        return (envUrl && String(envUrl).trim()) || "/byok/byok-demo.mp4";
+    }, []);
 
     useEffect(() => {
         const storedGroqKey = localStorage.getItem("user_api_key");
@@ -214,6 +221,86 @@ export const ApiKeySettings = () => {
                         </p>
                     </div>
                 </div>
+
+                <div className="flex items-center justify-between gap-2 px-1">
+                    <div className="flex items-center gap-2 text-[10px] text-muted-foreground">
+                        <Globe className="w-3.5 h-3.5" />
+                        <span>
+                            Groq/Gemini keys are typically free to create (free tiers) but may have rate limits/quotas.
+                        </span>
+                    </div>
+                    <Button
+                        variant="outline"
+                        size="sm"
+                        className="h-7 px-2 text-[10px]"
+                        onClick={() => setShowGuide((v) => !v)}
+                    >
+                        {showGuide ? "Hide guide" : "View guide"}
+                    </Button>
+                </div>
+
+                {showGuide && (
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                        <a
+                            href="https://console.groq.com/keys"
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="p-3 rounded-xl border border-orange-500/20 bg-gradient-to-br from-orange-500/5 to-red-500/5 hover:bg-orange-500/10 transition-colors"
+                        >
+                            <div className="flex items-center justify-between gap-2">
+                                <div className="flex items-center gap-2">
+                                    <Zap className="w-4 h-4 text-orange-400" />
+                                    <p className="text-[11px] font-bold">Get Groq key</p>
+                                </div>
+                                <span className="text-[10px] font-semibold text-orange-400 underline">Open</span>
+                            </div>
+                            <p className="mt-2 text-[10px] text-muted-foreground leading-snug">
+                                Create a key in Groq Console, then paste it in Interview Engine.
+                            </p>
+                        </a>
+
+                        <a
+                            href="https://aistudio.google.com/app/apikey"
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="p-3 rounded-xl border border-blue-500/20 bg-gradient-to-br from-blue-500/5 to-purple-500/5 hover:bg-blue-500/10 transition-colors"
+                        >
+                            <div className="flex items-center justify-between gap-2">
+                                <div className="flex items-center gap-2">
+                                    <Brain className="w-4 h-4 text-blue-400" />
+                                    <p className="text-[11px] font-bold">Get Gemini key</p>
+                                </div>
+                                <span className="text-[10px] font-semibold text-blue-400 underline">Open</span>
+                            </div>
+                            <p className="mt-2 text-[10px] text-muted-foreground leading-snug">
+                                Create a key in Google AI Studio, then paste it in Answer Engine.
+                            </p>
+                        </a>
+
+                        <div className="md:col-span-2 p-3 rounded-xl border border-border/30 bg-muted/10">
+                            <div className="flex items-center justify-between gap-2 mb-2">
+                                <p className="text-[11px] font-bold">Quick demo video</p>
+                            </div>
+
+                            {!videoError ? (
+                                <video
+                                    className="w-full rounded-lg border border-white/5 bg-black"
+                                    controls
+                                    playsInline
+                                    preload="metadata"
+                                    src={demoVideoUrl}
+                                    onError={() => setVideoError(true)}
+                                />
+                            ) : (
+                                <p className="text-[10px] text-muted-foreground leading-snug">
+                                    Demo video not found. To enable it, either add the file at
+                                    <span className="font-mono"> /public/byok/byok-demo.mp4</span>
+                                    , or set <span className="font-mono">VITE_BYOK_DEMO_VIDEO_URL</span> to a hosted mp4/gif URL.
+                                </p>
+                            )}
+                        </div>
+                    </div>
+                )}
             </CardContent>
         </Card>
     );

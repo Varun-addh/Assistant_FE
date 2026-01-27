@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -9,13 +9,10 @@ import {
   Video,
   Code2,
   Sparkles,
-  ArrowRight,
   Zap,
-  BookOpen,
   ChevronDown,
   ChevronRight,
-  Network,
-  X
+  Network
 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { isDevelopmentMode } from "@/lib/devUtils";
@@ -25,7 +22,6 @@ import { useAuth } from "@/context/AuthContext";
 const Index = () => {
   const navigate = useNavigate();
   const { user, loading } = useAuth();
-  const canvasRef = useRef<HTMLCanvasElement>(null);
   const [selectedFeature, setSelectedFeature] = useState<typeof features[0] | null>(null);
   const [showFeatureModal, setShowFeatureModal] = useState(false);
 
@@ -38,80 +34,7 @@ const Index = () => {
     }
   }, [navigate]);
 
-  useEffect(() => {
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-
-    const ctx = canvas.getContext('2d');
-    if (!ctx) return;
-
-    canvas.width = window.innerWidth;
-    canvas.height = window.innerHeight;
-
-    const particles: Array<{
-      x: number;
-      y: number;
-      vx: number;
-      vy: number;
-      radius: number;
-    }> = [];
-
-    for (let i = 0; i < 80; i++) {
-      particles.push({
-        x: Math.random() * canvas.width,
-        y: Math.random() * canvas.height,
-        vx: (Math.random() - 0.5) * 0.5,
-        vy: (Math.random() - 0.5) * 0.5,
-        radius: Math.random() * 2 + 1,
-      });
-    }
-
-    const animate = () => {
-      const isDark = document.documentElement.classList.contains('dark');
-      ctx.fillStyle = isDark ? 'rgba(0, 0, 0, 0.05)' : 'rgba(255, 255, 255, 0.1)';
-      ctx.fillRect(0, 0, canvas.width, canvas.height);
-
-      particles.forEach((p, i) => {
-        p.x += p.vx;
-        p.y += p.vy;
-
-        if (p.x < 0 || p.x > canvas.width) p.vx *= -1;
-        if (p.y < 0 || p.y > canvas.height) p.vy *= -1;
-
-        ctx.beginPath();
-        ctx.arc(p.x, p.y, p.radius, 0, Math.PI * 2);
-        ctx.fillStyle = 'rgba(139, 92, 246, 0.5)';
-        ctx.fill();
-
-        particles.slice(i + 1).forEach((p2) => {
-          const dx = p.x - p2.x;
-          const dy = p.y - p2.y;
-          const dist = Math.sqrt(dx * dx + dy * dy);
-
-          if (dist < 120) {
-            ctx.beginPath();
-            ctx.strokeStyle = `rgba(139, 92, 246, ${0.2 * (1 - dist / 120)})`;
-            ctx.lineWidth = 0.5;
-            ctx.moveTo(p.x, p.y);
-            ctx.lineTo(p2.x, p2.y);
-            ctx.stroke();
-          }
-        });
-      });
-
-      requestAnimationFrame(animate);
-    };
-
-    animate();
-
-    const handleResize = () => {
-      canvas.width = window.innerWidth;
-      canvas.height = window.innerHeight;
-    };
-
-    window.addEventListener('resize', handleResize);
-    return () => window.removeEventListener('resize', handleResize);
-  }, []);
+  // World-class futuristic design - no particle animations needed
 
   const features = [
     {
@@ -121,6 +44,14 @@ const Index = () => {
       gradient: "from-blue-500/20 to-cyan-500/20",
       iconColor: "text-blue-400",
       accentColor: "bg-blue-500/15"
+    },
+    {
+      icon: Sparkles,
+      title: "Mirror Mode (Feedback)",
+      description: "Turn a rough draft into an interview-ready response. Enter the question, paste your draft answer, and get structured critique (clarity, structure, missing points) plus an improved rewrite you can confidently deliver.",
+      gradient: "from-pink-500/20 to-purple-500/20",
+      iconColor: "text-pink-400",
+      accentColor: "bg-pink-500/15"
     },
     {
       icon: Brain,
@@ -171,16 +102,26 @@ const Index = () => {
         {loading ? null : user ? <UserProfile /> : null}
       </div>
 
-      {/* Animated Background */}
-      <canvas
-        ref={canvasRef}
-        className="absolute inset-0 opacity-20 dark:opacity-30"
-      />
-
-      {/* Gradient Overlays */}
-      <div className="absolute inset-0 bg-gradient-to-br from-purple-500/5 via-background to-blue-500/5 dark:from-purple-900/20 dark:via-black dark:to-blue-900/20" />
-      <div className="absolute top-0 left-1/4 w-96 h-96 bg-purple-500/10 dark:bg-purple-500/30 rounded-full blur-[120px] animate-pulse" />
-      <div className="absolute bottom-0 right-1/4 w-96 h-96 bg-blue-500/10 dark:bg-blue-500/30 rounded-full blur-[120px] animate-pulse delay-1000" />
+      {/* World-Class Futuristic Background */}
+      <div className="absolute inset-0 overflow-hidden">
+        {/* Base gradient */}
+        <div className="absolute inset-0 bg-gradient-to-br from-slate-50 via-white to-blue-50 dark:from-slate-950 dark:via-slate-900 dark:to-blue-950 transition-colors duration-500" />
+        
+        {/* Sophisticated floating orbs - Dark mode - Always rendered with opacity */}
+        <div className="absolute top-10 right-0 sm:top-20 sm:right-1/4 w-[350px] h-[350px] sm:w-[600px] sm:h-[600px] bg-gradient-to-br from-blue-500/[0.15] via-cyan-400/[0.08] to-transparent rounded-full blur-3xl dark:opacity-100 opacity-0 transition-opacity duration-500 animate-float-slow" />
+        <div className="absolute bottom-10 left-0 sm:bottom-20 sm:left-1/4 w-[300px] h-[300px] sm:w-[500px] sm:h-[500px] bg-gradient-to-tr from-violet-500/[0.15] via-purple-400/[0.08] to-transparent rounded-full blur-3xl dark:opacity-100 opacity-0 transition-opacity duration-500 animate-float-slower" />
+        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[400px] h-[400px] sm:w-[700px] sm:h-[700px] bg-gradient-to-r from-indigo-500/[0.06] via-transparent to-pink-500/[0.06] rounded-full blur-3xl dark:opacity-100 opacity-0 transition-opacity duration-500" />
+        
+        {/* Light mode elegant orbs - Always rendered */}
+        <div className="absolute top-10 right-0 sm:top-20 sm:right-1/4 w-[350px] h-[350px] sm:w-[600px] sm:h-[600px] bg-gradient-to-br from-blue-400/20 via-cyan-300/10 to-transparent rounded-full blur-3xl dark:opacity-0 opacity-100 transition-opacity duration-500 animate-float-slow" />
+        <div className="absolute bottom-10 left-0 sm:bottom-20 sm:left-1/4 w-[300px] h-[300px] sm:w-[500px] sm:h-[500px] bg-gradient-to-tr from-violet-400/20 via-purple-300/10 to-transparent rounded-full blur-3xl dark:opacity-0 opacity-100 transition-opacity duration-500 animate-float-slower" />
+        
+        {/* Subtle dot matrix pattern */}
+        <div className="absolute inset-0 opacity-[0.015] dark:opacity-[0.025] transition-opacity duration-500" style={{ backgroundImage: 'radial-gradient(circle at 1px 1px, currentColor 1px, transparent 0)', backgroundSize: '32px 32px' }} />
+        
+        {/* Glassmorphism overlay */}
+        <div className="absolute inset-0 bg-gradient-to-b from-transparent via-white/30 to-white/60 dark:via-black/20 dark:to-black/40 transition-colors duration-500" />
+      </div>
 
       {/* Content */}
       <div className="relative z-10">
@@ -328,6 +269,15 @@ const Index = () => {
                     <li className="text-sm md:text-base"><strong className="text-blue-500 font-semibold">Comprehensive Coverage:</strong> Handles both technical questions and behavioral scenarios with equal expertise</li>
                     <li className="text-sm md:text-base"><strong className="text-blue-500 font-semibold">Real-Time Support:</strong> Get instant answers during preparation or even during live interviews with discreet overlay mode</li>
                     <li className="text-sm md:text-base"><strong className="text-blue-500 font-semibold">Context-Aware:</strong> Remembers your conversation history to provide consistent, coherent answers throughout your session</li>
+                  </>
+                )}
+                {selectedFeature?.title === "Mirror Mode (Feedback)" && (
+                  <>
+                    <li className="text-sm md:text-base"><strong className="text-pink-500 font-semibold">Draft → Polished:</strong> Paste your draft answer and get a stronger, interview-ready rewrite</li>
+                    <li className="text-sm md:text-base"><strong className="text-pink-500 font-semibold">Structured Critique:</strong> Clear feedback on clarity, structure, relevance, and missing points</li>
+                    <li className="text-sm md:text-base"><strong className="text-pink-500 font-semibold">Better Storytelling:</strong> Improves flow and adds crisp, high-signal phrasing interviewers expect</li>
+                    <li className="text-sm md:text-base"><strong className="text-pink-500 font-semibold">Behavioral + Technical:</strong> Works for STAR answers, explanations, and problem-solving narratives</li>
+                    <li className="text-sm md:text-base"><strong className="text-pink-500 font-semibold">Actionable Next Steps:</strong> Practical suggestions you can apply immediately in your next attempt</li>
                   </>
                 )}
                 {selectedFeature?.title === "Interview Intelligence" && (

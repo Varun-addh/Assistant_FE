@@ -10,17 +10,7 @@
 
 import { isDevelopmentMode } from "./devUtils";
 
-// NOTE:
-// - Use nullish coalescing so an explicitly empty `VITE_API_BASE_URL=` is respected.
-// - If VITE_API_BASE_URL is *unset* and we're running on `*.hf.space`, default to
-//   same-origin (""), so `/api/...` routes go through Hugging Face's authenticated proxy.
-const VITE_API_BASE_URL = (import.meta as any).env?.VITE_API_BASE_URL as string | undefined;
-
-export const STRATAX_API_BASE_URL =
-  VITE_API_BASE_URL ??
-  (typeof window !== "undefined" && window.location?.hostname?.endsWith(".hf.space")
-    ? ""
-    : "https://intvmate-interview-assistant.hf.space");
+export const STRATAX_API_BASE_URL = (import.meta as any).env?.VITE_API_BASE_URL || "https://intvmate-interview-assistant.hf.space";
 
 export type DemoRemaining = {
   questions?: number;
@@ -288,6 +278,15 @@ export async function strataxFetch(
   if (!res.ok) {
     // If caller wants to handle non-OK status codes themselves, do not consume the body.
     if (init.throwOnError === false) {
+      // Still surface demo gate events (429/503) even when caller handles errors.
+      // IMPORTANT: Use a cloned response so we don't consume the caller's body.
+      try {
+        const body = await safeReadJson(res.clone());
+        dispatchDemoEvents({ status: res.status, detail: body, headers: res.headers });
+      } catch {
+        // ignore
+      }
+
       // Best-effort logout only when 401 is clearly JWT/session related.
       if (res.status === 401 && typeof window !== "undefined") {
         let body: any = null;

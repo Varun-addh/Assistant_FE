@@ -45,6 +45,7 @@ import {
   QuestionType as QuestionTypeEnum,
   API_BASE_URL,
 } from '@/lib/practiceModeApi';
+import { startPracticeProctoring } from '@/lib/practiceProctoring';
 import {
   Mic,
   MicOff,
@@ -69,6 +70,7 @@ import {
   Trophy,
   Star,
   Flame,
+  Camera,
 } from 'lucide-react';
 import RoundSelection from './RoundSelection';
 import type { RoundConfig } from '@/lib/practiceModeApi';
@@ -83,7 +85,7 @@ type FeedbackRatingDraft = {
 };
 
 type GuestGateBanner =
-  | { kind: 'limit'; message?: string }
+  | { kind: 'limit'; message?: string; demo_remaining?: Record<string, unknown> }
   | { kind: 'unavailable'; message?: string }
   | null;
 
@@ -111,8 +113,8 @@ export const PracticeMode = () => {
   // Show a friendly, professional in-flow message when guest quota/capacity is hit.
   useEffect(() => {
     const onLimitReached = (event: Event) => {
-      const detail = (event as CustomEvent).detail as { message?: string };
-      setGuestGateBanner({ kind: 'limit', message: detail?.message });
+      const detail = (event as CustomEvent).detail as { message?: string; demo_remaining?: Record<string, unknown> };
+      setGuestGateBanner({ kind: 'limit', message: detail?.message, demo_remaining: detail?.demo_remaining });
     };
 
     const onUnavailable = (event: Event) => {
@@ -128,6 +130,76 @@ export const PracticeMode = () => {
       window.removeEventListener('demo:unavailable', onUnavailable);
     };
   }, []);
+
+  // If guest limit/unavailable triggers mid-session, stop proctoring to avoid spamming 429s.
+  useEffect(() => {
+    if (!guestGateBanner) return;
+    stopProctoring();
+    setEnableCameraProctoring(false);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [guestGateBanner?.kind]);
+
+  const renderGuestGateBanner = () => {
+    if (!guestGateBanner) return null;
+    const remaining = guestGateBanner.kind === 'limit' ? guestGateBanner.demo_remaining : undefined;
+
+    return (
+      <Card className="border-2 border-amber-500/30 bg-amber-500/5">
+        <CardContent className="pt-5">
+          <div className="flex items-start gap-3">
+            <AlertCircle className="w-5 h-5 text-amber-500 mt-0.5" />
+            <div className="flex-1 min-w-0">
+              <div className="font-semibold">
+                {guestGateBanner.kind === 'limit'
+                  ? 'Guest usage limit reached'
+                  : 'Guest mode temporarily unavailable'}
+              </div>
+              <p className="text-sm text-muted-foreground mt-1">
+                {guestGateBanner.message?.trim()
+                  ? guestGateBanner.message
+                  : guestGateBanner.kind === 'limit'
+                    ? 'You’ve used all guest credits for now. Sign in to continue, or connect your own API keys for unlimited usage.'
+                    : 'Guest capacity is currently full right now. Please try again later, or sign in and use your own API keys.'}
+              </p>
+
+              {guestGateBanner.kind === 'limit' && remaining && typeof remaining === 'object' && (
+                <div className="mt-3 rounded-xl border border-border/50 bg-muted/10 p-3 text-sm">
+                  <div className="font-medium mb-2">Guest credits remaining</div>
+                  <div className="space-y-1">
+                    {Object.entries(remaining)
+                      .filter(([_, v]) => typeof v === 'number')
+                      .map(([k, v]) => (
+                        <div key={k} className="flex items-center justify-between">
+                          <span className="text-muted-foreground">{k}</span>
+                          <span className="font-medium">{String(v)}</span>
+                        </div>
+                      ))}
+                  </div>
+                </div>
+              )}
+
+              <div className="mt-3 flex flex-wrap gap-2 justify-end">
+                <Button variant="outline" onClick={() => setGuestGateBanner(null)}>
+                  Dismiss
+                </Button>
+                <Button
+                  onClick={() => {
+                    try {
+                      window.location.assign('/login?mode=signin');
+                    } catch {
+                      window.location.href = '/login?mode=signin';
+                    }
+                  }}
+                >
+                  Sign in
+                </Button>
+              </div>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+    );
+  };
 
   // Optional insights (coach-like nudge)
   const [practiceInsights, setPracticeInsights] = useState<PracticeInsightsResponse | null>(null);
@@ -169,6 +241,69 @@ export const PracticeMode = () => {
   const [enableAdaptive, setEnableAdaptive] = useState(false);
   const [questionCount, setQuestionCount] = useState<number>(1);  // Default to 1 question
 
+  // Privacy-safe camera proctoring (opt-in; event-only)
+  const [enableCameraProctoring, setEnableCameraProctoring] = useState(false);
+  const [proctoringStatus, setProctoringStatus] = useState<'inactive' | 'starting' | 'active' | 'error'>('inactive');
+  const [proctoringInfo, setProctoringInfo] = useState<string>('');
+  const proctoringStopRef = useRef<null | (() => void)>(null);
+
+  const stopProctoring = () => {
+    try {
+      proctoringStopRef.current?.();
+    } catch {
+      // ignore
+    }
+    proctoringStopRef.current = null;
+    setProctoringStatus('inactive');
+    setProctoringInfo('');
+  };
+
+  const startProctoringBestEffort = async (practiceSessionId: string) => {
+    if (!enableCameraProctoring) return;
+
+    stopProctoring();
+    setProctoringStatus('starting');
+    setProctoringInfo('');
+
+    try {
+      const controller = await startPracticeProctoring({
+        sessionId: practiceSessionId,
+        onStatus: (status, info) => {
+          setProctoringStatus(status);
+          setProctoringInfo(info ?? '');
+        },
+      });
+
+      if (!controller.isActive()) {
+        // Endpoint missing or controller disabled itself.
+        setEnableCameraProctoring(false);
+        toast({
+          title: 'Proctoring unavailable',
+          description: 'Backend proctoring endpoint is not available. Running unproctored.',
+          variant: 'destructive',
+        });
+        return;
+      }
+
+      proctoringStopRef.current = controller.stop;
+    } catch (err: any) {
+      setEnableCameraProctoring(false);
+      setProctoringStatus('error');
+      setProctoringInfo(err?.message || 'Camera access failed');
+      toast({
+        title: 'Camera not enabled',
+        description: 'Proctored mode requires camera permission. Continuing unproctored.',
+        variant: 'destructive',
+      });
+    }
+  };
+
+  // Cleanup on unmount
+  useEffect(() => {
+    return () => stopProctoring();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   // Adaptive Profile state
   const [profileDomain, setProfileDomain] = useState('');
   const [profileExperience, setProfileExperience] = useState<number>(0);
@@ -183,6 +318,19 @@ export const PracticeMode = () => {
     if (!d) return;
     try { window.localStorage.setItem('practice_last_domain', d); } catch { }
   }, [profileDomain]);
+
+  // If user toggles proctoring during an active session, start/stop immediately.
+  useEffect(() => {
+    if (!enableCameraProctoring) {
+      stopProctoring();
+      return;
+    }
+
+    if (sessionId) {
+      void startProctoringBestEffort(sessionId);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [enableCameraProctoring, sessionId]);
 
   // Load insights (best-effort). Keep UI silent if endpoint isn't available.
   useEffect(() => {
@@ -400,6 +548,8 @@ export const PracticeMode = () => {
       setCompletionPending(false);
       setPhase('question');
 
+      await startProctoringBestEffort(response.session_id);
+
       // DO NOT start countdown timer here - it starts when user clicks "Start Recording"
 
       // Play TTS audio if available
@@ -507,6 +657,8 @@ export const PracticeMode = () => {
       setTimeRemaining(response.first_question.time_limit);
       setCompletionPending(false);
       setPhase('question');
+
+      await startProctoringBestEffort(response.session_id);
 
       // Play TTS audio if available
       if (response.tts_audio_url && enableTTS) {
@@ -643,7 +795,8 @@ export const PracticeMode = () => {
       setIsRecording(false);
       console.log('🎤 [Practice Mode] Audio Blob Size:', audioBlob.size, 'bytes, Type:', audioBlob.type);
 
-      const response = await submitAnswer(sessionId, currentQuestionNumber, audioBlob);
+      const effectiveQuestionId = currentQuestion?.id ?? currentQuestionNumber;
+      const response = await submitAnswer(sessionId, effectiveQuestionId, audioBlob);
       console.log('📊 [Practice Mode] Submit Answer Response:', response);
 
       // Set transcription and metrics
@@ -803,6 +956,7 @@ export const PracticeMode = () => {
   };
 
   const handleRestart = () => {
+    stopProctoring();
     setPhase('welcome');
     setSessionId(null);
     setCurrentQuestion(null);
@@ -1090,6 +1244,8 @@ export const PracticeMode = () => {
     setTimeRemaining(firstQuestion.time_limit);
     setPhase('question');
 
+    void startProctoringBestEffort(sessionId);
+
     // Play TTS audio if available
     if (ttsAudioUrl && enableTTS) {
       try {
@@ -1273,6 +1429,23 @@ export const PracticeMode = () => {
                   />
                 </div>
 
+                <div className="flex items-center justify-between p-2.5 bg-muted/40 rounded-xl border border-border/50">
+                  <div className="flex items-center gap-2.5">
+                    <div className="p-1.5 rounded-lg bg-muted text-muted-foreground">
+                      <Camera className="w-3.5 h-3.5" />
+                    </div>
+                    <div>
+                      <p className="font-bold text-[11px] text-foreground">Camera-proctored mode</p>
+                      <p className="text-[9px] text-muted-foreground">Opt-in. No video uploads, events only.</p>
+                    </div>
+                  </div>
+                  <Switch
+                    checked={enableCameraProctoring}
+                    onCheckedChange={setEnableCameraProctoring}
+                    className="scale-[0.6] md:scale-75 origin-right data-[state=checked]:bg-primary"
+                  />
+                </div>
+
                 <Button
                   size="lg"
                   className="w-full h-12 bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700 text-sm font-bold shadow-xl shadow-purple-500/20 transition-all hover:scale-[1.01] active:scale-[0.98] rounded-2xl"
@@ -1418,6 +1591,20 @@ export const PracticeMode = () => {
                     </Button>
                   </div>
 
+                  <div className="flex items-center justify-between p-2 bg-muted/30 rounded-lg">
+                    <div className="flex items-center gap-2">
+                      <Camera className="w-4 h-4 text-muted-foreground" />
+                      <div>
+                        <p className="font-medium text-xs">Camera-proctored mode</p>
+                        <p className="text-[10px] text-muted-foreground">Opt-in. No video uploads, events only.</p>
+                      </div>
+                    </div>
+                    <Switch
+                      checked={enableCameraProctoring}
+                      onCheckedChange={setEnableCameraProctoring}
+                    />
+                  </div>
+
                   <div className="flex items-center justify-between p-2 bg-gradient-to-r from-purple-500/10 to-pink-500/10 rounded-lg border-2 border-purple-500/20">
                     <div className="flex items-center gap-2">
                       <Sparkles className="w-4 h-4 text-purple-500" />
@@ -1513,6 +1700,21 @@ export const PracticeMode = () => {
           }}
         >
           <div className="max-w-7xl mx-auto w-full px-4">
+            <div className="pt-14 md:pt-4">
+              <div className="mb-3 flex items-center justify-between gap-3 p-3 bg-background/60 backdrop-blur-md border border-white/10 rounded-2xl shadow-lg">
+                <div className="flex items-center gap-2">
+                  <div className="p-2 rounded-xl bg-muted/60 text-muted-foreground">
+                    <Camera className="w-4 h-4" />
+                  </div>
+                  <div>
+                    <div className="text-xs font-semibold">Camera-proctored mode</div>
+                    <div className="text-[11px] text-muted-foreground">Opt-in. No video uploads, events only.</div>
+                  </div>
+                </div>
+                <Switch checked={enableCameraProctoring} onCheckedChange={setEnableCameraProctoring} />
+              </div>
+            </div>
+
             <RoundSelection
               onRoundStart={handleRoundStart}
               userProfile={userProfile}
@@ -1543,6 +1745,20 @@ export const PracticeMode = () => {
           </CardHeader>
 
           <CardContent className="space-y-3">
+            <div className="flex items-center justify-between p-2 bg-muted/30 rounded-lg">
+              <div className="flex items-center gap-2">
+                <Camera className="w-4 h-4 text-muted-foreground" />
+                <div>
+                  <p className="font-medium text-xs">Camera-proctored mode</p>
+                  <p className="text-[10px] text-muted-foreground">Opt-in. No video uploads, events only.</p>
+                </div>
+              </div>
+              <Switch
+                checked={enableCameraProctoring}
+                onCheckedChange={setEnableCameraProctoring}
+              />
+            </div>
+
             {enableAdaptive && (
               <>
                 <div className="space-y-2">
@@ -1677,6 +1893,8 @@ export const PracticeMode = () => {
   if (phase === 'question' || phase === 'recording') {
     return (
       <div className="max-w-4xl mx-auto w-full px-4 flex flex-col space-y-4">
+        {renderGuestGateBanner()}
+
         {/* Header */}
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-3">
@@ -1689,6 +1907,26 @@ export const PracticeMode = () => {
             <Badge variant="outline" className="text-sm px-3 py-1">
               Question {currentQuestionNumber} / {totalQuestions}
             </Badge>
+
+            {enableCameraProctoring && (
+              <Badge
+                variant="outline"
+                className={
+                  proctoringStatus === 'active'
+                    ? 'bg-green-500/10 border-green-500/50 text-green-700 dark:text-green-400'
+                    : proctoringStatus === 'starting'
+                      ? 'bg-yellow-500/10 border-yellow-500/50 text-yellow-700 dark:text-yellow-400'
+                      : 'bg-orange-500/10 border-orange-500/50 text-orange-700 dark:text-orange-400'
+                }
+              >
+                <Camera className="w-3 h-3 mr-1" />
+                {proctoringStatus === 'active'
+                  ? 'Proctored'
+                  : proctoringStatus === 'starting'
+                    ? 'Proctoring…'
+                    : 'Proctoring off'}
+              </Badge>
+            )}
 
             {/* Debug Badge - Shows Question Type */}
             <Badge
@@ -2311,45 +2549,7 @@ export const PracticeMode = () => {
           </Card>
         )}
 
-        {guestGateBanner && (
-          <Card className="border-2 border-amber-500/30 bg-amber-500/5">
-            <CardContent className="pt-5">
-              <div className="flex items-start gap-3">
-                <AlertCircle className="w-5 h-5 text-amber-500 mt-0.5" />
-                <div className="flex-1 min-w-0">
-                  <div className="font-semibold">
-                    {guestGateBanner.kind === 'limit'
-                      ? 'Guest usage limit reached'
-                      : 'Guest mode temporarily unavailable'}
-                  </div>
-                  <p className="text-sm text-muted-foreground mt-1">
-                    {guestGateBanner.message?.trim()
-                      ? guestGateBanner.message
-                      : guestGateBanner.kind === 'limit'
-                        ? 'You’ve used all guest credits for now. Sign in to continue, or connect your own API keys for unlimited usage.'
-                        : 'Guest capacity is currently full right now. Please try again later, or sign in and use your own API keys.'}
-                  </p>
-                  <div className="mt-3 flex flex-wrap gap-2 justify-end">
-                    <Button variant="outline" onClick={() => setGuestGateBanner(null)}>
-                      Dismiss
-                    </Button>
-                    <Button
-                      onClick={() => {
-                        try {
-                          window.location.assign('/login?mode=signin');
-                        } catch {
-                          window.location.href = '/login?mode=signin';
-                        }
-                      }}
-                    >
-                      Sign in
-                    </Button>
-                  </div>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-        )}
+        {renderGuestGateBanner()}
 
         <div className="flex justify-center gap-4">
           <Button

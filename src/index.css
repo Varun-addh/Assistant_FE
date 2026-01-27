@@ -1743,10 +1743,14 @@ All colors MUST be HSL.
 
     /* Compact search bar for small screens */
     .search-bar {
-      min-height: 44px;
+      min-height: 40px;
     }
 
-    /* Keep textarea sizing driven by the component (prevents layout quirks) */
+    /* Ensure placeholder text is visible on mobile */
+    .search-bar textarea::placeholder {
+      font-size: 14px;
+      opacity: 0.7;
+    }
 
     /* Smaller buttons */
     .btn,
@@ -1842,7 +1846,12 @@ All colors MUST be HSL.
 
     /* Comfortable search bar */
     .search-bar {
-      min-height: 52px;
+      min-height: 48px;
+    }
+
+    /* Comfortable placeholder text */
+    .search-bar textarea::placeholder {
+      font-size: 15px;
     }
 
     /* Medium buttons */
@@ -1943,6 +1952,139 @@ All colors MUST be HSL.
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
     text-rendering: optimizeLegibility;
+  }
+
+  /* ========================================
+     WORLD-CLASS FUTURISTIC ANIMATIONS
+     Modern smooth animations for premium UI
+     ======================================== */
+  
+  /* Floating animations for gradient orbs */
+  @keyframes float-slow {
+    0%, 100% {
+      transform: translate(0, 0) scale(1);
+    }
+    33% {
+      transform: translate(30px, -30px) scale(1.05);
+    }
+    66% {
+      transform: translate(-20px, 20px) scale(0.95);
+    }
+  }
+
+  @keyframes float-slower {
+    0%, 100% {
+      transform: translate(0, 0) scale(1);
+    }
+    33% {
+      transform: translate(-25px, 25px) scale(1.03);
+    }
+    66% {
+      transform: translate(35px, -15px) scale(0.97);
+    }
+  }
+
+  .animate-float-slow {
+    animation: float-slow 20s ease-in-out infinite;
+  }
+
+  .animate-float-slower {
+    animation: float-slower 25s ease-in-out infinite;
+  }
+
+  /* Subtle gradient animation */
+  @keyframes gradient-shift {
+    0%, 100% {
+      background-position: 0% 50%;
+    }
+    50% {
+      background-position: 100% 50%;
+    }
+  }
+
+  .animate-gradient {
+    background-size: 200% 200%;
+    animation: gradient-shift 8s ease infinite;
+  }
+
+  /* Glassmorphism utilities */
+  .glass-effect {
+    background: rgba(255, 255, 255, 0.05);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+  }
+
+  .glass-effect-dark {
+    background: rgba(0, 0, 0, 0.2);
+    backdrop-filter: blur(16px);
+    -webkit-backdrop-filter: blur(16px);
+    border: 1px solid rgba(255, 255, 255, 0.05);
+  }
+
+  /* Modern card hover effects */
+  .card-premium {
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  }
+
+  .card-premium:hover {
+    transform: translateY(-4px);
+    box-shadow: 0 20px 40px -12px rgba(0, 0, 0, 0.15);
+  }
+
+  /* Smooth glow effect for interactive elements */
+  .glow-on-hover {
+    transition: all 0.3s ease;
+  }
+
+  .glow-on-hover:hover {
+    box-shadow: 0 0 20px rgba(139, 92, 246, 0.4);
+  }
+
+  /* ========================================
+     MOBILE OPTIMIZATIONS FOR WORLD-CLASS UI
+     Performance and visual enhancements for mobile
+     ======================================== */
+  
+  @media (max-width: 768px) {
+    /* Optimize gradient animations for mobile performance */
+    .animate-float-slow,
+    .animate-float-slower {
+      animation-duration: 15s; /* Faster on mobile for better performance */
+    }
+
+    /* Reduce blur for better mobile performance */
+    .blur-3xl {
+      --tw-blur: blur(60px) !important;
+    }
+
+    /* Ensure background gradients don't cause lag */
+    .absolute.inset-0 {
+      will-change: auto;
+      transform: translateZ(0);
+      -webkit-transform: translateZ(0);
+    }
+
+    /* Optimize glassmorphism for mobile */
+    .glass-effect,
+    .glass-effect-dark {
+      backdrop-filter: blur(8px);
+      -webkit-backdrop-filter: blur(8px);
+    }
+  }
+
+  /* Extra small devices - Further optimizations */
+  @media (max-width: 480px) {
+    /* Even lighter blur for very small devices */
+    .blur-3xl {
+      --tw-blur: blur(40px) !important;
+    }
+
+    /* Simplify animations for performance */
+    .animate-float-slow,
+    .animate-float-slower {
+      animation-duration: 12s;
+    }
   }
 
   .teleprompter-text {

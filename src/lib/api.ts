@@ -32,6 +32,12 @@ export interface SubmitQuestionRequest {
   session_id: string;
   question: string;
   style: AnswerStyle;
+  // Default behavior is "answer". Mirror mode analyzes a user's draft answer.
+  mode?: "answer" | "mirror";
+  // Used only when mode === "mirror".
+  user_answer?: string;
+  // Optional backend hinting (kept flexible for forward-compat).
+  depth?: string;
   architecture_mode?: "single" | "multi-view" | null;
 }
 export interface SubmitQuestionResponse {
@@ -39,6 +45,9 @@ export interface SubmitQuestionResponse {
   style: AnswerStyle;
   created_at: string; // ISO8601
   truncated?: boolean; // Backend indicates if answer was cut off
+
+  // Echoed by backend for clarity and debugging.
+  mode?: "answer" | "mirror";
 
   // Optional: backend may return the effective session id used.
   // If omitted, we will try to recover it from response headers.
@@ -64,9 +73,18 @@ export async function apiSubmitQuestion(body: SubmitQuestionRequest): Promise<Su
     res.headers.get("x-stratax-session-id") ||
     undefined;
 
+  const effectiveMode =
+    (res.headers.get("X-Stratax-Chat-Mode") || res.headers.get("x-stratax-chat-mode") || undefined) as
+      | "answer"
+      | "mirror"
+      | undefined;
+
   const data = (await res.json()) as SubmitQuestionResponse;
   if (effectiveSessionId && !data.session_id) {
     data.session_id = effectiveSessionId;
+  }
+  if (effectiveMode && !data.mode) {
+    data.mode = effectiveMode;
   }
   return data;
 }
@@ -75,7 +93,7 @@ export async function apiSubmitQuestion(body: SubmitQuestionRequest): Promise<Su
 export async function apiSubmitQuestionStream(
   body: SubmitQuestionRequest,
   onChunk: (chunk: string) => void
-): Promise<{ answer: string; style: AnswerStyle; created_at: string; truncated?: boolean; session_id?: string }> {
+): Promise<{ answer: string; style: AnswerStyle; created_at: string; truncated?: boolean; session_id?: string; mode?: "answer" | "mirror" }> {
   const res = await strataxFetch(`${BASE_URL}/api/question`, {
     method: "POST",
     headers: buildHeaders(),
@@ -92,6 +110,12 @@ export async function apiSubmitQuestionStream(
     res.headers.get("X-Stratax-Session-Id") ||
     res.headers.get("x-stratax-session-id") ||
     undefined;
+
+  const effectiveMode =
+    (res.headers.get("X-Stratax-Chat-Mode") || res.headers.get("x-stratax-chat-mode") || undefined) as
+      | "answer"
+      | "mirror"
+      | undefined;
 
   while (true) {
     const { done, value } = await reader.read();
@@ -110,6 +134,7 @@ export async function apiSubmitQuestionStream(
     created_at: new Date().toISOString(),
     truncated: false,
     session_id: effectiveSessionId,
+    mode: effectiveMode,
   };
 }
 
@@ -139,11 +164,83 @@ export async function apiEvaluateStream(body: EvaluateRequest, onChunk: (text: s
   }
 }
 
+// Backend code execution (LeetCode-style). Frontend should NOT call Judge0/Piston directly.
+export interface CodeExecuteTestCase {
+  input: string;
+  expected_output?: string | null;
+}
+
+export interface CodeExecuteRequest {
+  language: string;
+  code: string;
+  stdin?: string;
+  test_cases?: CodeExecuteTestCase[] | null;
+  store_code?: boolean;
+  trace?: boolean;
+  trace_max_events?: number;
+  explain_trace?: boolean;
+  explain_max_lines?: number;
+}
+
+export interface CodeExecuteTraceEvent {
+  step: number;
+  line: number;
+  event: string;
+  locals?: Record<string, unknown>;
+  explanation?: string | null;
+  stack?: string[];
+  stdout?: string | null;
+  stderr?: string | null;
+}
+
+export interface CodeExecuteTestResult {
+  input: string;
+  expected_output?: string | null;
+  actual_output?: string | null;
+  passed?: boolean;
+  stdout?: string | null;
+  stderr?: string | null;
+  time_seconds?: number | null;
+  memory_kb?: number | null;
+}
+
+export interface CodeExecuteResponse {
+  success: boolean;
+  status?: string;
+  stdout?: string;
+  stderr?: string;
+  time_seconds?: number | null;
+  memory_kb?: number | null;
+  test_results?: CodeExecuteTestResult[] | null;
+  trace_events?: CodeExecuteTraceEvent[] | null;
+  line_explanations?: Record<string, string> | null;
+}
+
+export async function apiExecuteCode(body: CodeExecuteRequest): Promise<CodeExecuteResponse> {
+  const res = await strataxFetch(`${BASE_URL}/api/code/execute`, {
+    method: "POST",
+    headers: buildHeaders(),
+    body: JSON.stringify({
+      language: body.language,
+      code: body.code,
+      stdin: body.stdin ?? "",
+      test_cases: body.test_cases ?? null,
+      store_code: body.store_code ?? false,
+      trace: body.trace ?? false,
+      trace_max_events: body.trace_max_events,
+      explain_trace: body.explain_trace,
+      explain_max_lines: body.explain_max_lines,
+    }),
+  });
+  return res.json();
+}
+
 export interface HistoryItem {
   question: string;
   answer: string;
   style: AnswerStyle;
   created_at: string;
+  mode?: "answer" | "mirror";
 }
 export interface GetHistoryResponse {
   session_id: string;

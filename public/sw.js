@@ -1,24 +1,36 @@
 // NOTE: Bump this when changing caching logic.
-const CACHE_NAME = 'stratax-ai-v2';
+const CACHE_NAME = 'stratax-ai-v18';
 const ASSETS = [
-  '/',
   '/index.html',
   '/manifest.webmanifest',
-  '/icons/stratax-ai-192.png',
-  '/icons/stratax-ai-512.png',
-  '/icons/stratax-ai-maskable-512.png'
+  '/icons/stratax-ai-192.png?v=18',
+  '/icons/stratax-ai-512.png?v=18',
+  '/icons/stratax-ai-maskable-192.png?v=18',
+  '/icons/stratax-ai-maskable-512.png?v=18',
+  '/icons/apple-touch-icon.png?v=18'
 ];
 
 self.addEventListener('install', (event) => {
-  event.waitUntil(
-    caches
-      .open(CACHE_NAME)
-      .then((cache) => cache.addAll(ASSETS))
-      .then(() => self.skipWaiting())
-      .catch(() => {
-        // If precache fails (e.g., transient network), don't brick SW install.
-      })
-  );
+  event.waitUntil((async () => {
+    // Cache assets individually so a single 404/network hiccup doesn't block SW installation.
+    try {
+      const cache = await caches.open(CACHE_NAME);
+      await Promise.all(
+        ASSETS.map(async (url) => {
+          try {
+            const req = new Request(url, { cache: 'reload' });
+            const res = await fetch(req);
+            if (res && res.ok) await cache.put(req, res);
+          } catch {
+            // Ignore individual precache failures.
+          }
+        })
+      );
+    } finally {
+      // Always allow the new SW to activate.
+      await self.skipWaiting();
+    }
+  })());
 });
 
 self.addEventListener('activate', (event) => {
@@ -39,6 +51,22 @@ self.addEventListener('fetch', (event) => {
   if (request.method !== 'GET') return;
   if (url.origin !== self.location.origin) return;
 
+  // Never intercept video/media requests.
+  // If a video was missing during a previous deploy, Firebase may have rewritten it to /index.html,
+  // and a cache-first SW would keep serving that HTML forever (appearing "stuck").
+  if (request.destination === 'video' || url.pathname.endsWith('.mp4') || url.pathname.endsWith('.webm')) return;
+
+  // Never intercept fonts.
+  // If a font URL was missing during a previous deploy, it can get rewritten to /index.html and cached,
+  // which later causes "Failed to decode downloaded font" / OTS parsing errors.
+  if (
+    request.destination === 'font' ||
+    url.pathname.endsWith('.woff2') ||
+    url.pathname.endsWith('.woff') ||
+    url.pathname.endsWith('.ttf') ||
+    url.pathname.endsWith('.otf')
+  ) return;
+
   // SPA navigation fallback.
   if (request.mode === 'navigate') {
     event.respondWith(
@@ -57,6 +85,9 @@ self.addEventListener('fetch', (event) => {
       return fetch(request)
         .then((response) => {
           if (response && response.ok) {
+            const contentType = response.headers.get('content-type') || '';
+            // Avoid caching SPA fallback HTML under asset URLs.
+            if (contentType.includes('text/html')) return response;
             const responseClone = response.clone();
             caches.open(CACHE_NAME).then((cache) => cache.put(request, responseClone));
           }

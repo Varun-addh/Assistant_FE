@@ -27,7 +27,7 @@ import {
   type HintResponse,
   type ProgressResponse,
 } from "@/lib/mockInterviewApi";
-import { submitRun, pollResult, type RunResult } from "@/lib/runner";
+import { apiExecuteCode } from "@/lib/api";
 import {
   Play,
   Mic,
@@ -576,60 +576,39 @@ export const MockInterviewMode = ({ selectedHistorySession, onHistoryUpdate }: M
     setCodeOutput("");
 
     try {
-      // Map language to Judge0 language IDs
-      const languageMap: Record<string, number> = {
-        python: 71,      // Python 3
-        javascript: 63,  // Node.js
-        typescript: 74,  // TypeScript
-        java: 62,        // Java
-        cpp: 54,         // C++
-      };
-
-      const languageId = languageMap[language] || 71;
-
       toast({
         title: "Running code...",
         description: "Compiling and executing your code",
       });
 
-      const { token } = await submitRun({
-        languageId,
-        source: codeAnswer,
+      // Backend-only execution. Never call Judge0/RapidAPI from the browser.
+      // If the UI offers TypeScript, run it as JavaScript unless your backend explicitly supports TypeScript.
+      const execLanguage = language === "typescript" ? "javascript" : language;
+
+      const exec = await apiExecuteCode({
+        language: execLanguage,
+        code: codeAnswer,
         stdin: "",
       });
 
-      const result = await pollResult(token);
+      const stdout = (exec.stdout ?? "").trim();
+      const stderr = (exec.stderr ?? "").trim();
 
-      if (result.status.id === 3) {
-        // Success
-        const output = result.stdout || "(no output)";
-        setCodeOutput(output);
+      if (exec.success) {
+        const output = stdout || "(no output)";
+        setCodeOutput(stderr ? `${output}\n\n[stderr]\n${stderr}` : output);
         toast({
           title: "Code executed successfully",
           description: "Check the output below",
         });
-      } else if (result.status.id === 6) {
-        // Compilation error
-        const error = result.compile_output || "Compilation failed";
-        setCodeOutput(`Compilation Error:\n${error}`);
-        toast({
-          title: "Compilation failed",
-          description: "Check the output for errors",
-          variant: "destructive",
-        });
-      } else if (result.status.id === 11 || result.status.id === 12) {
-        // Runtime error
-        const error = result.stderr || "Runtime error occurred";
-        setCodeOutput(`Runtime Error:\n${error}`);
-        toast({
-          title: "Runtime error",
-          description: "Your code encountered an error",
-          variant: "destructive",
-        });
       } else {
-        // Other status
-        const output = result.stderr || result.stdout || result.status.description;
-        setCodeOutput(`Status: ${result.status.description}\n${output}`);
+        const msg = stderr || stdout || exec.status || "Execution failed";
+        setCodeOutput(msg);
+        toast({
+          title: "Execution failed",
+          description: msg,
+          variant: "destructive",
+        });
       }
     } catch (error: any) {
       console.error("[MockInterview] Code execution failed:", error);
