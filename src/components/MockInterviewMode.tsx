@@ -17,6 +17,7 @@ import {
   apiSubmitMockAnswer,
   apiGetSessionSummary,
   apiEndSession,
+  apiGetSessionStatus,
   apiGetHint,
   apiGetProgress,
   type InterviewType,
@@ -24,10 +25,12 @@ import {
   type StartSessionResponse,
   type SubmitAnswerResponse,
   type SessionSummaryResponse,
+  type SessionStatusResponse,
   type HintResponse,
   type ProgressResponse,
 } from "@/lib/mockInterviewApi";
 import { apiExecuteCode } from "@/lib/api";
+import { StrataxApiError } from "@/lib/strataxClient";
 import {
   Play,
   Mic,
@@ -52,6 +55,30 @@ import { MonacoEditor } from "@/components/MonacoEditor";
 
 type SessionPhase = "setup" | "interview" | "feedback" | "summary" | "history";
 
+function isSessionPhase(value: unknown): value is SessionPhase {
+  return (
+    value === "setup" ||
+    value === "interview" ||
+    value === "feedback" ||
+    value === "summary" ||
+    value === "history"
+  );
+}
+
+function toStartQuestionFromStatus(status: SessionStatusResponse): StartSessionResponse["first_question"] | null {
+  const q = status.current_question;
+  if (!q?.question_id || !q?.question_text) return null;
+  return {
+    question_id: q.question_id,
+    question_text: q.question_text,
+    question_number: Math.max(1, Number(status.current_question_index || 0) + 1),
+    difficulty: status.difficulty,
+    topic: q.topic || "",
+    interview_type: status.interview_type,
+    total_questions: status.total_questions,
+  };
+}
+
 interface MockInterviewModeProps {
   selectedHistorySession?: any;
   onHistoryUpdate?: () => void;
@@ -59,6 +86,8 @@ interface MockInterviewModeProps {
 
 export const MockInterviewMode = ({ selectedHistorySession, onHistoryUpdate }: MockInterviewModeProps) => {
   const { toast } = useToast();
+
+  const [submitErrorNotice, setSubmitErrorNotice] = useState<{ title: string; description: string } | null>(null);
   const {
     isListening,
     transcript,
@@ -135,7 +164,9 @@ export const MockInterviewMode = ({ selectedHistorySession, onHistoryUpdate }: M
 
   // Save session state to localStorage
   useEffect(() => {
-    if (sessionId && phase !== "setup") {
+    // Only persist resumable in-progress states. History view depends on external selection
+    // and should not be restored from localStorage.
+    if (sessionId && phase !== "setup" && phase !== "history") {
       const sessionState = {
         phase,
         sessionId,
@@ -161,40 +192,89 @@ export const MockInterviewMode = ({ selectedHistorySession, onHistoryUpdate }: M
 
   // Restore session state on mount
   useEffect(() => {
-    const savedSession = localStorage.getItem("mock_interview_session");
-    if (savedSession) {
+    const restore = async () => {
+      const savedSession = localStorage.getItem("mock_interview_session");
+      if (!savedSession) return;
+
       try {
         const state = JSON.parse(savedSession);
-        // Only restore if session is not completed
-        if (state.phase !== "setup" && state.sessionId) {
-          setPhase(state.phase);
-          setSessionId(state.sessionId);
-          setInterviewType(state.interviewType);
-          setDifficulty(state.difficulty);
-          setNumQuestions(state.numQuestions);
-          setTopic(state.topic || "");
-          setCurrentQuestion(state.currentQuestion);
-          setQuestionNumber(state.questionNumber);
-          setTotalQuestions(state.totalQuestions);
-          setStartTime(state.startTime);
-          setElapsedTime(state.elapsedTime || 0);
-          setCurrentFeedback(state.currentFeedback);
-          setFollowUpQuestions(state.followUpQuestions || []);
-          setSummary(state.summary);
-          setQuestionHistory(state.questionHistory || []);
-          setHintsUsed(state.hintsUsed || 0);
-          setProgressData(state.progressData);
+        const rawPhase = state?.phase;
+        const savedPhase: SessionPhase | null = isSessionPhase(rawPhase) ? rawPhase : null;
+        const savedSessionId = typeof state?.sessionId === "string" ? state.sessionId : "";
 
-          toast({
-            title: "Session restored",
-            description: "Continuing from where you left off",
-          });
+        // Only restore if session is not completed
+        if (!savedPhase || savedPhase === "setup" || !savedSessionId) return;
+
+        // History can't be restored without a selectedHistorySession from the sidebar.
+        if (savedPhase === "history") {
+          localStorage.removeItem("mock_interview_session");
+          setPhase("setup");
+          return;
         }
+
+        // Apply the persisted fields first.
+        setPhase(savedPhase);
+        setSessionId(savedSessionId);
+        setInterviewType(state.interviewType);
+        setDifficulty(state.difficulty);
+        setNumQuestions(state.numQuestions);
+        setTopic(state.topic || "");
+        setCurrentQuestion(state.currentQuestion);
+        setQuestionNumber(state.questionNumber);
+        setTotalQuestions(state.totalQuestions);
+        setStartTime(state.startTime);
+        setElapsedTime(state.elapsedTime || 0);
+        setCurrentFeedback(state.currentFeedback);
+        setFollowUpQuestions(state.followUpQuestions || []);
+        setSummary(state.summary);
+        setQuestionHistory(state.questionHistory || []);
+        setHintsUsed(state.hintsUsed || 0);
+        setProgressData(state.progressData);
+
+        // Defensive: if required data for the phase is missing, try to recover from backend.
+        // Otherwise, fall back to setup to avoid a blank screen.
+        const hasQuestion = !!state.currentQuestion;
+        const hasFeedback = !!state.currentFeedback;
+        const hasSummary = !!state.summary;
+
+        if (savedPhase === "interview" && !hasQuestion) {
+          try {
+            const status = await apiGetSessionStatus(savedSessionId);
+            const q = toStartQuestionFromStatus(status);
+            if (q) {
+              setInterviewType(status.interview_type);
+              setDifficulty(status.difficulty);
+              setTotalQuestions(status.total_questions);
+              setQuestionNumber(Math.max(1, Number(status.current_question_index || 0) + 1));
+              setCurrentQuestion(q);
+              const parsedStart = Date.parse(status.start_time);
+              if (Number.isFinite(parsedStart)) setStartTime(parsedStart);
+              setPhase("interview");
+            } else {
+              localStorage.removeItem("mock_interview_session");
+              setPhase("setup");
+            }
+          } catch {
+            localStorage.removeItem("mock_interview_session");
+            setPhase("setup");
+          }
+        } else if (savedPhase === "feedback" && !hasFeedback) {
+          setPhase(hasQuestion ? "interview" : "setup");
+        } else if (savedPhase === "summary" && !hasSummary) {
+          setPhase("setup");
+        }
+
+        toast({
+          title: "Session restored",
+          description: "Continuing from where you left off",
+        });
       } catch (error) {
         console.error("Failed to restore session:", error);
         localStorage.removeItem("mock_interview_session");
       }
-    }
+    };
+
+    void restore();
   }, []);
 
   // Handle selected history session from sidebar
@@ -261,6 +341,10 @@ export const MockInterviewMode = ({ selectedHistorySession, onHistoryUpdate }: M
     const mins = Math.floor(seconds / 60);
     const secs = seconds % 60;
     return `${mins}:${secs.toString().padStart(2, "0")}`;
+  };
+
+  const formatTimeSafe = (seconds: unknown) => {
+    return Number.isFinite(seconds) ? formatTime(seconds as number) : "--";
   };
 
   const handleStartInterview = async () => {
@@ -348,6 +432,7 @@ export const MockInterviewMode = ({ selectedHistorySession, onHistoryUpdate }: M
 
     try {
       setIsSubmitting(true);
+      setSubmitErrorNotice(null);
       const timeSpent = startTime ? Math.floor((Date.now() - startTime) / 1000) : 0;
 
       console.log("[MockInterview] Submitting answer:", {
@@ -458,11 +543,25 @@ export const MockInterviewMode = ({ selectedHistorySession, onHistoryUpdate }: M
       setStartTime(Date.now());
     } catch (error: any) {
       console.error("[MockInterview] Failed to submit answer:", error);
-      toast({
-        title: "Failed to submit answer",
-        description: error.message || "Please try again",
-        variant: "destructive",
-      });
+
+      const message = typeof error?.message === 'string' ? error.message : '';
+      const status = typeof (error as any)?.status === 'number' ? (error as any).status : undefined;
+      const isRateLimited = status === 429;
+      const isFetchFailure = message.toLowerCase().includes('failed to fetch');
+
+      let title = 'Failed to submit answer';
+      let description = message || 'Please try again.';
+
+      if ((error instanceof StrataxApiError && isRateLimited) || isRateLimited) {
+        title = 'Too many requests';
+        description = 'Your answer was NOT submitted. Please wait a moment and try again.';
+      } else if (isFetchFailure) {
+        title = 'Could not reach server';
+        description = 'Your answer was NOT submitted. This usually means a temporary network issue or a blocked CORS preflight. Please retry in a few seconds.';
+      }
+
+      setSubmitErrorNotice({ title, description });
+      toast({ title, description, variant: 'destructive' });
     } finally {
       setIsSubmitting(false);
     }
@@ -988,7 +1087,7 @@ export const MockInterviewMode = ({ selectedHistorySession, onHistoryUpdate }: M
               <div className="mt-2.5 flex items-center gap-3 text-[10px] text-muted-foreground overflow-x-auto whitespace-nowrap scrollbar-hide">
                 <span className="flex items-center gap-1"><Award className="h-3 w-3" /> Avg: {progressData.average_score.toFixed(1)}</span>
                 <span>•</span>
-                <span className="flex items-center gap-1"><Clock className="h-3 w-3" /> {progressData.total_time_seconds ? formatTime(progressData.total_time_seconds) : '0:00'}</span>
+                <span className="flex items-center gap-1"><Clock className="h-3 w-3" /> {formatTimeSafe(progressData.total_time_seconds)}</span>
                 <span>•</span>
                 <span className="flex items-center gap-1"><Lightbulb className="h-3 w-3" /> Hints: {progressData.hints_used_total || 0}</span>
               </div>
@@ -1147,8 +1246,8 @@ export const MockInterviewMode = ({ selectedHistorySession, onHistoryUpdate }: M
 
               {showCodeEditor ? (
                 <div className="flex flex-col gap-3 flex-1">
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-2">
+                  <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+                    <div className="flex items-center gap-2 min-w-0">
                       <Label className="text-xs text-muted-foreground">Language:</Label>
                       <Select value={language} onValueChange={setLanguage}>
                         <SelectTrigger className="w-32 h-8">
@@ -1163,8 +1262,8 @@ export const MockInterviewMode = ({ selectedHistorySession, onHistoryUpdate }: M
                         </SelectContent>
                       </Select>
                     </div>
-                    <div className="flex items-center gap-2">
-                      <Badge variant="outline" className="text-xs font-mono">solution.{language === 'python' ? 'py' : language === 'cpp' ? 'cpp' : 'js'}</Badge>
+                    <div className="flex flex-wrap items-center gap-2 justify-start sm:justify-end">
+                      <Badge variant="outline" className="text-xs font-mono whitespace-nowrap">solution.{language === 'python' ? 'py' : language === 'cpp' ? 'cpp' : 'js'}</Badge>
                       <Button
                         variant="outline"
                         size="sm"
@@ -1175,12 +1274,12 @@ export const MockInterviewMode = ({ selectedHistorySession, onHistoryUpdate }: M
                         {isRunningCode ? (
                           <>
                             <Loader2 className="h-4 w-4 animate-spin" />
-                            Running...
+                            <span className="hidden sm:inline">Running...</span>
                           </>
                         ) : (
                           <>
                             <Play className="h-4 w-4" />
-                            Run Code
+                            <span className="hidden sm:inline">Run Code</span>
                           </>
                         )}
                       </Button>
@@ -1189,7 +1288,10 @@ export const MockInterviewMode = ({ selectedHistorySession, onHistoryUpdate }: M
                   <div className="flex-1 border rounded-md overflow-hidden min-h-[300px]">
                     <MonacoEditor
                       value={codeAnswer}
-                      onChange={setCodeAnswer}
+                      onChange={(v) => {
+                        setCodeAnswer(v);
+                        if (submitErrorNotice) setSubmitErrorNotice(null);
+                      }}
                       language={language}
                       height="100%"
                     />
@@ -1236,6 +1338,7 @@ export const MockInterviewMode = ({ selectedHistorySession, onHistoryUpdate }: M
                     onChange={(e) => {
                       const val = e.target.value;
                       setUserAnswer(val);
+                      if (submitErrorNotice) setSubmitErrorNotice(null);
                       const words = val.trim().split(/\s+/).filter(w => w.length > 0).length;
                       setWordCount(val.trim() === '' ? 0 : words);
                     }}
@@ -1256,7 +1359,26 @@ export const MockInterviewMode = ({ selectedHistorySession, onHistoryUpdate }: M
                 </div>
               )}
 
-              <div className="flex gap-2 flex-shrink-0">
+              {submitErrorNotice ? (
+                <div className="rounded-lg border border-red-500/30 bg-red-500/10 p-3 flex items-start gap-2 flex-shrink-0">
+                  <AlertCircle className="h-4 w-4 text-red-500 mt-0.5 flex-shrink-0" />
+                  <div className="flex-1 min-w-0">
+                    <div className="text-xs font-semibold text-red-200">{submitErrorNotice.title}</div>
+                    <div className="text-xs text-red-100/90 mt-0.5">{submitErrorNotice.description}</div>
+                  </div>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-6 w-6 flex-shrink-0"
+                    onClick={() => setSubmitErrorNotice(null)}
+                    title="Dismiss"
+                  >
+                    <X className="h-4 w-4" />
+                  </Button>
+                </div>
+              ) : null}
+
+              <div className="flex flex-col sm:flex-row gap-2 flex-shrink-0">
                 <Button
                   variant="outline"
                   size="lg"
@@ -1462,7 +1584,10 @@ export const MockInterviewMode = ({ selectedHistorySession, onHistoryUpdate }: M
                       <div className="flex-1 border rounded-md overflow-hidden min-h-[400px]">
                         <MonacoEditor
                           value={codeAnswer}
-                          onChange={setCodeAnswer}
+                          onChange={(v) => {
+                            setCodeAnswer(v);
+                            if (submitErrorNotice) setSubmitErrorNotice(null);
+                          }}
                           language={language}
                           height="100%"
                         />
@@ -1509,6 +1634,7 @@ export const MockInterviewMode = ({ selectedHistorySession, onHistoryUpdate }: M
                         onChange={(e) => {
                           const val = e.target.value;
                           setUserAnswer(val);
+                          if (submitErrorNotice) setSubmitErrorNotice(null);
                           const words = val.trim().split(/\s+/).filter(w => w.length > 0).length;
                           setWordCount(val.trim() === '' ? 0 : words);
                         }}
@@ -1534,7 +1660,27 @@ export const MockInterviewMode = ({ selectedHistorySession, onHistoryUpdate }: M
             </div>
 
             {/* Action Buttons */}
-            <div className="px-4 sm:px-6 py-4 border-t flex gap-3">
+            <div className="px-4 sm:px-6 py-4 border-t">
+              {submitErrorNotice ? (
+                <div className="mb-3 rounded-lg border border-red-500/30 bg-red-500/10 p-3 flex items-start gap-2">
+                  <AlertCircle className="h-4 w-4 text-red-500 mt-0.5 flex-shrink-0" />
+                  <div className="flex-1 min-w-0">
+                    <div className="text-xs font-semibold text-red-200">{submitErrorNotice.title}</div>
+                    <div className="text-xs text-red-100/90 mt-0.5">{submitErrorNotice.description}</div>
+                  </div>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-6 w-6 flex-shrink-0"
+                    onClick={() => setSubmitErrorNotice(null)}
+                    title="Dismiss"
+                  >
+                    <X className="h-4 w-4" />
+                  </Button>
+                </div>
+              ) : null}
+
+              <div className="flex flex-col sm:flex-row gap-3">
               <Button
                 variant="outline"
                 size="lg"
@@ -1566,6 +1712,7 @@ export const MockInterviewMode = ({ selectedHistorySession, onHistoryUpdate }: M
                   </>
                 )}
               </Button>
+              </div>
             </div>
           </DialogContent>
         </Dialog>
@@ -2067,7 +2214,7 @@ export const MockInterviewMode = ({ selectedHistorySession, onHistoryUpdate }: M
                       <>
                         <div className="flex justify-between items-center">
                           <span className="text-xs text-muted-foreground">Total Time</span>
-                          <span className="text-xs font-mono">{formatTime(progressData.total_time_seconds)}</span>
+                          <span className="text-xs font-mono">{formatTimeSafe(progressData.total_time_seconds)}</span>
                         </div>
                         <div className="flex justify-between items-center">
                           <span className="text-xs text-muted-foreground">Hints Used</span>

@@ -47,6 +47,7 @@ import { useToast } from '@/hooks/use-toast';
 interface RoundSelectionProps {
   onRoundStart: (sessionId: string, roundConfig: RoundConfig, firstQuestion: any, ttsAudioUrl?: string, totalQuestionsFromApi?: number) => void;
   userProfile?: UserProfile;
+  ensureLiveMediaReady: () => Promise<{ screen_shared: boolean; camera_enabled: boolean }>;
 }
 
 // Icon mapping for each round type
@@ -82,7 +83,8 @@ const ROUND_COLORS: Record<InterviewRound, string> = {
   [InterviewRound.SYSTEM_DESIGN]: 'from-orange-500 to-orange-600',
   [InterviewRound.BEHAVIORAL]: 'from-green-500 to-green-600',
   [InterviewRound.MANAGERIAL]: 'from-indigo-500 to-indigo-600',
-  [InterviewRound.MACHINE_LEARNING]: 'from-pink-500 to-pink-600',        // ✅ Fixed
+  // Avoid pink-heavy accents to keep the Live Practice theme consistent.
+  [InterviewRound.MACHINE_LEARNING]: 'from-indigo-500 to-indigo-600',
   [InterviewRound.DATA_ENGINEERING]: 'from-cyan-500 to-cyan-600',
   [InterviewRound.FRONTEND_SPECIALIST]: 'from-teal-500 to-teal-600',
   [InterviewRound.BACKEND_SPECIALIST]: 'from-violet-500 to-violet-600',
@@ -215,7 +217,7 @@ const filterRoundsByDomain = (rounds: RoundConfig[], domain: string): RoundConfi
   return filtered;
 };
 
-export default function RoundSelection({ onRoundStart, userProfile }: RoundSelectionProps) {
+export default function RoundSelection({ onRoundStart, userProfile, ensureLiveMediaReady }: RoundSelectionProps) {
   const { toast } = useToast();
 
   // If the user clicks "Start next targeted session" from Progress, we store a plan in localStorage.
@@ -380,12 +382,16 @@ export default function RoundSelection({ onRoundStart, userProfile }: RoundSelec
 
     setStarting(true);
     try {
+      const gate = await ensureLiveMediaReady();
+
       const requestData: any = {
         round_type: selectedRound.round_type,
         domain: domain || userProfile?.domain || '',
         experience_years: parseInt(String(experienceYears || userProfile?.experience_years || 0)), // Ensure integer
         company_specific: companySpecific || undefined,
         enable_tts: true,
+        screen_shared: !!gate.screen_shared,
+        camera_enabled: !!gate.camera_enabled,
       };
 
       // Add question_count if user customized it (not using default)
@@ -586,14 +592,14 @@ export default function RoundSelection({ onRoundStart, userProfile }: RoundSelec
             <>
               {/* Header - Only Main Title, No Icon, No Subtitle, No Black BG */}
               <div className="text-center py-2 sm:py-4">
-                <h1 className="text-2xl sm:text-3xl md:text-5xl font-extrabold bg-gradient-to-r from-purple-600 via-pink-600 to-purple-700 bg-clip-text text-transparent px-4">
+                <h1 className="text-2xl sm:text-3xl md:text-5xl font-extrabold tracking-tight text-foreground/90 px-4">
                   Choose Your Interview Round
                 </h1>
               </div>
 
               {/* Profile Setup Card - Redesigned */}
-              <Card className="max-w-4xl mx-auto border-2 border-primary/20 shadow-xl bg-transparent">
-                <CardHeader className="pb-3 sm:pb-4 border-b px-4 sm:px-6">
+              <Card className="max-w-4xl mx-auto border border-border/50 bg-background/60 backdrop-blur-xl shadow-2xl shadow-black/40">
+                <CardHeader className="pb-3 sm:pb-4 border-b border-border/50 px-4 sm:px-6">
                   <div className="flex items-center gap-2 sm:gap-3">
                     <div className="p-1.5 sm:p-2 rounded-lg bg-primary/10">
                       <Sparkles className="w-4 h-4 sm:w-5 sm:h-5 text-primary" />
@@ -617,7 +623,7 @@ export default function RoundSelection({ onRoundStart, userProfile }: RoundSelec
                       <Select value={domain} onValueChange={setDomain}>
                         <SelectTrigger
                           id="domain"
-                          className={`h-11 ${!domain ? 'border-red-400 border-2 focus:ring-red-500' : 'border-primary/30'}`}
+                          className={`h-11 bg-background/40 ${!domain ? 'border-destructive/60 focus:ring-destructive/20' : 'border-border/50 focus:ring-primary/20'}`}
                         >
                           <SelectValue placeholder="Select your domain..." />
                         </SelectTrigger>
@@ -669,7 +675,7 @@ export default function RoundSelection({ onRoundStart, userProfile }: RoundSelec
                         value={experienceYears || ''}
                         onChange={(e) => setExperienceYears(parseInt(e.target.value) || 0)}
                         placeholder="0-30 years"
-                        className="h-11"
+                        className="h-11 bg-background/40 border-border/50 focus:ring-primary/20"
                         maxLength={3}
                       />
                       <p className="text-xs text-muted-foreground flex items-center gap-1">
@@ -698,7 +704,7 @@ export default function RoundSelection({ onRoundStart, userProfile }: RoundSelec
 
               {/* Domain Detection Info Banner */}
               {domain && (
-                <Card className="max-w-4xl mx-auto border border-primary/30 bg-gradient-to-r from-primary/10 via-primary/5 to-primary/10 shadow-md">
+                <Card className="max-w-4xl mx-auto border border-border/50 bg-muted/20 shadow-md">
                   <CardContent className="py-4">
                     <div className="flex flex-col md:flex-row items-center justify-center gap-3 text-center md:text-left">
                       <div className="flex items-center gap-2">

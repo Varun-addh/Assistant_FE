@@ -64,7 +64,6 @@ import { MockInterviewMode } from "./MockInterviewMode";
 import { PracticeMode } from "./PracticeMode";
 import { InterviewIntelligence } from "./InterviewIntelligence";
 import { AnswerEngineUpgradeBanner } from "./AnswerEngineUpgradeBanner";
-import { ThemeToggle } from "./ThemeToggle";
 import { UserProfile } from "./UserProfile";
 import { MessageSquare, MoreVertical, Trash2, Menu, X, History as HistoryIcon, RefreshCw, Loader2, AlertCircle, Sparkles, Copy, Download, Edit2, Code2, PanelLeft } from "lucide-react";
 import { apiCreateSession, apiSubmitQuestion, apiSubmitQuestionStream, apiGetHistory, apiGetSessions, apiDeleteSession, apiUpdateSessionTitle, apiDeleteHistoryItemByIndex, apiGetHistoryTabs, apiDeleteHistoryTab, apiDeleteAllHistory, apiUploadProfile, type AnswerStyle, type SessionSummary, type GetHistoryResponse, type HistoryTabSummary, type HistoryItem } from "@/lib/api";
@@ -153,6 +152,8 @@ export const InterviewAssistant = () => {
     return 'answer';
   });
 
+  const [practiceScreenShareLock, setPracticeScreenShareLock] = useState(false);
+
   // Allow deep-linking / navigation to a specific tab.
   useEffect(() => {
     const raw = (location.state as any)?.openTab;
@@ -173,6 +174,16 @@ export const InterviewAssistant = () => {
       window.localStorage.setItem('ia_active_main_tab', activeMainTab);
     } catch { }
   }, [activeMainTab]);
+
+  // Live Practice screen-share lock: blocks switching to other tabs/screens while sharing.
+  useEffect(() => {
+    const onLock = (event: Event) => {
+      const detail = (event as CustomEvent).detail as { active?: boolean };
+      setPracticeScreenShareLock(!!detail?.active);
+    };
+    window.addEventListener('practice:screen-share-lock', onLock);
+    return () => window.removeEventListener('practice:screen-share-lock', onLock);
+  }, []);
 
   useEffect(() => {
     try {
@@ -329,6 +340,87 @@ export const InterviewAssistant = () => {
   // 📄 PDF Export: Track export progress
   const [isExportingPdf, setIsExportingPdf] = useState(false);
   const [exportingSessionId, setExportingSessionId] = useState<string | null>(null);
+
+  const isValidSessionId = (value: unknown): value is string => {
+    if (typeof value !== "string") return false;
+    const v = value.trim();
+    if (!v) return false;
+    const lowered = v.toLowerCase();
+    if (lowered === "undefined" || lowered === "null" || lowered === "none") return false;
+    // Accept UUID (with or without hyphens)
+    if (/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(v)) return true;
+    if (/^[0-9a-f]{32}$/i.test(v)) return true;
+    return false;
+  };
+
+  type LastViewState = {
+    question: string;
+    answer: string;
+    show: boolean;
+    viewingHistory: boolean;
+    ts: number;
+  };
+
+  const getLastViewKey = (sid: string) => `ia_last_view_v2:${sid}`;
+  const LAST_VIEW_SESSION_KEY = 'ia_last_view_session_id_v2';
+
+  const readLastView = (sid: string): LastViewState | null => {
+    if (!sid || typeof window === 'undefined') return null;
+    try {
+      const raw = window.localStorage.getItem(getLastViewKey(sid));
+      if (!raw) return null;
+      const parsed = JSON.parse(raw);
+      if (!parsed || typeof parsed !== 'object') return null;
+      const q = typeof parsed.question === 'string' ? parsed.question : '';
+      const a = typeof parsed.answer === 'string' ? parsed.answer : '';
+      const show = Boolean(parsed.show);
+      const viewingHistory = Boolean(parsed.viewingHistory);
+      const ts = typeof parsed.ts === 'number' ? parsed.ts : Date.now();
+      return { question: q, answer: a, show, viewingHistory, ts };
+    } catch {
+      return null;
+    }
+  };
+
+  const writeLastView = (sid: string, state: Omit<LastViewState, 'ts'>) => {
+    if (!sid || typeof window === 'undefined') return;
+    try {
+      window.localStorage.setItem(LAST_VIEW_SESSION_KEY, sid);
+      window.localStorage.setItem(
+        getLastViewKey(sid),
+        JSON.stringify({
+          ...state,
+          ts: Date.now(),
+        } satisfies LastViewState)
+      );
+    } catch {
+      // ignore
+    }
+  };
+
+  const clearLastView = (sid: string) => {
+    if (!sid || typeof window === 'undefined') return;
+    try {
+      window.localStorage.removeItem(getLastViewKey(sid));
+    } catch {
+      // ignore
+    }
+  };
+
+  // On mount: if we have a persisted session id, adopt it so refresh stays in the same conversation.
+  // This does NOT create a new session; it only re-selects an existing one.
+  useEffect(() => {
+    if (sessionId) return;
+    try {
+      const storedSid = window.localStorage.getItem('ia_session_id');
+      if (storedSid && isValidSessionId(storedSid)) {
+        setSessionId(storedSid);
+      }
+    } catch {
+      // ignore
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const buildPdfHtmlFromQA = async (qaItems: Array<{ question?: string; answer?: string }>) => {
     // Build HTML with proper structure so utils.ts can normalize it
@@ -791,6 +883,13 @@ export const InterviewAssistant = () => {
         } catch {
           // Ignore localStorage errors
         }
+
+        // Also clear the per-session last-view to avoid stale restoration on refresh.
+        try {
+          if (sessionId && isValidSessionId(sessionId)) {
+            clearLastView(sessionId);
+          }
+        } catch { }
       }
 
       // Then delete from server (non-blocking)
@@ -827,18 +926,6 @@ export const InterviewAssistant = () => {
   };
 
   const ensureSession = async (opts?: { forceNew?: boolean }): Promise<string> => {
-    const isValidSessionId = (value: unknown): value is string => {
-      if (typeof value !== "string") return false;
-      const v = value.trim();
-      if (!v) return false;
-      const lowered = v.toLowerCase();
-      if (lowered === "undefined" || lowered === "null" || lowered === "none") return false;
-      // Accept UUID (with or without hyphens)
-      if (/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(v)) return true;
-      if (/^[0-9a-f]{32}$/i.test(v)) return true;
-      return false;
-    };
-
     const forceNew = !!opts?.forceNew;
     if (!forceNew && isValidSessionId(sessionId)) return sessionId;
     const stored = !forceNew && typeof window !== 'undefined' ? window.localStorage.getItem("ia_session_id") : null;
@@ -1054,15 +1141,12 @@ export const InterviewAssistant = () => {
       // Wait for state to sync
       await new Promise(resolve => setTimeout(resolve, 50));
 
-      // Create new session - this will set sessionId state AND localStorage
-      const newSessionId = await ensureSession({ forceNew: true });
-      console.log("[New Chat] Created new session:", newSessionId);
-
-      // Double-check that the new session ID is stored (defensive programming)
-      try {
-        window.localStorage.setItem("ia_session_id", newSessionId);
-        console.log("[New Chat] Stored new session in localStorage");
-      } catch { }
+      // Do NOT create a backend session yet.
+      // Creating sessions eagerly results in "empty chats" showing up in history.
+      // We lazily create a session only when the user sends their first message (ensureSession).
+      setSessionId("");
+      try { window.localStorage.removeItem("ia_session_id"); } catch { }
+      console.log("[New Chat] Ready for a fresh chat (session will be created on first message)");
 
       // Refresh sidebar list immediately so the old session appears in history
       console.log("[New Chat] Loading sessions list...");
@@ -1070,8 +1154,8 @@ export const InterviewAssistant = () => {
       console.log("[New Chat] Sessions loaded, count:", sessions.length);
 
       toast({
-        title: "New Chat Started",
-        description: "Starting a fresh conversation with memory reset.",
+        title: "New chat ready",
+        description: "Ask your first question to start the session.",
       });
     } catch (err) {
       console.error("Failed to start new chat:", err);
@@ -1413,6 +1497,13 @@ export const InterviewAssistant = () => {
 
   const handleSelectMockSession = (session: MockInterviewHistorySession) => {
     console.log("[MockHistory] Selecting session:", session.session_id);
+    if (practiceScreenShareLock) {
+      toast({
+        title: 'Screen sharing is active',
+        description: 'Finish Live Practice before switching views.',
+      });
+      return;
+    }
     setSelectedMockSession(session);
     setActiveMainTab("mock-interview"); // Switch to Mock Interview tab
   };
@@ -1553,101 +1644,61 @@ export const InterviewAssistant = () => {
     console.log("[MockHistory] State updated - sessions:", mockInterviewSessions);
   }, [mockInterviewSessions]);
 
-  // Initialize session on mount to avoid race conditions
-  useEffect(() => {
-    (async () => {
-      try {
-        await ensureSession();
-      } catch (e) {
-        console.error("[session] init failed", e);
-      }
-    })();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  // NOTE: Do NOT create a backend session on mount.
+  // Sessions are created lazily on first user action (send message, upload profile, etc.)
+  // to avoid generating empty chat sessions.
 
   const GENERATING_PLACEHOLDER = "**Generating your response**";
 
-  // Restore last visible answer immediately on mount (UX: "return where you left off")
+  // Restore last visible answer per-session (prevents cross-session bleed on refresh).
   useEffect(() => {
-    try {
-      const cachedQ = window.localStorage.getItem('ia_last_question') || '';
-      const cachedA = window.localStorage.getItem('ia_last_answer') || '';
-      const cachedShow = window.localStorage.getItem('ia_show_answer') === 'true';
-      const cachedViewing = window.localStorage.getItem('ia_viewing_history') === 'true';
-      const normalizedA = cachedA.trim();
-      const isIncompleteCachedAnswer = !normalizedA || normalizedA === GENERATING_PLACEHOLDER;
+    if (!sessionId || !isValidSessionId(sessionId)) return;
+    if (isGenerating) return;
 
-      // If we somehow persisted an in-flight placeholder, do not restore it.
-      // This prevents the app from booting into a "stuck generating" state and duplicating bubbles.
-      if (cachedShow && cachedQ && isIncompleteCachedAnswer) {
-        try {
-          window.localStorage.removeItem('ia_last_answer');
-          window.localStorage.setItem('ia_show_answer', 'false');
-        } catch {
-          // ignore
-        }
+    // Don't override an already-populated view (e.g., user just clicked a history item).
+    if ((lastQuestion && lastQuestion.trim()) || (answer && answer.trim()) || showAnswer) return;
+
+    try {
+      const storedSid = window.localStorage.getItem('ia_session_id');
+      const lastViewSid = window.localStorage.getItem(LAST_VIEW_SESSION_KEY);
+      if (!storedSid || !isValidSessionId(storedSid)) return;
+      if (storedSid !== sessionId) return;
+      if (!lastViewSid || lastViewSid !== sessionId) return;
+
+      const view = readLastView(sessionId);
+      if (!view) return;
+
+      const normalizedA = String(view.answer || '').trim();
+      const isIncomplete = !normalizedA || normalizedA === GENERATING_PLACEHOLDER;
+      if (view.show && view.question && isIncomplete) {
+        clearLastView(sessionId);
         return;
       }
 
-      // Only restore if we have a complete Q&A (not just question with empty answer)
-      if (cachedShow && cachedQ && normalizedA) {
-        setLastQuestion(cachedQ);
-        // Ensure we mark this as a history view BEFORE setting the answer/show
-        // so any mounted `AnswerCard` receives `streaming={false}` immediately
-        // and won't start the typewriter animation due to render-order races.
-        setViewingHistory(true);
-        setAnswer(cachedA);
+      if (view.show && view.question && normalizedA) {
+        setLastQuestion(view.question);
+        setViewingHistory(Boolean(view.viewingHistory));
+        setAnswer(view.answer);
         setShowAnswer(true);
         setIsNavigatingVersion(false);
-        // Also ensure restored Q&A appears in history sidebar
-        const ensureInHistory = () => {
-          setHistory((prev) => {
-            const items = prev?.items || [];
-            const exists = items.some(it => it.question === cachedQ && it.answer === cachedA);
-            if (!exists && cachedQ && normalizedA) {
-              return {
-                session_id: sessionId || '',
-                items: [{
-                  question: cachedQ,
-                  answer: cachedA,
-                  style: 'detailed' as AnswerStyle,
-                      created_at: new Date().toISOString(),
-                      mode: 'answer'
-                }, ...items]
-              } as GetHistoryResponse;
-            }
-            return prev;
-          });
-          // Also add to durable archive
-          if (sessionId && cachedQ && normalizedA) {
-            try {
-              const archiveKey = `ia_history_archive_${sessionId}`;
-              const raw = window.localStorage.getItem(archiveKey);
-              const list = raw ? (JSON.parse(raw) as Array<{ question: string; answer: string; ts: number; mode?: "answer" | "mirror" }>) : [];
-              const exists = list.some(x => x.question === cachedQ && x.answer === cachedA);
-              if (!exists) {
-                list.unshift({ question: cachedQ, answer: cachedA, ts: Date.now(), mode: "answer" });
-                const CUTOFF = 1000;
-                window.localStorage.setItem(archiveKey, JSON.stringify(list.slice(0, CUTOFF)));
-              }
-            } catch {
-              // Ignore localStorage errors
-            }
-          }
-        };
-        ensureInHistory();
       }
     } catch {
-      // Ignore errors in sidebar hydration
+      // ignore
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sessionId]);
 
   const loadSessions = async () => {
     try {
       const s = await apiGetSessions();
       const sessionList = Array.isArray(s) ? s : [];
-      // Filter out sessions that are in the deleted blacklist
-      const validSessions = sessionList.filter(sess => !deletedSessionIdsRef.current.has(sess.session_id));
+      // Filter out sessions that are in the deleted blacklist and hide empty sessions (qna_count === 0)
+      // so the sidebar doesn't get polluted with blank chats.
+      const validSessions = sessionList.filter(sess => {
+        if (deletedSessionIdsRef.current.has(sess.session_id)) return false;
+        if (typeof (sess as any)?.qna_count === 'number' && (sess as any).qna_count <= 0) return false;
+        return true;
+      });
       setSessions(validSessions);
       console.log("[api] GET /api/sessions ->", s);
 
@@ -1802,16 +1853,27 @@ export const InterviewAssistant = () => {
   // Persist the currently displayed card so navigating away and back restores it
   useEffect(() => {
     try {
-      window.localStorage.setItem('ia_last_question', lastQuestion || '');
       // Never persist the in-flight generating placeholder as a "real" answer.
-      // Restoring it causes duplicate bubbles and a stuck "generating" state on reload.
       const safeAnswer = isGenerating && (answer || '').trim() === GENERATING_PLACEHOLDER ? '' : (answer || '');
       const safeShow = isGenerating && (answer || '').trim() === GENERATING_PLACEHOLDER ? false : !!showAnswer;
+
+      // Back-compat keys (legacy) - keep for now.
+      window.localStorage.setItem('ia_last_question', lastQuestion || '');
       window.localStorage.setItem('ia_last_answer', safeAnswer);
       window.localStorage.setItem('ia_show_answer', String(safeShow));
       window.localStorage.setItem('ia_viewing_history', String(!!viewingHistory));
+
+      // Session-scoped last-view (prevents wrong session adopting the last message on refresh).
+      if (sessionId && isValidSessionId(sessionId)) {
+        writeLastView(sessionId, {
+          question: lastQuestion || '',
+          answer: safeAnswer,
+          show: safeShow,
+          viewingHistory: !!viewingHistory,
+        });
+      }
     } catch { }
-  }, [lastQuestion, answer, showAnswer, viewingHistory, isGenerating]);
+  }, [lastQuestion, answer, showAnswer, viewingHistory, isGenerating, sessionId]);
 
   // Fetch evaluation allowance when the lastQuestion or sessionId changes.
   useEffect(() => {
@@ -2628,7 +2690,6 @@ export const InterviewAssistant = () => {
                   </>
                 )
               )}
-              <ThemeToggle className="h-8 w-8" iconClassName="h-4 w-4" />
               {user && !authLoading && (
                 <Dialog>
                   <DialogTrigger asChild>
@@ -3393,6 +3454,13 @@ export const InterviewAssistant = () => {
                                   <button
                                     className="flex-1 min-w-0 text-left px-3 py-2 rounded-md hover:bg-muted/50 transition-colors overflow-hidden"
                                     onClick={async () => {
+                                      if (practiceScreenShareLock) {
+                                        toast({
+                                          title: 'Screen sharing is active',
+                                          description: 'Finish Live Practice before switching views.',
+                                        });
+                                        return;
+                                      }
                                       try {
                                         // Clear UI state for fresh load
                                         setShowAnswer(false);
@@ -3690,6 +3758,13 @@ export const InterviewAssistant = () => {
           <Tabs
             value={activeMainTab}
             onValueChange={(v) => {
+              if (practiceScreenShareLock && v !== 'practice') {
+                toast({
+                  title: 'Screen sharing is active',
+                  description: 'Finish Live Practice before switching tabs.',
+                });
+                return;
+              }
               setActiveMainTab(v as "answer" | "intelligence" | "mock-interview" | "practice");
               // Clear any lingering openTab navigation state so refresh doesn't hijack the tab.
               navigate(location.pathname, { replace: true, state: {} });
@@ -3700,10 +3775,33 @@ export const InterviewAssistant = () => {
             <header className="hidden md:flex items-center justify-between px-6 py-2 border-b border-border/50 bg-background/50 backdrop-blur-xl sticky top-0 z-40 transition-all duration-300">
               <div className="flex items-center gap-2">
                 <TabsList className="bg-transparent border-0 h-10 gap-2">
-                  <TabsTrigger value="answer" className="data-[state=active]:bg-primary/10 data-[state=active]:text-primary font-bold px-4 transition-all whitespace-nowrap">AI Copilot</TabsTrigger>
-                  <TabsTrigger value="intelligence" className="data-[state=active]:bg-primary/10 data-[state=active]:text-primary font-bold px-4 transition-all whitespace-nowrap">Search Intelligence</TabsTrigger>
-                  <TabsTrigger value="mock-interview" className="data-[state=active]:bg-primary/10 data-[state=active]:text-primary font-bold px-4 transition-all whitespace-nowrap">Mock Interview</TabsTrigger>
-                  <TabsTrigger value="practice" className="data-[state=active]:bg-primary/10 data-[state=active]:text-primary font-bold px-4 transition-all whitespace-nowrap">Live Practice</TabsTrigger>
+                  <TabsTrigger
+                    value="answer"
+                    disabled={practiceScreenShareLock}
+                    className="data-[state=active]:bg-primary/10 data-[state=active]:text-primary font-bold px-4 transition-all whitespace-nowrap"
+                  >
+                    AI Copilot
+                  </TabsTrigger>
+                  <TabsTrigger
+                    value="intelligence"
+                    disabled={practiceScreenShareLock}
+                    className="data-[state=active]:bg-primary/10 data-[state=active]:text-primary font-bold px-4 transition-all whitespace-nowrap"
+                  >
+                    Search Intelligence
+                  </TabsTrigger>
+                  <TabsTrigger
+                    value="mock-interview"
+                    disabled={practiceScreenShareLock}
+                    className="data-[state=active]:bg-primary/10 data-[state=active]:text-primary font-bold px-4 transition-all whitespace-nowrap"
+                  >
+                    Mock Interview
+                  </TabsTrigger>
+                  <TabsTrigger
+                    value="practice"
+                    className="data-[state=active]:bg-primary/10 data-[state=active]:text-primary font-bold px-4 transition-all whitespace-nowrap"
+                  >
+                    Live Practice
+                  </TabsTrigger>
                 </TabsList>
               </div>
 
@@ -3728,17 +3826,27 @@ export const InterviewAssistant = () => {
                   )
                 )}
                 {user && !authLoading && (
-                  <Link to="/progress">
-                    <Button variant="ghost" size="sm">Progress</Button>
+                  <Link
+                    to="/progress"
+                    onClick={(e) => {
+                      if (!practiceScreenShareLock) return;
+                      e.preventDefault();
+                      toast({
+                        title: 'Screen sharing is active',
+                        description: 'Finish Live Practice before opening Progress.',
+                      });
+                    }}
+                  >
+                    <Button variant="ghost" size="sm" disabled={practiceScreenShareLock}>Progress</Button>
                   </Link>
                 )}
-                <ThemeToggle />
                 {user && !authLoading && (
                   <Dialog>
                     <DialogTrigger asChild>
                       <Button
                         variant="outline"
                         size="sm"
+                        disabled={practiceScreenShareLock}
                         className={`h-9 flex items-center gap-2 transition-all duration-300 ${!hasApiKey
                           ? 'bg-amber-500/10 text-amber-500 border-amber-500/50 hover:bg-amber-500/20 shadow-[0_0_15px_-5px_rgba(245,158,11,0.3)]'
                           : 'hover:bg-accent'
@@ -3753,8 +3861,18 @@ export const InterviewAssistant = () => {
                     </DialogContent>
                   </Dialog>
                 )}
-                <Link to="/run">
-                  <Button variant="outline" size="sm" className="hidden lg:flex">Run Code</Button>
+                <Link
+                  to="/run"
+                  onClick={(e) => {
+                    if (!practiceScreenShareLock) return;
+                    e.preventDefault();
+                    toast({
+                      title: 'Screen sharing is active',
+                      description: 'Finish Live Practice before opening Run Code.',
+                    });
+                  }}
+                >
+                  <Button variant="outline" size="sm" className="hidden lg:flex" disabled={practiceScreenShareLock}>Run Code</Button>
                 </Link>
               </div>
             </header>

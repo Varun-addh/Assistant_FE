@@ -8,6 +8,8 @@ import Runner from "./pages/Runner";
 import ArchitecturePage from "./pages/Architecture";
 import Auth from "./pages/Auth";
 import GoogleCallback from "./pages/GoogleCallback";
+import VerifyEmail from "./pages/VerifyEmail";
+import ResetPassword from "./pages/ResetPassword";
 import Progress from "./pages/Progress";
 import { InterviewAssistant } from "./components/InterviewAssistant";
 import { ProtectedRoute } from "./components/ProtectedRoute";
@@ -43,6 +45,8 @@ const App = () => (
             </ProtectedRoute>
           } />
           <Route path="/auth/google/callback" element={<GoogleCallback />} />
+          <Route path="/auth/verify-email" element={<VerifyEmail />} />
+          <Route path="/auth/reset-password" element={<ResetPassword />} />
           <Route path="/" element={<Index />} />
           <Route path="/app" element={
             <InterviewAssistant />

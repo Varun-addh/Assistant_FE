@@ -1,34 +1,24 @@
-import { useState, useEffect } from "react";
+import { useEffect, useState } from "react";
 
 export const useTheme = () => {
-  const [theme, setTheme] = useState<"light" | "dark">("light");
+  // Dark-only product: we keep the hook API for compatibility,
+  // but it always resolves to "dark".
+  const [theme] = useState<"dark">("dark");
 
   useEffect(() => {
-    // Check for saved theme preference or default to 'light'
-    const savedTheme = localStorage.getItem("theme") as "light" | "dark" | null;
-    const prefersDark = window.matchMedia("(prefers-color-scheme: dark)").matches;
-    
-    const initialTheme = savedTheme || (prefersDark ? "dark" : "light");
-    setTheme(initialTheme);
-    
-    // Apply theme to document
-    if (initialTheme === "dark") {
-      document.documentElement.classList.add("dark");
-    } else {
-      document.documentElement.classList.remove("dark");
+    // Force dark at the document level and prevent persisted light mode.
+    document.documentElement.classList.add("dark");
+    try {
+      if (localStorage.getItem("theme") !== "dark") {
+        localStorage.setItem("theme", "dark");
+      }
+    } catch {
+      // ignore storage errors
     }
   }, []);
 
   const toggleTheme = () => {
-    const newTheme = theme === "light" ? "dark" : "light";
-    setTheme(newTheme);
-    localStorage.setItem("theme", newTheme);
-    
-    if (newTheme === "dark") {
-      document.documentElement.classList.add("dark");
-    } else {
-      document.documentElement.classList.remove("dark");
-    }
+    // no-op (dark-only)
   };
 
   return { theme, toggleTheme };

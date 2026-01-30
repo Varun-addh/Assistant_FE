@@ -6,14 +6,22 @@ import { Label } from './ui/label';
 import { Alert, AlertDescription } from './ui/alert';
 import { Mail, Lock, ArrowRight, Loader2, AlertCircle } from 'lucide-react';
 import { motion } from 'framer-motion';
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from './ui/dialog';
+import { useToast } from '@/hooks/use-toast';
+import { forgotPassword } from '@/lib/authApi';
 
 export function Login({ onSwitchToRegister }: { onSwitchToRegister?: () => void }) {
   const { login, loginWithGoogle } = useAuth();
+  const { toast } = useToast();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const [googleLoading, setGoogleLoading] = useState(false);
+
+  const [forgotOpen, setForgotOpen] = useState(false);
+  const [forgotEmail, setForgotEmail] = useState('');
+  const [forgotSubmitting, setForgotSubmitting] = useState(false);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -41,6 +49,31 @@ export function Login({ onSwitchToRegister }: { onSwitchToRegister?: () => void 
       setError(err.message || 'Google login failed. Please try again.');
     } finally {
       setGoogleLoading(false);
+    }
+  };
+
+  const openForgot = () => {
+    setForgotEmail((prev) => prev || email);
+    setForgotOpen(true);
+  };
+
+  const submitForgot = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!forgotEmail.trim()) return;
+
+    setForgotSubmitting(true);
+    try {
+      // Always show a generic success message (even if email not found)
+      await forgotPassword(forgotEmail.trim());
+    } catch {
+      // intentionally ignored
+    } finally {
+      setForgotSubmitting(false);
+      toast({
+        title: 'If an account exists, we sent an email',
+        description: 'Check your inbox for a password reset link.',
+      });
+      setForgotOpen(false);
     }
   };
 
@@ -104,6 +137,16 @@ export function Login({ onSwitchToRegister }: { onSwitchToRegister?: () => void 
                 disabled={loading}
                 className="pl-2 h-12 bg-transparent border-white/10 backdrop-blur-sm focus:border-purple-500/50 focus:ring-purple-500/20 transition-all"
               />
+            </div>
+            <div className="flex justify-end">
+              <button
+                type="button"
+                onClick={openForgot}
+                disabled={loading || googleLoading}
+                className="text-xs text-muted-foreground hover:text-foreground transition-colors"
+              >
+                Forgot password?
+              </button>
             </div>
           </div>
         </div>
@@ -202,6 +245,41 @@ export function Login({ onSwitchToRegister }: { onSwitchToRegister?: () => void 
           By signing in, you agree to our Terms of Service and Privacy Policy
         </p>
       </div>
+
+      <Dialog open={forgotOpen} onOpenChange={setForgotOpen}>
+        <DialogContent className="sm:max-w-[420px]">
+          <DialogHeader>
+            <DialogTitle>Reset your password</DialogTitle>
+          </DialogHeader>
+          <form onSubmit={submitForgot} className="space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor="forgot_email">Email</Label>
+              <Input
+                id="forgot_email"
+                type="email"
+                value={forgotEmail}
+                onChange={(e) => setForgotEmail(e.target.value)}
+                placeholder="you@example.com"
+                disabled={forgotSubmitting}
+                required
+              />
+            </div>
+            <Button type="submit" className="w-full" disabled={forgotSubmitting}>
+              {forgotSubmitting ? (
+                <span className="inline-flex items-center gap-2">
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                  Sending…
+                </span>
+              ) : (
+                'Send reset link'
+              )}
+            </Button>
+            <p className="text-xs text-muted-foreground">
+              We’ll email you a reset link if an account exists for that address.
+            </p>
+          </form>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

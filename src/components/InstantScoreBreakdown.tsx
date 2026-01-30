@@ -85,6 +85,15 @@ export default function InstantScoreBreakdown({ sessionId, onViewProgress }: Ins
 
   const dimensions = Object.entries(score.dimension_scores).sort((a, b) => b[1] - a[1]);
 
+  const screenUrl = typeof score.media?.screen_recording_url === 'string' ? score.media.screen_recording_url : '';
+  const cameraUrl = typeof score.media?.camera_recording_url === 'string' ? score.media.camera_recording_url : '';
+  const violationCount = typeof score.proctoring_summary?.violation_count === 'number'
+    ? score.proctoring_summary.violation_count
+    : null;
+  const proctoringEvents = Array.isArray(score.proctoring_summary?.events)
+    ? score.proctoring_summary!.events!
+    : [];
+
   return (
     <div className="space-y-6">
       {/* Overall Score Card */}
@@ -189,6 +198,67 @@ export default function InstantScoreBreakdown({ sessionId, onViewProgress }: Ins
           )}
         </div>
       ) : null}
+
+      {/* Live Practice: Recordings */}
+      {(!!screenUrl || !!cameraUrl) && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-lg">Recordings</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-2 text-sm">
+              {!!screenUrl && (
+                <div className="flex items-center justify-between gap-3">
+                  <span className="text-muted-foreground">Screen recording</span>
+                  <a className="text-primary underline underline-offset-4" href={screenUrl} target="_blank" rel="noreferrer">
+                    Open
+                  </a>
+                </div>
+              )}
+              {!!cameraUrl && (
+                <div className="flex items-center justify-between gap-3">
+                  <span className="text-muted-foreground">Camera recording</span>
+                  <a className="text-primary underline underline-offset-4" href={cameraUrl} target="_blank" rel="noreferrer">
+                    Open
+                  </a>
+                </div>
+              )}
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Live Practice: Proctoring summary */}
+      {(violationCount !== null || proctoringEvents.length > 0) && (
+        <Card className={violationCount && violationCount > 0 ? 'border-amber-500/30 bg-amber-500/5' : ''}>
+          <CardHeader>
+            <CardTitle className="text-lg flex items-center justify-between">
+              Proctoring Summary
+              {violationCount !== null && (
+                <Badge variant={violationCount > 0 ? 'destructive' : 'secondary'}>
+                  {violationCount} violation{violationCount === 1 ? '' : 's'}
+                </Badge>
+              )}
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            {proctoringEvents.length === 0 ? (
+              <p className="text-sm text-muted-foreground">No proctoring events recorded.</p>
+            ) : (
+              <div className="space-y-2">
+                {proctoringEvents.slice(0, 20).map((evt, idx) => (
+                  <div key={idx} className="text-xs rounded-md border border-border/50 bg-card/50 p-2">
+                    <pre className="whitespace-pre-wrap break-words">{JSON.stringify(evt, null, 2)}</pre>
+                  </div>
+                ))}
+                {proctoringEvents.length > 20 && (
+                  <p className="text-xs text-muted-foreground">Showing first 20 events.</p>
+                )}
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      )}
 
       {/* Next Session Button */}
       {onViewProgress && (

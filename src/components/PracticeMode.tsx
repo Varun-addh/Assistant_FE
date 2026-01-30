@@ -44,6 +44,9 @@ import {
   type PerceivedDifficulty,
   QuestionType as QuestionTypeEnum,
   API_BASE_URL,
+  submitSessionConfidence,
+  uploadPracticeSessionMedia,
+  postPracticeSessionProctoringEvent,
 } from '@/lib/practiceModeApi';
 import { startPracticeProctoring } from '@/lib/practiceProctoring';
 import {
@@ -89,11 +92,101 @@ type GuestGateBanner =
   | { kind: 'unavailable'; message?: string }
   | null;
 
+type SessionConfidenceStoredState = {
+  value?: number;
+  skipped?: boolean;
+  disabled?: boolean;
+  updatedAt?: number;
+};
+
 export const PracticeMode = () => {
   const { toast } = useToast();
   const navigate = useNavigate();
   const audioRecorder = useRef(new AudioRecorder());
   const audioPlayerRef = useRef<HTMLAudioElement | null>(null);
+
+  // Stream question text word-by-word so it isn't shown all at once.
+  const [streamedQuestionText, setStreamedQuestionText] = useState<string>('');
+  const [isQuestionStreaming, setIsQuestionStreaming] = useState(false);
+  const questionAudioDurationRef = useRef<number | null>(null);
+  const questionStreamTimerRef = useRef<number | null>(null);
+  const questionStreamKeyRef = useRef<string>('');
+  const questionStreamRunIdRef = useRef(0);
+
+  const cancelQuestionStreaming = () => {
+    if (questionStreamTimerRef.current != null) {
+      window.clearTimeout(questionStreamTimerRef.current);
+      questionStreamTimerRef.current = null;
+    }
+    // Bump run id and clear key so any in-flight callbacks become no-ops.
+    questionStreamRunIdRef.current += 1;
+    questionStreamKeyRef.current = '';
+    setIsQuestionStreaming(false);
+  };
+
+  const playTtsBestEffort = async (ttsAudioUrl?: string) => {
+    if (!enableTTS) return;
+    if (!ttsAudioUrl || typeof ttsAudioUrl !== 'string') return;
+
+    // Best-effort stop existing playback.
+    try {
+      audioPlayerRef.current?.pause();
+    } catch {
+      // ignore
+    }
+
+    setIsAudioLoading(true);
+    setIsPlayingAudio(false);
+    questionAudioDurationRef.current = null;
+
+    const absoluteUrl = ttsAudioUrl.startsWith('http://') || ttsAudioUrl.startsWith('https://')
+      ? ttsAudioUrl
+      : `${API_BASE_URL}${ttsAudioUrl}`;
+
+    try {
+      const audio = new Audio(absoluteUrl);
+      audioPlayerRef.current = audio;
+
+      audio.onloadedmetadata = () => {
+        try {
+          if (Number.isFinite(audio.duration) && audio.duration > 0) {
+            questionAudioDurationRef.current = audio.duration;
+          }
+        } catch {
+          // ignore
+        }
+      };
+
+      audio.onloadeddata = () => {
+        setIsAudioLoading(false);
+      };
+
+      audio.onplay = () => {
+        setIsPlayingAudio(true);
+      };
+
+      audio.onended = () => {
+        setIsPlayingAudio(false);
+      };
+
+      audio.onerror = () => {
+        setIsAudioLoading(false);
+        setIsPlayingAudio(false);
+      };
+
+      // Force a reload when reusing same filenames in rare cases.
+      try { audio.load(); } catch { }
+
+      await audio.play();
+    } catch (err) {
+      setIsAudioLoading(false);
+      setIsPlayingAudio(false);
+    }
+  };
+
+  const roundSelectionScrollRef = useRef<HTMLDivElement | null>(null);
+  const lastRoundSelectionScrollTopRef = useRef(0);
+  const [showRoundSelectionHeader, setShowRoundSelectionHeader] = useState(true);
 
   const viewProgressButton = (className?: string) => (
     <Button
@@ -136,6 +229,17 @@ export const PracticeMode = () => {
     if (!guestGateBanner) return;
     stopProctoring();
     setEnableCameraProctoring(false);
+
+    // Also stop local recorders/streams best-effort.
+    try { screenRecorderRef.current?.stop(); } catch { }
+    try { cameraRecorderRef.current?.stop(); } catch { }
+    try { screenStreamRef.current?.getTracks().forEach((t) => t.stop()); } catch { }
+    try { cameraStreamRef.current?.getTracks().forEach((t) => t.stop()); } catch { }
+    screenRecorderRef.current = null;
+    cameraRecorderRef.current = null;
+    screenStreamRef.current = null;
+    cameraStreamRef.current = null;
+    setCameraPreviewStream(null);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [guestGateBanner?.kind]);
 
@@ -228,6 +332,43 @@ export const PracticeMode = () => {
     } catch { }
   }, []);
 
+  // Auto-hide round-selection header while scrolling down; reveal on scroll up.
+  useEffect(() => {
+    if (phase !== 'round-selection') return;
+
+    const el = roundSelectionScrollRef.current;
+    if (!el) return;
+
+    let ticking = false;
+
+    const onScroll = () => {
+      if (ticking) return;
+      ticking = true;
+      window.requestAnimationFrame(() => {
+        const current = el.scrollTop;
+        const prev = lastRoundSelectionScrollTopRef.current;
+        const delta = current - prev;
+
+        // Always show at the very top.
+        if (current <= 8) {
+          setShowRoundSelectionHeader(true);
+        } else if (delta > 10) {
+          // Scrolling down → hide
+          setShowRoundSelectionHeader(false);
+        } else if (delta < -6) {
+          // Scrolling up → show
+          setShowRoundSelectionHeader(true);
+        }
+
+        lastRoundSelectionScrollTopRef.current = current;
+        ticking = false;
+      });
+    };
+
+    el.addEventListener('scroll', onScroll, { passive: true });
+    return () => el.removeEventListener('scroll', onScroll as any);
+  }, [phase]);
+
   // Quick Start state
   const [useQuickStart, setUseQuickStart] = useState(false);
   const [quickStartInput, setQuickStartInput] = useState('');
@@ -246,6 +387,38 @@ export const PracticeMode = () => {
   const [proctoringStatus, setProctoringStatus] = useState<'inactive' | 'starting' | 'active' | 'error'>('inactive');
   const [proctoringInfo, setProctoringInfo] = useState<string>('');
   const proctoringStopRef = useRef<null | (() => void)>(null);
+  const proctoringSessionIdRef = useRef<string | null>(null);
+
+  // Live Practice gate: screen share + camera required by backend.
+  const [liveMediaStatus, setLiveMediaStatus] = useState<'inactive' | 'starting' | 'ready' | 'error'>('inactive');
+  const [liveMediaInfo, setLiveMediaInfo] = useState<string>('');
+  const [cameraPreviewStream, setCameraPreviewStream] = useState<MediaStream | null>(null);
+  const facePreviewVideoRef = useRef<HTMLVideoElement | null>(null);
+  const screenStreamRef = useRef<MediaStream | null>(null);
+  const cameraStreamRef = useRef<MediaStream | null>(null);
+  const screenRecorderRef = useRef<MediaRecorder | null>(null);
+  const cameraRecorderRef = useRef<MediaRecorder | null>(null);
+  const screenChunksRef = useRef<BlobPart[]>([]);
+  const cameraChunksRef = useRef<BlobPart[]>([]);
+  const recordingStartedAtRef = useRef<number | null>(null);
+  const liveCaptureSessionIdRef = useRef<string | null>(null);
+
+  const practiceScreenShareLockRef = useRef(false);
+
+  type QuestionEvaluationItem = {
+    questionNumber: number;
+    questionId?: number;
+    questionText?: string;
+    kind: 'voice' | 'code';
+    transcript?: string;
+    metrics?: SpeechMetrics | null;
+    microFeedback?: MicroFeedback | null;
+    codeEvaluation?: CodeEvaluationFeedback | null;
+    testResults?: CodeTestResult[] | null;
+    createdAt: string;
+  };
+
+  const [questionEvaluations, setQuestionEvaluations] = useState<QuestionEvaluationItem[]>([]);
 
   const stopProctoring = () => {
     try {
@@ -254,12 +427,18 @@ export const PracticeMode = () => {
       // ignore
     }
     proctoringStopRef.current = null;
+    proctoringSessionIdRef.current = null;
     setProctoringStatus('inactive');
     setProctoringInfo('');
   };
 
   const startProctoringBestEffort = async (practiceSessionId: string) => {
     if (!enableCameraProctoring) return;
+
+    // Avoid duplicate listener setup for the same session.
+    if (proctoringStopRef.current && proctoringSessionIdRef.current === practiceSessionId) {
+      return;
+    }
 
     stopProctoring();
     setProctoringStatus('starting');
@@ -268,6 +447,7 @@ export const PracticeMode = () => {
     try {
       const controller = await startPracticeProctoring({
         sessionId: practiceSessionId,
+        cameraStream: cameraStreamRef.current,
         onStatus: (status, info) => {
           setProctoringStatus(status);
           setProctoringInfo(info ?? '');
@@ -286,6 +466,7 @@ export const PracticeMode = () => {
       }
 
       proctoringStopRef.current = controller.stop;
+      proctoringSessionIdRef.current = practiceSessionId;
     } catch (err: any) {
       setEnableCameraProctoring(false);
       setProctoringStatus('error');
@@ -300,8 +481,430 @@ export const PracticeMode = () => {
 
   // Cleanup on unmount
   useEffect(() => {
-    return () => stopProctoring();
+    return () => {
+      stopProctoring();
+      try { screenRecorderRef.current?.stop(); } catch { }
+      try { cameraRecorderRef.current?.stop(); } catch { }
+      try { screenStreamRef.current?.getTracks().forEach((t) => t.stop()); } catch { }
+      try { cameraStreamRef.current?.getTracks().forEach((t) => t.stop()); } catch { }
+      screenRecorderRef.current = null;
+      cameraRecorderRef.current = null;
+      screenStreamRef.current = null;
+      cameraStreamRef.current = null;
+      setCameraPreviewStream(null);
+      liveCaptureSessionIdRef.current = null;
+      recordingStartedAtRef.current = null;
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  useEffect(() => {
+    const el = facePreviewVideoRef.current;
+    if (!el) return;
+
+    try {
+      (el as any).srcObject = cameraPreviewStream ?? null;
+    } catch {
+      // ignore
+    }
+
+    if (cameraPreviewStream) {
+      el.muted = true;
+      el.playsInline = true;
+      void el.play().catch(() => {
+        // ignore
+      });
+    }
+  }, [cameraPreviewStream, sessionId, phase]);
+
+  const renderFacePreview = () => {
+    const show = !!sessionId && !!cameraPreviewStream && phase !== 'welcome' && phase !== 'setup' && phase !== 'round-selection';
+    if (!show) return null;
+
+    const track = cameraPreviewStream?.getVideoTracks?.()?.[0];
+    const trackLive = !!track && track.readyState === 'live';
+
+    return (
+      <div className="fixed top-4 left-4 z-[90]">
+        <div className="w-64 overflow-hidden rounded-2xl border border-border/60 bg-background/70 backdrop-blur shadow-lg">
+          <div className="px-3 py-2 text-[11px] text-muted-foreground flex items-center justify-between">
+            <span>Camera</span>
+            <span className="text-[10px]">{trackLive ? 'Live' : 'Starting…'}</span>
+          </div>
+          <div className="relative w-64 h-64 bg-black">
+            <video
+              ref={facePreviewVideoRef}
+              className="w-full h-full object-cover -scale-x-100"
+              autoPlay
+              muted
+              playsInline
+            />
+
+            {!trackLive && (
+              <div className="absolute inset-0 flex items-center justify-center">
+                <div className="px-3 py-2 rounded-md bg-black/50 text-white text-xs">
+                  Camera not streaming
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+    );
+  };
+
+  const pickMediaRecorderMime = (candidates: string[]): string => {
+    try {
+      const MR = (window as any).MediaRecorder as typeof MediaRecorder | undefined;
+      if (!MR?.isTypeSupported) return '';
+      return candidates.find((c) => MR.isTypeSupported(c)) || '';
+    } catch {
+      return '';
+    }
+  };
+
+  const dispatchGuestLimitReached = (source: string) => {
+    try {
+      window.dispatchEvent(
+        new CustomEvent('demo:limit-reached', {
+          detail: {
+            error: 'DEMO_LIMIT_REACHED',
+            message: 'Guest usage limit reached. Please sign in to continue.',
+            source,
+          },
+        })
+      );
+    } catch {
+      // ignore
+    }
+  };
+
+  const postSessionEventBestEffort = async (sid: string, event_type: any, metadata: Record<string, unknown> = {}) => {
+    try {
+      const res = await postPracticeSessionProctoringEvent({
+        session_id: sid,
+        event_type,
+        metadata,
+        client_timestamp: new Date().toISOString(),
+      } as any);
+
+      if (res.status === 429) {
+        dispatchGuestLimitReached('practice_session_proctoring');
+        stopProctoring();
+        setEnableCameraProctoring(false);
+      }
+    } catch {
+      // best effort
+    }
+  };
+
+  const ensureLiveMediaReady = async (): Promise<{ screen_shared: boolean; camera_enabled: boolean }> => {
+    const hasLiveVideo = (stream: MediaStream | null): boolean => {
+      const t = stream?.getVideoTracks?.()?.[0];
+      return !!t && t.readyState === 'live';
+    };
+
+    if (hasLiveVideo(screenStreamRef.current) && hasLiveVideo(cameraStreamRef.current)) {
+      setLiveMediaStatus('ready');
+      setLiveMediaInfo('');
+      setCameraPreviewStream(cameraStreamRef.current);
+      return { screen_shared: true, camera_enabled: true };
+    }
+
+    setLiveMediaStatus('starting');
+    setLiveMediaInfo('');
+
+    if (!navigator?.mediaDevices?.getDisplayMedia || !navigator?.mediaDevices?.getUserMedia) {
+      setLiveMediaStatus('error');
+      setLiveMediaInfo('Browser does not support screen/camera capture');
+      throw new Error('Screen share + camera are required to start (not supported in this browser).');
+    }
+
+    // Acquire screen share first (so user sees the purpose), then camera.
+    try {
+      if (!hasLiveVideo(screenStreamRef.current)) {
+        try { screenStreamRef.current?.getTracks().forEach((t) => t.stop()); } catch { }
+        screenStreamRef.current = await navigator.mediaDevices.getDisplayMedia({ video: true, audio: false } as any);
+      }
+      if (!hasLiveVideo(cameraStreamRef.current)) {
+        try { cameraStreamRef.current?.getTracks().forEach((t) => t.stop()); } catch { }
+        cameraStreamRef.current = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
+      }
+
+      if (!hasLiveVideo(screenStreamRef.current) || !hasLiveVideo(cameraStreamRef.current)) {
+        throw new Error('Missing screen or camera video track');
+      }
+
+      setCameraPreviewStream(cameraStreamRef.current);
+
+      // Track ended listeners → proctoring events (best-effort)
+      const screenTrack = screenStreamRef.current.getVideoTracks()[0];
+      const cameraTrack = cameraStreamRef.current.getVideoTracks()[0];
+
+      const onScreenEnded = () => {
+        const sid = liveCaptureSessionIdRef.current;
+        if (!sid) return;
+        void postSessionEventBestEffort(sid, 'SCREEN_STOPPED', { reason: 'track_ended' });
+
+        setLiveMediaStatus('error');
+        setLiveMediaInfo('Screen sharing stopped. Please re-share your entire screen to continue.');
+        toast({
+          title: 'Screen sharing stopped',
+          description: 'Please re-share your entire screen to continue Live Practice.',
+          variant: 'destructive',
+        });
+      };
+      const onCameraEnded = () => {
+        const sid = liveCaptureSessionIdRef.current;
+        if (!sid) return;
+        void postSessionEventBestEffort(sid, 'CAMERA_STOPPED', { reason: 'track_ended' });
+
+        setLiveMediaStatus('error');
+        setLiveMediaInfo('Camera stopped. Please re-enable camera to continue.');
+        toast({
+          title: 'Camera stopped',
+          description: 'Please re-enable your camera to continue Live Practice.',
+          variant: 'destructive',
+        });
+      };
+
+      try { screenTrack.addEventListener('ended', onScreenEnded, { once: true } as any); } catch { }
+      try { cameraTrack.addEventListener('ended', onCameraEnded, { once: true } as any); } catch { }
+
+      setLiveMediaStatus('ready');
+      setLiveMediaInfo('');
+      return { screen_shared: true, camera_enabled: true };
+    } catch (err: any) {
+      setLiveMediaStatus('error');
+      setLiveMediaInfo(err?.message || 'Could not start screen share + camera');
+      try { screenStreamRef.current?.getTracks().forEach((t) => t.stop()); } catch { }
+      try { cameraStreamRef.current?.getTracks().forEach((t) => t.stop()); } catch { }
+      screenStreamRef.current = null;
+      cameraStreamRef.current = null;
+      setCameraPreviewStream(null);
+      throw new Error('Screen share + camera are required to start. Please allow permissions and try again.');
+    }
+  };
+
+  const startLiveCaptureForSession = async (sid: string) => {
+    if (!sid) return;
+    if (liveCaptureSessionIdRef.current === sid) return;
+
+    // Only start recording if MediaRecorder exists.
+    if (!(window as any).MediaRecorder) {
+      liveCaptureSessionIdRef.current = sid;
+      return;
+    }
+
+    const screen = screenStreamRef.current;
+    const cam = cameraStreamRef.current;
+    if (!screen || !cam) {
+      liveCaptureSessionIdRef.current = sid;
+      return;
+    }
+
+    liveCaptureSessionIdRef.current = sid;
+    recordingStartedAtRef.current = Date.now();
+
+    void postSessionEventBestEffort(sid, 'SESSION_STARTED_WITH_PROCTORING', {
+      screen_track: screen.getVideoTracks()?.[0]?.label,
+      camera_track: cam.getVideoTracks()?.[0]?.label,
+    });
+
+    const videoCandidates = [
+      'video/webm;codecs=vp9',
+      'video/webm;codecs=vp8',
+      'video/webm',
+    ];
+    const mime = pickMediaRecorderMime(videoCandidates);
+
+    const startOne = (stream: MediaStream, kind: 'screen' | 'camera') => {
+      const rec = new MediaRecorder(stream as any, mime ? ({ mimeType: mime } as any) : undefined);
+      const chunksRef = kind === 'screen' ? screenChunksRef : cameraChunksRef;
+      const recorderRef = kind === 'screen' ? screenRecorderRef : cameraRecorderRef;
+      chunksRef.current = [];
+      recorderRef.current = rec;
+
+      rec.ondataavailable = (e: BlobEvent) => {
+        if (e.data && e.data.size > 0) chunksRef.current.push(e.data);
+      };
+
+      rec.onstop = async () => {
+        const chunks = chunksRef.current;
+        chunksRef.current = [];
+        const blob = new Blob(chunks, { type: rec.mimeType || 'video/webm' });
+        if (!blob.size) return;
+
+        const durationSeconds = recordingStartedAtRef.current ? (Date.now() - recordingStartedAtRef.current) / 1000 : undefined;
+        try {
+          await uploadPracticeSessionMedia({
+            sessionId: sid,
+            media_type: kind,
+            file: blob,
+            filename: `${kind}.webm`,
+            duration_seconds: durationSeconds,
+          });
+        } catch (err: any) {
+          if (err instanceof StrataxApiError && err.status === 429) {
+            dispatchGuestLimitReached('practice_session_media_upload');
+            stopProctoring();
+            setEnableCameraProctoring(false);
+          }
+        }
+      };
+
+      try {
+        rec.start(1000);
+      } catch {
+        // ignore
+      }
+    };
+
+    try { startOne(screen, 'screen'); } catch { }
+    try { startOne(cam, 'camera'); } catch { }
+  };
+
+  useEffect(() => {
+    const shouldTearDown =
+      phase === 'welcome' ||
+      phase === 'setup' ||
+      phase === 'round-selection';
+
+    if (!shouldTearDown) return;
+    if (!liveCaptureSessionIdRef.current) return;
+
+    try { screenRecorderRef.current?.stop(); } catch { }
+    try { cameraRecorderRef.current?.stop(); } catch { }
+    try { screenStreamRef.current?.getTracks().forEach((t) => t.stop()); } catch { }
+    try { cameraStreamRef.current?.getTracks().forEach((t) => t.stop()); } catch { }
+    screenRecorderRef.current = null;
+    cameraRecorderRef.current = null;
+    screenStreamRef.current = null;
+    cameraStreamRef.current = null;
+    liveCaptureSessionIdRef.current = null;
+    recordingStartedAtRef.current = null;
+    setCameraPreviewStream(null);
+    setLiveMediaStatus('inactive');
+    setLiveMediaInfo('');
+  }, [phase]);
+
+  // When the session ends, stop recorders and upload final chunks,
+  // but keep the screen/camera streams alive so the user stays sharing on the complete screen.
+  useEffect(() => {
+    if (phase !== 'complete') return;
+    if (!liveCaptureSessionIdRef.current) return;
+
+    try { screenRecorderRef.current?.stop(); } catch { }
+    try { cameraRecorderRef.current?.stop(); } catch { }
+    screenRecorderRef.current = null;
+    cameraRecorderRef.current = null;
+    liveCaptureSessionIdRef.current = null;
+    recordingStartedAtRef.current = null;
+  }, [phase]);
+
+  // Best-effort navigation lock while screen sharing is active.
+  useEffect(() => {
+    const getTrackLive = (stream: MediaStream | null): boolean => {
+      const track = stream?.getVideoTracks?.()?.[0];
+      return !!track && track.readyState === 'live';
+    };
+
+    const lockActive =
+      !!sessionId &&
+      getTrackLive(screenStreamRef.current) &&
+      phase !== 'welcome' &&
+      phase !== 'setup' &&
+      phase !== 'round-selection';
+
+    // Broadcast to parent container (InterviewAssistant) so it can disable tab switching/links.
+    if (lockActive !== practiceScreenShareLockRef.current) {
+      practiceScreenShareLockRef.current = lockActive;
+      try {
+        window.dispatchEvent(new CustomEvent('practice:screen-share-lock', { detail: { active: lockActive } }));
+      } catch {
+        // ignore
+      }
+    }
+
+    if (!lockActive) return;
+
+    let pushed = false;
+    const pushLockState = () => {
+      if (pushed) return;
+      pushed = true;
+      try {
+        window.history.pushState({ practiceLock: true }, '', window.location.href);
+      } catch {
+        // ignore
+      }
+    };
+
+    const onBeforeUnload = (e: BeforeUnloadEvent) => {
+      e.preventDefault();
+      // Chrome requires returnValue to be set.
+      e.returnValue = '';
+      return '';
+    };
+
+    const onPopState = () => {
+      // Keep user on the current screen while sharing.
+      try {
+        window.history.pushState({ practiceLock: true }, '', window.location.href);
+      } catch {
+        // ignore
+      }
+      toast({
+        title: 'Screen sharing is active',
+        description: 'Finish Live Practice before navigating away.',
+      });
+    };
+
+    const isEditableTarget = (t: EventTarget | null): boolean => {
+      const el = t as HTMLElement | null;
+      if (!el) return false;
+      const tag = (el as any).tagName ? String((el as any).tagName).toLowerCase() : '';
+      if (tag === 'input' || tag === 'textarea' || tag === 'select') return true;
+      if ((el as any).isContentEditable) return true;
+      return false;
+    };
+
+    const onKeyDown = (e: KeyboardEvent) => {
+      // Block common "back" shortcuts while sharing.
+      if (e.altKey && (e.key === 'ArrowLeft' || e.key === 'Left')) {
+        e.preventDefault();
+        return;
+      }
+
+      if (e.key === 'Backspace' && !isEditableTarget(e.target)) {
+        e.preventDefault();
+        return;
+      }
+    };
+
+    pushLockState();
+    window.addEventListener('beforeunload', onBeforeUnload);
+    window.addEventListener('popstate', onPopState);
+    window.addEventListener('keydown', onKeyDown, true);
+
+    return () => {
+      window.removeEventListener('beforeunload', onBeforeUnload);
+      window.removeEventListener('popstate', onPopState);
+      window.removeEventListener('keydown', onKeyDown, true);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sessionId, phase, liveMediaStatus]);
+
+  // Ensure we clear the lock flag on unmount.
+  useEffect(() => {
+    return () => {
+      if (!practiceScreenShareLockRef.current) return;
+      practiceScreenShareLockRef.current = false;
+      try {
+        window.dispatchEvent(new CustomEvent('practice:screen-share-lock', { detail: { active: false } }));
+      } catch {
+        // ignore
+      }
+    };
   }, []);
 
   // Adaptive Profile state
@@ -430,6 +1033,110 @@ export const PracticeMode = () => {
   const [evaluation, setEvaluation] = useState<Evaluation | null>(null);
   const [completionPending, setCompletionPending] = useState(false);
 
+  // Phase 4: post-session self-reported confidence (1-5)
+  const [sessionConfidenceDraft, setSessionConfidenceDraft] = useState<number | null>(null);
+  const [sessionConfidenceStatus, setSessionConfidenceStatus] = useState<
+    'idle' | 'submitting' | 'saved' | 'skipped' | 'disabled' | 'error'
+  >('idle');
+
+  const getSessionConfidenceStorageKey = (sid: string) => `practice_session_confidence_v1:${sid}`;
+
+  const loadSessionConfidenceState = (sid: string): SessionConfidenceStoredState | null => {
+    if (!sid || typeof window === 'undefined') return null;
+    try {
+      const raw = window.localStorage.getItem(getSessionConfidenceStorageKey(sid));
+      if (!raw) return null;
+      const parsed = JSON.parse(raw);
+      if (!parsed || typeof parsed !== 'object') return null;
+      return parsed as SessionConfidenceStoredState;
+    } catch {
+      return null;
+    }
+  };
+
+  const persistSessionConfidenceState = (sid: string, state: SessionConfidenceStoredState) => {
+    if (!sid || typeof window === 'undefined') return;
+    try {
+      window.localStorage.setItem(
+        getSessionConfidenceStorageKey(sid),
+        JSON.stringify({
+          ...state,
+          updatedAt: Date.now(),
+        } satisfies SessionConfidenceStoredState)
+      );
+    } catch {
+      // ignore
+    }
+  };
+
+  useEffect(() => {
+    if (phase !== 'complete') return;
+    if (!sessionId) return;
+
+    const stored = loadSessionConfidenceState(sessionId);
+    if (stored?.disabled) {
+      setSessionConfidenceStatus('disabled');
+      setSessionConfidenceDraft(typeof stored.value === 'number' ? stored.value : null);
+      return;
+    }
+
+    if (stored?.skipped) {
+      setSessionConfidenceStatus('skipped');
+      setSessionConfidenceDraft(typeof stored.value === 'number' ? stored.value : null);
+      return;
+    }
+
+    if (typeof stored?.value === 'number' && stored.value >= 1 && stored.value <= 5) {
+      setSessionConfidenceDraft(stored.value);
+      setSessionConfidenceStatus('saved');
+      return;
+    }
+
+    setSessionConfidenceDraft(null);
+    setSessionConfidenceStatus('idle');
+  }, [phase, sessionId]);
+
+  const submitSessionConfidenceBestEffort = async (sid: string, value: number) => {
+    setSessionConfidenceDraft(value);
+    setSessionConfidenceStatus('submitting');
+
+    try {
+      const result: any = await submitSessionConfidence(sid, value);
+
+      if (result.ok) {
+        setSessionConfidenceStatus('saved');
+        persistSessionConfidenceState(sid, { value });
+        return;
+      }
+
+      const disabled = (result as any)?.disabled === true;
+      if (!result.ok && disabled) {
+        setSessionConfidenceStatus('disabled');
+        persistSessionConfidenceState(sid, { disabled: true });
+        return;
+      }
+
+      setSessionConfidenceStatus('error');
+      toast({
+        title: 'Could not save confidence rating',
+        description: 'Please try again (this won’t affect your report).',
+        variant: 'destructive',
+      });
+    } catch (err: any) {
+      setSessionConfidenceStatus('error');
+      toast({
+        title: 'Could not save confidence rating',
+        description: err?.message || 'Please try again.',
+        variant: 'destructive',
+      });
+    }
+  };
+
+  const skipSessionConfidencePrompt = (sid: string) => {
+    setSessionConfidenceStatus('skipped');
+    persistSessionConfidenceState(sid, { skipped: true });
+  };
+
   // Phase 3: human feedback rating (best-effort)
   const [feedbackRatingDraftByQuestion, setFeedbackRatingDraftByQuestion] = useState<Record<number, FeedbackRatingDraft>>({});
   const [ratedByQuestion, setRatedByQuestion] = useState<Record<number, boolean>>({});
@@ -439,10 +1146,6 @@ export const PracticeMode = () => {
   const [codeTestResults, setCodeTestResults] = useState<CodeTestResult[] | null>(null);
   const [codeEvaluation, setCodeEvaluation] = useState<CodeEvaluationFeedback | null>(null);
   const [isSubmittingCode, setIsSubmittingCode] = useState(false);
-
-  // Scroll state for back button
-  const [showBackButton, setShowBackButton] = useState(true);
-  const scrollContainerRef = useRef<HTMLDivElement>(null);
 
   // Recording timer
   const recordingTimerRef = useRef<NodeJS.Timeout | null>(null);
@@ -507,9 +1210,120 @@ export const PracticeMode = () => {
     }
   }, [phase, currentQuestion]);
 
+  // Reset and stream question text when a new question is shown.
+  useEffect(() => {
+    cancelQuestionStreaming();
+
+    if (phase !== 'question' || !currentQuestion) {
+      return;
+    }
+
+    const full = getQuestionPromptText(currentQuestion);
+    setStreamedQuestionText('');
+
+    if (!full) {
+      setIsQuestionStreaming(false);
+      return;
+    }
+
+    const key = `${sessionId ?? 'no-session'}:${(currentQuestion as any)?.id ?? currentQuestionNumber}`;
+    questionStreamKeyRef.current = key;
+    const runId = (questionStreamRunIdRef.current += 1);
+
+    const words = full.split(/\s+/).filter(Boolean);
+    if (words.length <= 1) {
+      setStreamedQuestionText(full);
+      setIsQuestionStreaming(false);
+      return;
+    }
+
+    // Mark as streaming immediately so answer UI can be gated even while we wait for audio metadata.
+    setIsQuestionStreaming(true);
+
+    const startStreaming = (baseMsPerWord: number) => {
+      let i = 0;
+      setStreamedQuestionText('');
+
+      const step = () => {
+        if (questionStreamKeyRef.current !== key) return;
+        if (questionStreamRunIdRef.current !== runId) return;
+
+        if (i >= words.length) {
+          setIsQuestionStreaming(false);
+          setStreamedQuestionText(full);
+          questionStreamTimerRef.current = null;
+          return;
+        }
+
+        const remaining = words.length - i;
+        const chunkSize =
+          words.length > 90 ? 3 :
+          words.length > 45 ? 2 :
+          1;
+
+        const take = Math.min(chunkSize, remaining);
+        const chunkWords = words.slice(i, i + take);
+        i += take;
+
+        const chunkText = chunkWords.join(' ');
+        setStreamedQuestionText((prev) => (prev ? `${prev} ${chunkText}` : chunkText));
+
+        const lastWord = chunkWords[chunkWords.length - 1];
+        const punct = /[\.\!\?;,]$/.test(lastWord);
+        const baseDelay = baseMsPerWord * take;
+        const delay = punct
+          ? Math.min(900, Math.round(baseDelay * 1.4))
+          : baseDelay;
+
+        questionStreamTimerRef.current = window.setTimeout(step, delay);
+      };
+
+      questionStreamTimerRef.current = window.setTimeout(step, baseMsPerWord);
+    };
+
+    const computeMsPerWord = () => {
+      const durationFromAudio = audioPlayerRef.current?.duration;
+      const durationSeconds = (Number.isFinite(durationFromAudio) && (durationFromAudio ?? 0) > 0)
+        ? (durationFromAudio as number)
+        : (questionAudioDurationRef.current && questionAudioDurationRef.current > 0 ? questionAudioDurationRef.current : null);
+
+      // If we have a known audio duration, roughly match it; otherwise default to a brisk but readable pace.
+      // Slightly faster than before for a more "instant" feel.
+      return durationSeconds
+        ? Math.max(70, Math.min(500, Math.round((durationSeconds * 1000) / words.length)))
+        : 160;
+    };
+
+    // If TTS is enabled, give metadata a brief moment so pacing can better match audio.
+    let tries = 0;
+    const maybeStart = () => {
+      if (questionStreamKeyRef.current !== key) return;
+      if (questionStreamRunIdRef.current !== runId) return;
+      const duration = audioPlayerRef.current?.duration;
+      const hasDuration = Number.isFinite(duration) && (duration ?? 0) > 0;
+      if (hasDuration || tries >= 10 || !enableTTS) {
+        startStreaming(computeMsPerWord());
+        return;
+      }
+      tries += 1;
+      questionStreamTimerRef.current = window.setTimeout(maybeStart, 75);
+    };
+
+    maybeStart();
+
+    return () => {
+      cancelQuestionStreaming();
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [phase, currentQuestion, currentQuestionNumber, enableTTS, sessionId]);
+
   const handleStartInterview = async () => {
+    cancelQuestionStreaming();
     setIsProcessing(true);
     try {
+      setQuestionEvaluations([]);
+      const gate = await ensureLiveMediaReady();
+
       // Build user profile if adaptive mode is enabled
       let userProfile: UserProfile | undefined = undefined;
       if (enableAdaptive && profileDomain && profileExperience > 0) {
@@ -532,7 +1346,8 @@ export const PracticeMode = () => {
         enableTTS,
         undefined,  // category (optional)
         userProfile,  // adaptive profile
-        questionCount  // NEW - number of questions
+        questionCount,  // NEW - number of questions
+        gate
       );
       console.log('🎯 [Practice Mode] Start Interview Response:', response);
       console.log('🔢 [Practice Mode] Total Questions from API:', response.total_questions);
@@ -548,7 +1363,8 @@ export const PracticeMode = () => {
       setCompletionPending(false);
       setPhase('question');
 
-      await startProctoringBestEffort(response.session_id);
+      void startLiveCaptureForSession(response.session_id);
+      // Proctoring is started by the enableCameraProctoring/sessionId effect.
 
       // DO NOT start countdown timer here - it starts when user clicks "Start Recording"
 
@@ -561,6 +1377,16 @@ export const PracticeMode = () => {
 
           const audio = new Audio(audioUrl);
           audioPlayerRef.current = audio;
+
+          audio.onloadedmetadata = () => {
+            try {
+              if (Number.isFinite(audio.duration)) {
+                questionAudioDurationRef.current = audio.duration;
+              }
+            } catch {
+              // ignore
+            }
+          };
 
           audio.onloadeddata = () => {
             console.log('✅ Audio loaded successfully');
@@ -618,6 +1444,7 @@ export const PracticeMode = () => {
   };
 
   const handleQuickStart = async () => {
+    cancelQuestionStreaming();
     if (!quickStartInput.trim()) {
       toast({
         title: 'Input Required',
@@ -629,12 +1456,18 @@ export const PracticeMode = () => {
 
     setQuickStartLoading(true);
     try {
+      setQuestionEvaluations([]);
+      const gate = await ensureLiveMediaReady();
+
       // Quick Start: AI decides EVERYTHING - no manual overrides
       const response = await quickStartInterview(
         quickStartInput,
         true,
         enableTTS,
-        1
+        1,
+        undefined,
+        undefined,
+        gate
       );
       console.log('🚀 [Quick Start] Response:', response);
       console.log('📊 [Quick Start] Inferred Profile:', response.inferred_profile);
@@ -658,7 +1491,8 @@ export const PracticeMode = () => {
       setCompletionPending(false);
       setPhase('question');
 
-      await startProctoringBestEffort(response.session_id);
+      void startLiveCaptureForSession(response.session_id);
+      // Proctoring is started by the enableCameraProctoring/sessionId effect.
 
       // Play TTS audio if available
       if (response.tts_audio_url && enableTTS) {
@@ -669,6 +1503,16 @@ export const PracticeMode = () => {
 
           const audio = new Audio(audioUrl);
           audioPlayerRef.current = audio;
+
+          audio.onloadedmetadata = () => {
+            try {
+              if (Number.isFinite(audio.duration)) {
+                questionAudioDurationRef.current = audio.duration;
+              }
+            } catch {
+              // ignore
+            }
+          };
 
           audio.onloadeddata = () => {
             setIsAudioLoading(false);
@@ -777,8 +1621,10 @@ export const PracticeMode = () => {
   const handleStopRecording = async () => {
     if (!isRecording || !sessionId) return;
 
+    cancelQuestionStreaming();
     setIsProcessing(true);
-    setPhase('processing');
+    // Keep UX stable: do not show an explicit "Analyzing" screen.
+    setPhase('question');
 
     if (recordingTimerRef.current) {
       clearInterval(recordingTimerRef.current);
@@ -799,16 +1645,26 @@ export const PracticeMode = () => {
       const response = await submitAnswer(sessionId, effectiveQuestionId, audioBlob);
       console.log('📊 [Practice Mode] Submit Answer Response:', response);
 
-      // Set transcription and metrics
-      setTranscription(response.transcript);  // Changed from 'transcription' to 'transcript'
-      setSpeechMetrics(response.metrics);  // Changed from 'speech_metrics' to 'metrics'
-      setMicroFeedback(response.micro_feedback);
+      // Store per-question evaluation for the final report (do not render per-question feedback).
+      setQuestionEvaluations((prev) => ([
+        ...prev,
+        {
+          questionNumber: currentQuestionNumber,
+          questionId: effectiveQuestionId,
+          questionText: getQuestionPromptText(currentQuestion),
+          kind: 'voice',
+          transcript: response.transcript,
+          metrics: response.metrics,
+          microFeedback: response.micro_feedback,
+          createdAt: new Date().toISOString(),
+        },
+      ]));
 
       setCompletionPending(!!response.complete);
 
       if (response.complete) {
         // Session is complete, but always show the final feedback first.
-        console.log('🎉 [Practice Mode] Session marked complete; showing final feedback before completion.');
+        console.log('🎉 [Practice Mode] Session complete; loading final report.');
 
         if (!response.evaluation_report) {
           console.warn('⚠️ [Practice Mode] No evaluation_report in response, attempting diagnostic fetch...');
@@ -836,12 +1692,53 @@ export const PracticeMode = () => {
           setEvaluation(response.evaluation_report);
         }
 
-        setPhase('feedback');
+        setPhase('complete');
+        setCompletionPending(false);
       } else {
-        // Show feedback - user must click to continue
-        console.log('✅ [Practice Mode] Answer submitted, showing feedback');
+        // Auto-advance to next question (no per-question evaluation UI).
+        console.log('✅ [Practice Mode] Answer submitted; auto-advancing to next question');
         console.log('🔄 [Practice Mode] Requires acknowledgment:', response.requires_acknowledgment);
-        setPhase('feedback');
+
+        const ack = await acknowledgeFeedback(sessionId, effectiveQuestionId);
+
+        if (ack.complete) {
+          if (ack.evaluation_report) {
+            setEvaluation(ack.evaluation_report);
+          }
+          setPhase('complete');
+          setCompletionPending(false);
+          toast({
+            title: '🎉 Interview Complete!',
+            description: `Completed all ${totalQuestions} questions successfully!`,
+          });
+          return;
+        }
+
+        if (!ack.next_question) {
+          throw new Error('No next question in response but complete=false');
+        }
+
+        setCurrentQuestion(ack.next_question);
+        setCurrentQuestionNumber((prev) => prev + 1);
+        setTimeRemaining(ack.next_question.time_limit);
+        setCompletionPending(false);
+        setPhase('question');
+
+        // ✅ IMPORTANT: Play Q2/Q3... audio on auto-advance too (not only on manual Next Question).
+        if (ack.tts_audio_url && enableTTS) {
+          void playTtsBestEffort(ack.tts_audio_url);
+        }
+
+        // Clear per-question UI state
+        setTranscription('');
+        setSpeechMetrics(null);
+        setMicroFeedback(null);
+        setCodeTestResults(null);
+        setCodeEvaluation(null);
+        if (countdownTimerRef.current) {
+          clearInterval(countdownTimerRef.current);
+          countdownTimerRef.current = null;
+        }
       }
     } catch (error: any) {
       console.error('❌ [Practice Mode] Submit Answer Error:', error);
@@ -852,6 +1749,10 @@ export const PracticeMode = () => {
         questionId: currentQuestion?.id,
         phase,
       });
+
+      if (error instanceof StrataxApiError && error.status === 429) {
+        dispatchGuestLimitReached('practice_submit_answer');
+      }
 
       setIsRecording(false);
       toast({
@@ -871,8 +1772,10 @@ export const PracticeMode = () => {
       return;
     }
 
+    cancelQuestionStreaming();
+
     setIsSubmittingCode(true);
-    setPhase('processing');
+    // Keep UX stable: do not show an explicit "Analyzing" screen.
 
     try {
       console.log('💻 [Practice Mode] Submitting code for question:', currentQuestion.id);
@@ -887,62 +1790,79 @@ export const PracticeMode = () => {
 
       console.log('✅ [Practice Mode] Code submission response:', response);
 
-      // Store test results and evaluation
-      setCodeTestResults(response.test_results);
-      setCodeEvaluation(response.evaluation);
+      // Store per-question evaluation for the final report (do not render per-question feedback).
+      setQuestionEvaluations((prev) => ([
+        ...prev,
+        {
+          questionNumber: currentQuestionNumber,
+          questionId: currentQuestion.id || currentQuestionNumber,
+          questionText: getQuestionPromptText(currentQuestion),
+          kind: 'code',
+          codeEvaluation: response.evaluation,
+          testResults: response.test_results,
+          createdAt: new Date().toISOString(),
+        },
+      ]));
 
       setCompletionPending(!!response.complete);
 
       if (response.complete) {
         // Session is complete, but always show the final code feedback first.
-        console.log('🎉 [Practice Mode] Session marked complete; showing final feedback before completion.');
+        console.log('🎉 [Practice Mode] Session complete; loading final report.');
         if (response.evaluation_report) {
           setEvaluation(response.evaluation_report);
         }
-        setPhase('feedback');
+        setPhase('complete');
+        setCompletionPending(false);
       } else {
-        // Show code feedback - user must review results and click to continue
-        console.log('✅ [Practice Mode] Code evaluated, showing results');
-        setPhase('feedback');
+        // Auto-advance to next question.
+        const qid = currentQuestion.id || currentQuestionNumber;
+        const ack = await acknowledgeFeedback(sessionId, qid);
 
-        // Play TTS feedback if available
-        if (response.tts_audio_url && enableTTS) {
-          const audioUrl = `${API_BASE_URL}${response.tts_audio_url}`;
-          console.log('🔊 [Practice Mode] Playing code feedback audio:', audioUrl);
-          setIsAudioLoading(true);
-
-          const audio = new Audio(audioUrl);
-          audioPlayerRef.current = audio;
-
-          audio.addEventListener('loadeddata', () => {
-            setIsAudioLoading(false);
-            setIsPlayingAudio(true);
+        if (ack.complete) {
+          if (ack.evaluation_report) {
+            setEvaluation(ack.evaluation_report);
+          }
+          setPhase('complete');
+          setCompletionPending(false);
+          toast({
+            title: '🎉 Interview Complete!',
+            description: `Completed all ${totalQuestions} questions successfully!`,
           });
-
-          audio.addEventListener('ended', () => {
-            setIsPlayingAudio(false);
-          });
-
-          audio.addEventListener('error', (e) => {
-            console.error('❌ [Practice Mode] Audio playback error:', e);
-            setIsAudioLoading(false);
-            setIsPlayingAudio(false);
-          });
-
-          audio.play().catch(err => {
-            console.error('❌ [Practice Mode] Audio play failed:', err);
-            setIsAudioLoading(false);
-            setIsPlayingAudio(false);
-          });
+          return;
         }
 
-        toast({
-          title: response.evaluation.is_correct ? '✅ Code Accepted!' : '📝 Code Evaluated',
-          description: `Score: ${response.evaluation.overall_score}% | Tests Passed: ${response.evaluation.test_cases_passed}/${response.evaluation.test_cases_total}`,
-        });
+        if (!ack.next_question) {
+          throw new Error('No next question in response but complete=false');
+        }
+
+        setCurrentQuestion(ack.next_question);
+        setCurrentQuestionNumber((prev) => prev + 1);
+        setTimeRemaining(ack.next_question.time_limit);
+        setCompletionPending(false);
+        setPhase('question');
+
+        // ✅ IMPORTANT: Play Q2/Q3... audio on auto-advance too (not only on manual Next Question).
+        if (ack.tts_audio_url && enableTTS) {
+          void playTtsBestEffort(ack.tts_audio_url);
+        }
+        setTranscription('');
+        setSpeechMetrics(null);
+        setMicroFeedback(null);
+        setCodeTestResults(null);
+        setCodeEvaluation(null);
+        if (countdownTimerRef.current) {
+          clearInterval(countdownTimerRef.current);
+          countdownTimerRef.current = null;
+        }
       }
     } catch (error: any) {
       console.error('❌ [Practice Mode] Code submission error:', error);
+
+      if (error instanceof StrataxApiError && error.status === 429) {
+        dispatchGuestLimitReached('practice_submit_code');
+      }
+
       setIsSubmittingCode(false);
       toast({
         title: '❌ Submission Failed',
@@ -957,16 +1877,73 @@ export const PracticeMode = () => {
 
   const handleRestart = () => {
     stopProctoring();
+    cancelQuestionStreaming();
     setPhase('welcome');
     setSessionId(null);
     setCurrentQuestion(null);
     setCurrentQuestionNumber(0);
+    setQuestionEvaluations([]);
     setTranscription('');
     setSpeechMetrics(null);
     setMicroFeedback(null);
     setEvaluation(null);
     setCompletionPending(false);
     setRecordingTime(0);
+  };
+
+  const getQuestionPromptText = (question: any): string => {
+    if (!question) return '';
+    if (typeof question === 'string') return question.trim();
+
+    const candidates = [
+      question.question_text,
+      question.text,
+      question.question,
+      question.prompt,
+      question.questionText,
+      question.question_prompt,
+      question.prompt_text,
+      question.body,
+      question.statement,
+      question.content,
+      question?.question?.question_text,
+      question?.question?.text,
+      question?.question?.question,
+      question?.question?.prompt,
+      question?.question?.questionText,
+      question?.question?.question_prompt,
+      question?.question?.prompt_text,
+      question?.question?.body,
+      question?.question?.statement,
+      question?.question?.content,
+    ];
+
+    for (const value of candidates) {
+      if (typeof value === 'string' && value.trim()) return value.trim();
+    }
+
+    // Last-resort: recursively scan for common prompt-ish keys.
+    try {
+      const seen = new Set<any>();
+      const queue: Array<{ value: any; depth: number }> = [{ value: question, depth: 0 }];
+      const keyRe = /^(question(_text)?|prompt(_text)?|questionText|question_prompt|text|statement|body|content)$/i;
+
+      while (queue.length) {
+        const { value, depth } = queue.shift()!;
+        if (!value || typeof value !== 'object') continue;
+        if (seen.has(value)) continue;
+        seen.add(value);
+
+        for (const [k, v] of Object.entries(value)) {
+          if (typeof v === 'string' && keyRe.test(k) && v.trim()) return v.trim();
+          if (depth < 3 && v && typeof v === 'object') queue.push({ value: v, depth: depth + 1 });
+        }
+      }
+    } catch {
+      // ignore
+    }
+
+    return '';
   };
 
   // Helper function to detect if question is a coding question
@@ -985,7 +1962,7 @@ export const PracticeMode = () => {
     const hasLongTimeLimit = question.time_limit >= 300; // 5+ minutes
 
     // Check question text for coding keywords
-    const questionText = (question.question_text || question.text || '').toLowerCase();
+    const questionText = getQuestionPromptText(question).toLowerCase();
     const codingKeywords = [
       'write the code', 'write code', 'write a function', 'write a program',
       'implement', 'code snippet', 'python code', 'javascript code', 'sql query',
@@ -1076,6 +2053,7 @@ export const PracticeMode = () => {
       return;
     }
 
+    cancelQuestionStreaming();
     setIsProcessing(true);
 
     try {
@@ -1154,39 +2132,7 @@ export const PracticeMode = () => {
 
         // Play next question audio if available
         if (response.tts_audio_url && enableTTS) {
-          setIsAudioLoading(true);
-          const audioUrl = `${API_BASE_URL}${response.tts_audio_url}`;
-          console.log('🔊 [Practice Mode] Playing next question audio:', audioUrl);
-
-          const audio = new Audio(audioUrl);
-          audioPlayerRef.current = audio;
-
-          audio.onloadeddata = () => {
-            console.log('✅ Next question audio loaded');
-            setIsAudioLoading(false);
-          };
-
-          audio.onplay = () => {
-            console.log('▶️ Next question audio playing');
-            setIsPlayingAudio(true);
-          };
-
-          audio.onended = () => {
-            console.log('⏹️ Next question audio finished');
-            setIsPlayingAudio(false);
-          };
-
-          audio.onerror = (e) => {
-            console.error('❌ Next question audio error:', e);
-            setIsAudioLoading(false);
-            setIsPlayingAudio(false);
-          };
-
-          audio.play().catch((err) => {
-            console.error('❌ Error playing next question audio:', err);
-            setIsAudioLoading(false);
-            setIsPlayingAudio(false);
-          });
+          void playTtsBestEffort(response.tts_audio_url);
         }
       }
     } catch (error: any) {
@@ -1232,6 +2178,7 @@ export const PracticeMode = () => {
     });
     console.log('🔊 [Round-Based] TTS Audio URL:', ttsAudioUrl);
 
+    setQuestionEvaluations([]);
     setSessionId(sessionId);
     setCurrentRoundConfig(roundConfig);
     setCurrentQuestion(firstQuestion);
@@ -1244,7 +2191,8 @@ export const PracticeMode = () => {
     setTimeRemaining(firstQuestion.time_limit);
     setPhase('question');
 
-    void startProctoringBestEffort(sessionId);
+    void startLiveCaptureForSession(sessionId);
+    // Proctoring is started by the enableCameraProctoring/sessionId effect.
 
     // Play TTS audio if available
     if (ttsAudioUrl && enableTTS) {
@@ -1255,6 +2203,16 @@ export const PracticeMode = () => {
 
         const audio = new Audio(audioUrl);
         audioPlayerRef.current = audio;
+
+        audio.onloadedmetadata = () => {
+          try {
+            if (Number.isFinite(audio.duration)) {
+              questionAudioDurationRef.current = audio.duration;
+            }
+          } catch {
+            // ignore
+          }
+        };
 
         audio.onloadeddata = () => {
           console.log('✅ [Round-Based] Audio loaded successfully');
@@ -1318,13 +2276,13 @@ export const PracticeMode = () => {
         <div className="flex justify-end pt-2">
           {viewProgressButton("h-8 px-3 md:hidden")}
         </div>
-        <Card className="w-full border-2 shadow-lg">
+        <Card className="w-full border border-border/50 bg-background/60 backdrop-blur-xl shadow-2xl shadow-black/40">
           <CardHeader className="text-center space-y-2 pb-3 pt-6 px-4">
-            <div className="mx-auto w-12 h-12 md:w-14 md:h-14 bg-gradient-to-br from-purple-500 to-pink-500 rounded-2xl flex items-center justify-center shadow-lg shadow-purple-500/20">
+            <div className="mx-auto w-12 h-12 md:w-14 md:h-14 bg-primary/15 border border-primary/20 rounded-2xl flex items-center justify-center shadow-lg shadow-black/30">
               <Mic className="w-6 h-6 md:w-7 md:h-7 text-white" />
             </div>
             <div>
-              <CardTitle className="text-xl md:text-2xl font-bold bg-gradient-to-r from-purple-600 to-pink-600 bg-clip-text text-transparent">
+              <CardTitle className="text-xl md:text-2xl font-bold text-foreground">
                 AI Interview Practice
               </CardTitle>
               <CardDescription className="text-[11px] md:text-sm mt-1 max-w-[250px] md:max-w-none mx-auto">
@@ -1367,8 +2325,8 @@ export const PracticeMode = () => {
               // Quick Start Mode - ONE FIELD ONLY, AI decides everything
               <div className="space-y-3 animate-in fade-in slide-in-from-bottom-2 duration-500">
                 <div className="space-y-3">
-                  <div className="flex items-start gap-3 p-3 bg-gradient-to-br from-purple-500/10 via-purple-500/5 to-pink-500/10 rounded-2xl border border-purple-500/20 shadow-inner">
-                    <div className="p-1.5 rounded-xl bg-purple-500/20 text-purple-500">
+                  <div className="flex items-start gap-3 p-3 bg-muted/30 rounded-2xl border border-border/50 shadow-inner">
+                    <div className="p-1.5 rounded-xl bg-primary/15 text-primary">
                       <Sparkles className="w-4 h-4 flex-shrink-0" />
                     </div>
                     <div className="flex-1">
@@ -1448,7 +2406,7 @@ export const PracticeMode = () => {
 
                 <Button
                   size="lg"
-                  className="w-full h-12 bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700 text-sm font-bold shadow-xl shadow-purple-500/20 transition-all hover:scale-[1.01] active:scale-[0.98] rounded-2xl"
+                  className="w-full h-12 text-sm font-bold shadow-xl shadow-black/30 transition-all hover:scale-[1.01] active:scale-[0.98] rounded-2xl"
                   onClick={handleQuickStart}
                   disabled={quickStartLoading || !quickStartInput.trim()}
                 >
@@ -1470,7 +2428,7 @@ export const PracticeMode = () => {
               <>
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-2">
                   <div className="flex flex-col items-center p-2 bg-muted/50 rounded-lg">
-                    <Brain className="w-6 h-6 text-purple-500 mb-1" />
+                    <Brain className="w-6 h-6 text-primary mb-1" />
                     <h3 className="font-semibold text-xs">Smart Questions</h3>
                     <p className="text-[10px] text-muted-foreground text-center">
                       AI-generated questions
@@ -1496,13 +2454,13 @@ export const PracticeMode = () => {
 
                 <div className="space-y-2">
                   <div>
-                    <label className="text-xs font-medium mb-1 block">Interview Role</label>
+                    <label className="text-xs font-semibold mb-1 block text-muted-foreground">Interview Role</label>
                     <Input
                       placeholder="e.g., Software Engineer, Data Scientist, Product Manager, DevOps..."
                       value={selectedRole}
                       onChange={(e) => setSelectedRole(e.target.value)}
                       maxLength={512}
-                      className="text-sm"
+                      className="text-sm bg-background/50 border-border/40"
                       list="role-suggestions"
                     />
                     <datalist id="role-suggestions">
@@ -1569,7 +2527,7 @@ export const PracticeMode = () => {
                         }
                       }}
                       maxLength={3}
-                      className="w-16 h-7 text-xs text-center"
+                      className="w-16 h-7 text-xs text-center bg-background/50 border-border/40"
                     />
                   </div>
 
@@ -1605,9 +2563,9 @@ export const PracticeMode = () => {
                     />
                   </div>
 
-                  <div className="flex items-center justify-between p-2 bg-gradient-to-r from-purple-500/10 to-pink-500/10 rounded-lg border-2 border-purple-500/20">
+                  <div className="flex items-center justify-between p-2 bg-muted/30 rounded-lg border border-border/50">
                     <div className="flex items-center gap-2">
-                      <Sparkles className="w-4 h-4 text-purple-500" />
+                      <Sparkles className="w-4 h-4 text-primary" />
                       <div>
                         <div className="font-medium text-xs flex items-center gap-1">
                           Adaptive Intelligence
@@ -1626,7 +2584,7 @@ export const PracticeMode = () => {
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                   <Button
                     size="lg"
-                    className="h-12 bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700"
+                    className="h-12"
                     onClick={() => setPhase('setup')}
                   >
                     <Sparkles className="mr-2 w-5 h-5" />
@@ -1669,56 +2627,49 @@ export const PracticeMode = () => {
 
     return (
       <div className="w-full h-full flex flex-col relative overflow-hidden">
-        {/* Compact Back Button - Leftmost Edge, Hides on Scroll */}
-        <div
-          className={`absolute top-3 left-2 z-[60] transition-all duration-300 ${showBackButton ? 'opacity-100 translate-y-0' : 'opacity-0 -translate-y-4 pointer-events-none'
-            }`}
-        >
-          <Button
-            variant="ghost"
-            onClick={() => setPhase('welcome')}
-            className="group flex items-center gap-2 h-9 px-3 rounded-xl bg-background/60 backdrop-blur-md border border-white/10 hover:bg-background/80 hover:border-white/20 text-muted-foreground hover:text-foreground transition-all duration-300 shadow-lg"
-          >
-            <ChevronLeft className="w-4 h-4 group-hover:-translate-x-0.5 transition-transform" />
-            <span className="text-[13px] font-medium tracking-tight">Back</span>
-          </Button>
-        </div>
-
-        <div className="absolute top-3 right-2 z-[60]">
-          {viewProgressButton(
-            "h-9 px-3 md:hidden rounded-xl bg-background/60 backdrop-blur-md border border-white/10 hover:bg-background/80 hover:border-white/20 text-muted-foreground hover:text-foreground transition-all duration-300 shadow-lg"
-          )}
-        </div>
-
         {/* Scrollable Content Container */}
-        <div
-          ref={scrollContainerRef}
-          className="flex-1 overflow-y-auto scrollbar-hide"
-          onScroll={(e) => {
-            const scrollTop = e.currentTarget.scrollTop;
-            setShowBackButton(scrollTop < 50);
-          }}
-        >
-          <div className="max-w-7xl mx-auto w-full px-4">
-            <div className="pt-14 md:pt-4">
-              <div className="mb-3 flex items-center justify-between gap-3 p-3 bg-background/60 backdrop-blur-md border border-white/10 rounded-2xl shadow-lg">
-                <div className="flex items-center gap-2">
-                  <div className="p-2 rounded-xl bg-muted/60 text-muted-foreground">
+        <div ref={roundSelectionScrollRef} className="flex-1 overflow-y-auto scrollbar-hide">
+          {/* Sticky header: back + proctor toggle + progress */}
+          <div
+            className={`sticky top-0 z-[60] bg-background/70 backdrop-blur-md border-b border-border/30 transition-all duration-300 ${
+              showRoundSelectionHeader ? 'translate-y-0 opacity-100' : '-translate-y-full opacity-0 pointer-events-none'
+            }`}
+          >
+            <div className="max-w-7xl mx-auto w-full px-4 py-3 flex items-center justify-between gap-2">
+              <Button
+                variant="ghost"
+                onClick={() => setPhase('welcome')}
+                className="group h-9 px-3 rounded-full hover:bg-muted/50 text-muted-foreground hover:text-foreground"
+              >
+                <ChevronLeft className="w-4 h-4 mr-1.5 group-hover:-translate-x-0.5 transition-transform" />
+                <span className="text-[13px] font-medium tracking-tight">Back</span>
+              </Button>
+
+              <div className="flex items-center gap-2">
+                <div className="flex items-center gap-2 px-3 py-2 rounded-full bg-card/50 border border-border/40 shadow-sm">
+                  <div className="p-1.5 rounded-full bg-muted/40 text-muted-foreground">
                     <Camera className="w-4 h-4" />
                   </div>
-                  <div>
-                    <div className="text-xs font-semibold">Camera-proctored mode</div>
-                    <div className="text-[11px] text-muted-foreground">Opt-in. No video uploads, events only.</div>
+                  <div className="hidden sm:block leading-tight">
+                    <div className="text-xs font-semibold text-foreground/90">Camera-proctored</div>
+                    <div className="text-[11px] text-muted-foreground">Opt-in • No uploads</div>
                   </div>
+                  <Switch
+                    checked={enableCameraProctoring}
+                    onCheckedChange={setEnableCameraProctoring}
+                    aria-label="Toggle camera-proctored mode"
+                  />
                 </div>
-                <Switch checked={enableCameraProctoring} onCheckedChange={setEnableCameraProctoring} />
+
+                {viewProgressButton(
+                  "h-9 px-3 md:hidden rounded-xl hover:bg-muted/50 text-muted-foreground hover:text-foreground"
+                )}
               </div>
             </div>
+          </div>
 
-            <RoundSelection
-              onRoundStart={handleRoundStart}
-              userProfile={userProfile}
-            />
+          <div className="max-w-7xl mx-auto w-full px-4 pt-4">
+            <RoundSelection onRoundStart={handleRoundStart} userProfile={userProfile} ensureLiveMediaReady={ensureLiveMediaReady} />
           </div>
         </div>
       </div>
@@ -1867,7 +2818,7 @@ export const PracticeMode = () => {
                 Back
               </Button>
               <Button
-                className="flex-1 h-9 bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700 text-sm"
+                className="flex-1 h-9 text-sm"
                 onClick={handleStartInterview}
                 disabled={isProcessing || (enableAdaptive && (!profileDomain || !profileExperience || !profileSkills))}
               >
@@ -1891,15 +2842,19 @@ export const PracticeMode = () => {
   }
 
   if (phase === 'question' || phase === 'recording') {
+    const fullQuestionText = getQuestionPromptText(currentQuestion);
+    const deliveredQuestionText = streamedQuestionText || '';
+
     return (
       <div className="max-w-4xl mx-auto w-full px-4 flex flex-col space-y-4">
         {renderGuestGateBanner()}
+        {renderFacePreview()}
 
         {/* Header */}
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-3">
             {currentRoundConfig && (
-              <Badge variant="outline" className="text-sm px-3 py-1 bg-gradient-to-r from-purple-500/10 to-pink-500/10 border-purple-500/20">
+              <Badge variant="outline" className="text-sm px-3 py-1 bg-muted/20 border-border/50">
                 <Target className="w-3 h-3 mr-1" />
                 {currentRoundConfig.name}
               </Badge>
@@ -1941,7 +2896,7 @@ export const PracticeMode = () => {
               {currentQuestion?.programming_language && ` (${currentQuestion.programming_language})`}
             </Badge>
 
-            <Badge className="bg-gradient-to-r from-purple-500 to-pink-500">
+            <Badge className="bg-primary text-primary-foreground">
               {selectedDifficulty}
             </Badge>
             {phase === 'recording' ? (
@@ -1958,6 +2913,13 @@ export const PracticeMode = () => {
                 {currentQuestion?.time_limit}s limit
               </Badge>
             )}
+
+            {(isProcessing || isSubmittingCode) && (
+              <Badge variant="secondary" className="animate-pulse">
+                <Loader2 className="w-3 h-3 mr-1 animate-spin" />
+                Submitting…
+              </Badge>
+            )}
           </div>
           <Progress value={(currentQuestionNumber / totalQuestions) * 100} className="w-32" />
         </div>
@@ -1969,7 +2931,11 @@ export const PracticeMode = () => {
             /* Coding Question - Show Code Editor */
             <div className="p-6">
               <InterviewCodeEditor
-                question={currentQuestion as Question}
+                question={{
+                  ...(currentQuestion as Question),
+                  question_text: deliveredQuestionText || (fullQuestionText ? '…' : ''),
+                  text: deliveredQuestionText || (fullQuestionText ? '…' : ''),
+                }}
                 onSubmit={handleSubmitCode}
                 isSubmitting={isSubmittingCode}
                 testResults={codeTestResults || undefined}
@@ -1995,7 +2961,7 @@ export const PracticeMode = () => {
                 <div className="flex items-start justify-between">
                   <div className="flex-1">
                     <CardTitle className="text-2xl mb-2">
-                      {currentQuestion?.question_text || currentQuestion?.text}
+                      {deliveredQuestionText || (fullQuestionText ? '…' : 'No question text available')}
                     </CardTitle>
                     <div className="flex items-center gap-4 text-sm text-muted-foreground">
                       <div className="flex items-center gap-1">
@@ -2113,7 +3079,7 @@ export const PracticeMode = () => {
                       </>
                     ) : (
                       <>
-                        <div className="w-32 h-32 bg-gradient-to-br from-purple-500 to-pink-500 rounded-full flex items-center justify-center">
+                        <div className="w-32 h-32 bg-primary/15 border border-primary/20 rounded-full flex items-center justify-center">
                           <Mic className="w-16 h-16 text-white" />
                         </div>
 
@@ -2123,15 +3089,16 @@ export const PracticeMode = () => {
                             Click the button below to start recording. Timer will begin when you start recording.
                           </p>
                           <div className="flex items-center justify-center gap-2 text-sm">
-                            <Clock className="w-4 h-4 text-purple-500" />
-                            <span className="font-medium text-purple-500">{currentQuestion?.time_limit}s time limit</span>
+                            <Clock className="w-4 h-4 text-primary" />
+                            <span className="font-medium text-primary">{currentQuestion?.time_limit}s time limit</span>
                           </div>
                         </div>
 
                         <Button
                           size="lg"
-                          className="px-8 bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700"
+                          className="px-8"
                           onClick={handleStartRecording}
+                          disabled={isProcessing}
                         >
                           <Mic className="mr-2" />
                           Start Recording
@@ -2149,27 +3116,14 @@ export const PracticeMode = () => {
   }
 
   if (phase === 'processing') {
+    // This phase is kept for backward compatibility, but we avoid showing a big "Analyzing" UI.
     return (
       <div className="max-w-4xl mx-auto w-full px-4 flex items-center justify-center">
-        <Card className="w-full">
-          <CardContent className="flex flex-col items-center gap-6 py-12">
-            <div className="relative">
-              <Loader2 className="w-20 h-20 animate-spin text-primary" />
-              <Sparkles className="w-8 h-8 text-yellow-500 absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2" />
-            </div>
-            <div className="text-center space-y-2">
-              <h3 className="text-2xl font-semibold">Analyzing Your Answer...</h3>
-              <p className="text-muted-foreground">
-                Our AI is evaluating your speech, content, and delivery
-              </p>
-            </div>
-            <div className="flex gap-2">
-              <Badge variant="outline">Transcribing</Badge>
-              <Badge variant="outline">Speech Analysis</Badge>
-              <Badge variant="outline">Content Evaluation</Badge>
-            </div>
-          </CardContent>
-        </Card>
+        {renderFacePreview()}
+        <div className="text-sm text-muted-foreground flex items-center gap-2">
+          <Loader2 className="w-4 h-4 animate-spin" />
+          Working…
+        </div>
       </div>
     );
   }
@@ -2411,13 +3365,13 @@ export const PracticeMode = () => {
                   {/* Actionable Suggestions */}
                   {microFeedback.actionable_suggestions && microFeedback.actionable_suggestions.length > 0 && (
                     <div>
-                      <h5 className="text-xs sm:text-sm font-semibold mb-1.5 sm:mb-2 text-purple-600 dark:text-purple-400">
+                      <h5 className="text-xs sm:text-sm font-semibold mb-1.5 sm:mb-2 text-primary">
                         🎯 Next Steps
                       </h5>
                       <ul className="text-xs sm:text-sm space-y-1">
                         {microFeedback.actionable_suggestions.map((suggestion, idx) => (
                           <li key={idx} className="flex items-start gap-2">
-                            <span className="text-purple-600 dark:text-purple-400 mt-0.5 shrink-0">→</span>
+                            <span className="text-primary mt-0.5 shrink-0">→</span>
                             <span className="leading-relaxed">{suggestion}</span>
                           </li>
                         ))}
@@ -2596,7 +3550,7 @@ export const PracticeMode = () => {
         <ScrollArea className="h-full">
           <div className="space-y-6">
             {/* Header */}
-            <Card className="border-2 bg-gradient-to-br from-purple-500/10 to-pink-500/10">
+            <Card className="border-2 bg-muted/20">
               <CardContent className="pt-8 pb-8">
                 <div className="text-center space-y-4">
                   <div className="mx-auto w-24 h-24 bg-gradient-to-br from-yellow-400 to-orange-500 rounded-full flex items-center justify-center">
@@ -2624,6 +3578,143 @@ export const PracticeMode = () => {
                 sessionId={sessionId} 
                 onViewProgress={() => navigate('/progress')}
               />
+            )}
+
+            {/* All Questions Evaluation (shown only at end) */}
+            {questionEvaluations.length > 0 && (
+              <Card>
+                <CardHeader>
+                  <CardTitle className="text-2xl">All Questions Evaluation</CardTitle>
+                  <CardDescription>
+                    Review feedback for each question in one place.
+                  </CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  {questionEvaluations
+                    .slice()
+                    .sort((a, b) => a.questionNumber - b.questionNumber)
+                    .map((item) => {
+                      const voiceConfidencePct = item.metrics?.confidence_score !== undefined
+                        ? Math.round((item.metrics.confidence_score || 0) * 100)
+                        : undefined;
+                      const testsTotal = item.testResults?.length ?? item.codeEvaluation?.test_cases_total;
+                      const testsPassed = item.testResults
+                        ? item.testResults.filter((t) => t.passed).length
+                        : item.codeEvaluation?.test_cases_passed;
+
+                      return (
+                        <Card key={`${item.kind}-${item.questionNumber}-${item.createdAt}`} className="border-muted">
+                          <CardHeader className="pb-3">
+                            <div className="flex items-start justify-between gap-3">
+                              <div className="min-w-0">
+                                <CardTitle className="text-base sm:text-lg truncate">
+                                  Question {item.questionNumber}
+                                </CardTitle>
+                                {item.questionText && (
+                                  <p className="text-xs sm:text-sm text-muted-foreground mt-1 line-clamp-2">
+                                    {item.questionText}
+                                  </p>
+                                )}
+                              </div>
+                              <Badge variant="outline" className={item.kind === 'code' ? 'bg-blue-500/10 border-blue-500/50 text-blue-700 dark:text-blue-400' : 'bg-green-500/10 border-green-500/50 text-green-700 dark:text-green-400'}>
+                                {item.kind === 'code' ? 'CODE' : 'VOICE'}
+                              </Badge>
+                            </div>
+                          </CardHeader>
+                          <CardContent className="space-y-3">
+                            {item.kind === 'voice' && (
+                              <>
+                                {item.transcript && (
+                                  <div className="space-y-2">
+                                    <div className="text-sm font-medium">Transcript</div>
+                                    <div className="rounded-md border bg-muted/30 p-3">
+                                      <p className="text-sm text-muted-foreground whitespace-pre-wrap">{item.transcript}</p>
+                                    </div>
+                                  </div>
+                                )}
+
+                                {(item.metrics || item.microFeedback) && (
+                                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                                    <Card className="border-muted">
+                                      <CardContent className="pt-4">
+                                        <div className="text-xs text-muted-foreground">WPM</div>
+                                        <div className="text-xl font-semibold">{item.metrics?.wpm ?? 0}</div>
+                                      </CardContent>
+                                    </Card>
+                                    <Card className="border-muted">
+                                      <CardContent className="pt-4">
+                                        <div className="text-xs text-muted-foreground">Confidence</div>
+                                        <div className="text-xl font-semibold">{voiceConfidencePct ?? 0}%</div>
+                                      </CardContent>
+                                    </Card>
+                                    <Card className="border-muted">
+                                      <CardContent className="pt-4">
+                                        <div className="text-xs text-muted-foreground">Fillers</div>
+                                        <div className="text-xl font-semibold">{item.metrics?.filler_count ?? 0}</div>
+                                      </CardContent>
+                                    </Card>
+                                  </div>
+                                )}
+
+                                {item.microFeedback?.correctness_score !== undefined && (
+                                  <div className="flex flex-wrap items-center gap-2">
+                                    <Badge variant="secondary">
+                                      Correctness: {item.microFeedback.correctness_score}%
+                                    </Badge>
+                                    {typeof item.microFeedback.is_correct === 'boolean' && (
+                                      <Badge variant={item.microFeedback.is_correct ? 'default' : 'destructive'}>
+                                        {item.microFeedback.is_correct ? 'Correct' : 'Needs Improvement'}
+                                      </Badge>
+                                    )}
+                                    {item.microFeedback.technical_accuracy && (
+                                      <Badge variant="outline">{item.microFeedback.technical_accuracy}</Badge>
+                                    )}
+                                  </div>
+                                )}
+                              </>
+                            )}
+
+                            {item.kind === 'code' && (
+                              <>
+                                {item.codeEvaluation && (
+                                  <div className="flex flex-wrap items-center gap-2">
+                                    <Badge variant="secondary">Overall: {item.codeEvaluation.overall_score}%</Badge>
+                                    <Badge variant={item.codeEvaluation.is_correct ? 'default' : 'destructive'}>
+                                      {item.codeEvaluation.is_correct ? 'Accepted' : 'Not Accepted'}
+                                    </Badge>
+                                    {testsTotal !== undefined && testsPassed !== undefined && (
+                                      <Badge variant="outline">Tests: {testsPassed}/{testsTotal}</Badge>
+                                    )}
+                                  </div>
+                                )}
+
+                                {item.codeEvaluation?.approach_feedback && (
+                                  <div className="space-y-2">
+                                    <div className="text-sm font-medium">Approach Feedback</div>
+                                    <div className="rounded-md border bg-muted/30 p-3">
+                                      <p className="text-sm text-muted-foreground whitespace-pre-wrap">{item.codeEvaluation.approach_feedback}</p>
+                                    </div>
+                                  </div>
+                                )}
+
+                                {item.testResults && item.testResults.length > 0 && (
+                                  <div className="space-y-2">
+                                    <div className="text-sm font-medium">Test Results</div>
+                                    <div className="rounded-md border bg-muted/30 p-3">
+                                      <div className="text-sm text-muted-foreground">
+                                        {item.testResults.filter((t) => t.passed).length}/{item.testResults.length} passed
+                                      </div>
+                                    </div>
+                                  </div>
+                                )}
+                              </>
+                            )}
+                          </CardContent>
+                        </Card>
+                      );
+                    })}
+                </CardContent>
+              </Card>
             )}
 
             {/* Fallback: Legacy Score Card (only if instant score fails) */}
@@ -2763,8 +3854,74 @@ export const PracticeMode = () => {
                     </p>
                   </div>
                 </div>
+
+                {evaluation?.learning_insight ? (
+                  <>
+                    <Separator className="my-4" />
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="text-sm text-muted-foreground">Peer benchmark</div>
+                      <div className="text-sm font-medium text-foreground text-right max-w-[75%]">
+                        {evaluation.learning_insight}
+                      </div>
+                    </div>
+                  </>
+                ) : null}
               </CardContent>
             </Card>
+
+            {/* Post-session confidence prompt (optional; disabled when backend feature flag is off) */}
+            {sessionId && sessionConfidenceStatus !== 'disabled' ? (
+              <Card>
+                <CardHeader>
+                  <CardTitle className="text-lg">How confident do you feel?</CardTitle>
+                  <CardDescription>Rate your overall confidence for this session (1–5).</CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <div className="flex flex-wrap items-center gap-2">
+                    {[1, 2, 3, 4, 5].map((v) => {
+                      const active = (sessionConfidenceDraft ?? 0) === v;
+                      return (
+                        <Button
+                          key={v}
+                          type="button"
+                          size="sm"
+                          variant={active ? 'default' : 'outline'}
+                          disabled={sessionConfidenceStatus === 'submitting'}
+                          onClick={() => submitSessionConfidenceBestEffort(sessionId, v)}
+                          className="min-w-10"
+                        >
+                          {v}
+                        </Button>
+                      );
+                    })}
+
+                    <div className="flex-1" />
+
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="ghost"
+                      disabled={sessionConfidenceStatus === 'submitting'}
+                      onClick={() => skipSessionConfidencePrompt(sessionId)}
+                    >
+                      Skip
+                    </Button>
+                  </div>
+
+                  <div className="mt-2 text-xs text-muted-foreground">
+                    {sessionConfidenceStatus === 'saved'
+                      ? 'Thanks—saved.'
+                      : sessionConfidenceStatus === 'skipped'
+                        ? 'Skipped. You can still add a rating anytime.'
+                        : sessionConfidenceStatus === 'submitting'
+                          ? 'Saving…'
+                          : sessionConfidenceStatus === 'error'
+                            ? 'Not saved yet. Try again.'
+                            : ''}
+                  </div>
+                </CardContent>
+              </Card>
+            ) : null}
 
             {/* Action Plan */}
             {evaluation?.action_plan?.steps && Array.isArray(evaluation.action_plan.steps) && evaluation.action_plan.steps.length > 0 && (
@@ -2810,7 +3967,7 @@ export const PracticeMode = () => {
               </Button>
               <Button
                 size="lg"
-                className="px-8 bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700"
+                className="px-8"
                 onClick={handleRestart}
               >
                 <Sparkles className="mr-2" />

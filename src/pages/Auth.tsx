@@ -2,7 +2,6 @@ import { useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { Login } from '../components/Login';
 import { Register } from '../components/Register';
-import { ThemeToggle } from '../components/ThemeToggle';
 import { Badge } from '../components/ui/badge';
 import { Sparkles, Shield, Zap, Crown } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -42,11 +41,6 @@ export default function Auth() {
         
         {/* Glassmorphism overlay */}
         <div className="absolute inset-0 bg-gradient-to-b from-transparent via-white/40 to-white/70 dark:via-black/30 dark:to-black/50 transition-colors duration-500" />
-      </div>
-
-      {/* Theme Toggle */}
-      <div className="fixed top-6 right-6 z-50">
-        <ThemeToggle />
       </div>
 
       {/* Content */}

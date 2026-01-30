@@ -1,5 +1,4 @@
 import { useEffect, useRef, useState } from "react";
-import { useTheme } from "@/hooks/useTheme";
 
 interface EvaluationOverlayProps {
   open: boolean;
@@ -12,7 +11,6 @@ interface EvaluationOverlayProps {
 
 export const EvaluationOverlay = ({ open, title = "Evaluating...", streamedText, onClose, isStreaming, summaryHtml }: EvaluationOverlayProps) => {
   const scrollRef = useRef<HTMLDivElement | null>(null);
-  const { theme } = useTheme();
   const [displayedText, setDisplayedText] = useState("");
   const [isTyping, setIsTyping] = useState(false);
   const typingTimerRef = useRef<NodeJS.Timeout | null>(null);
@@ -109,16 +107,12 @@ export const EvaluationOverlay = ({ open, title = "Evaluating...", streamedText,
 
   if (!open) return null;
 
-  const isDark = theme === "dark";
+  const isDark = true; // Dark mode only
 
   return (
     <div className="fixed inset-0 z-[1000] bg-black/80 backdrop-blur-sm flex items-center justify-center">
-      <div className={`absolute inset-0 ${isDark ? 'bg-[radial-gradient(80%_120%_at_50%_-20%,rgba(59,130,246,0.15),rgba(0,0,0,0))]' : 'bg-[radial-gradient(80%_120%_at_50%_-20%,rgba(59,130,246,0.08),rgba(255,255,255,0))]'}`} />
-      <div className={`relative w-screen h-screen sm:w-[min(1200px,95vw)] sm:h-[min(80vh,85vh)] rounded-none sm:rounded-2xl border-0 sm:border shadow-xl sm:shadow-2xl ${
-        isDark 
-          ? 'sm:border-white/10 bg-transparent' 
-          : 'sm:border-gray-200/50 bg-transparent'
-      } flex flex-col`} style={{ paddingTop: 'env(safe-area-inset-top)', paddingBottom: 'env(safe-area-inset-bottom)' }}>
+      <div className="absolute inset-0 bg-[radial-gradient(80%_120%_at_50%_-20%,rgba(59,130,246,0.15),rgba(0,0,0,0))]" />
+      <div className="relative w-screen h-screen sm:w-[min(1200px,95vw)] sm:h-[min(80vh,85vh)] rounded-none sm:rounded-2xl border-0 sm:border shadow-xl sm:shadow-2xl sm:border-white/10 bg-transparent flex flex-col" style={{ paddingTop: 'env(safe-area-inset-top)', paddingBottom: 'env(safe-area-inset-bottom)' }}>
 
         <div className={`flex items-center justify-between px-4 sm:px-6 py-3 sm:py-4 border-b ${
           isDark ? 'border-white/10 bg-white/5' : 'border-gray-200/50 bg-gray-50/50'

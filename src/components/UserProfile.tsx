@@ -1,10 +1,11 @@
 import { useState, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
-import { getQuota } from '../lib/authApi';
+import { getQuota, requestEmailVerification } from '../lib/authApi';
 import { Card, CardContent, CardHeader, CardTitle } from './ui/card';
 import { Badge } from './ui/badge';
 import { Button } from './ui/button';
-import { User, LogOut, Crown } from 'lucide-react';
+import { User, LogOut, Crown, Mail } from 'lucide-react';
+import { useToast } from '@/hooks/use-toast';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -53,7 +54,9 @@ export function UserProfile({
   showEmailInTrigger?: boolean;
 }) {
   const { user, logout } = useAuth();
+  const { toast } = useToast();
   const [quota, setQuota] = useState<QuotaInfo | null>(null);
+  const [sendingVerification, setSendingVerification] = useState(false);
 
   useEffect(() => {
     if (user) {
@@ -102,6 +105,25 @@ export function UserProfile({
   const handleLogout = () => {
     logout();
     onLogout?.();
+  };
+
+  const handleSendVerification = async () => {
+    setSendingVerification(true);
+    try {
+      await requestEmailVerification();
+      toast({
+        title: 'Verification email sent',
+        description: 'Check your inbox for the verification link.',
+      });
+    } catch (err: any) {
+      toast({
+        title: 'Could not send email',
+        description: err?.message || 'Please try again in a moment.',
+        variant: 'destructive',
+      });
+    } finally {
+      setSendingVerification(false);
+    }
   };
 
   return (
@@ -185,11 +207,19 @@ export function UserProfile({
           </>
         )}
 
+        <DropdownMenuItem onClick={handleSendVerification} disabled={sendingVerification}>
+          <Mail className="mr-2 h-4 w-4" />
+          {sendingVerification ? 'Sending verification…' : 'Send verification email'}
+        </DropdownMenuItem>
+
         {showLogout && (
-          <DropdownMenuItem onClick={handleLogout} className="text-red-600">
-            <LogOut className="mr-2 h-4 w-4" />
-            Logout
-          </DropdownMenuItem>
+          <>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem onClick={handleLogout} className="text-red-600">
+              <LogOut className="mr-2 h-4 w-4" />
+              Logout
+            </DropdownMenuItem>
+          </>
         )}
       </DropdownMenuContent>
     </DropdownMenu>

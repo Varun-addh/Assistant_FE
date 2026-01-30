@@ -137,6 +137,13 @@ export interface SessionSummaryResponse {
   }>;
 }
 
+export type EndSessionResponse = Partial<SessionSummaryResponse> & {
+  message?: string;
+  total_time_seconds?: number;
+  score_range?: unknown;
+  summary?: (Partial<SessionSummaryResponse> & { total_time_seconds?: number; score_range?: unknown }) | null;
+};
+
 export interface HintResponse {
   hint: string;
   hint_level: 1 | 2 | 3;
@@ -239,7 +246,7 @@ export async function apiGetSessionSummary(
   return res.json();
 }
 
-export async function apiEndSession(sessionId: string): Promise<{ message: string }> {
+export async function apiEndSession(sessionId: string): Promise<EndSessionResponse> {
   const res = await strataxFetch(
     `${BASE_URL}/api/mock-interview/sessions/${encodeURIComponent(sessionId)}/end`,
     {
@@ -252,7 +259,18 @@ export async function apiEndSession(sessionId: string): Promise<{ message: strin
     throw new Error(await buildErrorMessage("Failed to end session", res));
   }
 
-  return res.json();
+  const resp = (await res.json()) as EndSessionResponse;
+
+  // Backend may return summary fields at top-level OR nested under `summary`.
+  // Normalize the two fields we rely on so callers can read a single shape.
+  const totalTime = resp.total_time_seconds ?? resp.summary?.total_time_seconds;
+  const scoreRange = resp.score_range ?? resp.summary?.score_range;
+
+  return {
+    ...resp,
+    total_time_seconds: totalTime,
+    score_range: scoreRange,
+  };
 }
 
 export async function apiGetHint(

@@ -28,10 +28,25 @@ export type ProctoringEventType =
   | 'window_blur'
   | 'user_left_frame';
 
+// New proctoring event contract (session-scoped audit trail)
+export type PracticeSessionProctoringEventType =
+  | 'SCREEN_STOPPED'
+  | 'CAMERA_STOPPED'
+  | 'TAB_SWITCH'
+  | 'WINDOW_MINIMIZED'
+  | 'SESSION_STARTED_WITH_PROCTORING';
+
 export type ProctoringEventIn = {
   session_id: string;
   event_type: ProctoringEventType;
   severity?: ProctoringSeverity;
+  metadata?: Record<string, unknown>;
+  client_timestamp?: string;
+};
+
+export type PracticeSessionProctoringEventIn = {
+  session_id: string;
+  event_type: PracticeSessionProctoringEventType;
   metadata?: Record<string, unknown>;
   client_timestamp?: string;
 };
@@ -68,6 +83,78 @@ export async function postPracticeProctoringEvent(
   });
 
   return { ok: res.ok, status: res.status };
+}
+
+/**
+ * Best-effort proctoring event ingest (session-scoped).
+ * Backend endpoint: POST /api/practice/session/{session_id}/proctoring/event
+ */
+export async function postPracticeSessionProctoringEvent(
+  payload: PracticeSessionProctoringEventIn
+): Promise<ProctoringEventPostResult> {
+  if (!payload?.session_id) throw new Error('session_id is required');
+  if (!payload?.event_type) throw new Error('event_type is required');
+
+  const body = {
+    event_type: payload.event_type,
+    metadata: payload.metadata ?? {},
+    client_timestamp: payload.client_timestamp ?? new Date().toISOString(),
+  };
+
+  const sid = encodeURIComponent(payload.session_id);
+  const res = await strataxFetch(`${API_BASE_URL}/api/practice/session/${sid}/proctoring/event`, {
+    method: 'POST',
+    body: JSON.stringify(body),
+    throwOnError: false,
+  });
+
+  return { ok: res.ok, status: res.status };
+}
+
+// ============================================================================
+// Practice Session Media (uploads)
+// ============================================================================
+
+export type PracticeSessionMediaType = 'screen' | 'camera' | 'combined';
+
+export type UploadPracticeSessionMediaResult = {
+  media_id?: string | number;
+  storage_url?: string;
+  [key: string]: unknown;
+};
+
+export async function uploadPracticeSessionMedia(options: {
+  sessionId: string;
+  media_type: PracticeSessionMediaType;
+  file: Blob;
+  filename?: string;
+  duration_seconds?: number;
+}): Promise<UploadPracticeSessionMediaResult> {
+  const { sessionId, media_type, file } = options;
+  if (!sessionId) throw new Error('sessionId is required');
+  if (!media_type) throw new Error('media_type is required');
+  if (!file) throw new Error('file is required');
+
+  const form = new FormData();
+  form.append('media_type', media_type);
+  if (typeof options.duration_seconds === 'number' && Number.isFinite(options.duration_seconds)) {
+    form.append('duration_seconds', String(Math.max(0, Math.round(options.duration_seconds))));
+  }
+  form.append('file', file, options.filename ?? `${media_type}.webm`);
+
+  const sid = encodeURIComponent(sessionId);
+  const res = await strataxFetch(`${API_BASE_URL}/api/practice/session/${sid}/media`, {
+    method: 'POST',
+    body: form,
+  });
+
+  return (await res.json().catch(() => ({}))) as UploadPracticeSessionMediaResult;
+}
+
+export function getPracticeSessionMediaUrl(sessionId: string, mediaId: string | number): string {
+  const sid = encodeURIComponent(sessionId);
+  const mid = encodeURIComponent(String(mediaId));
+  return `${API_BASE_URL}/api/practice/session/${sid}/media/${mid}`;
 }
 
 // ============================================================================
@@ -122,6 +209,10 @@ export interface StartRoundRequest {
   company_specific?: string;         // Optional
   enable_tts?: boolean;              // Optional
   question_count?: number;           // Optional - Number of questions (1-15, backend default varies by round)
+
+  // Live Practice / Proctoring gate (required by backend)
+  screen_shared: boolean;
+  camera_enabled: boolean;
 }
 
 export interface StartRoundResponse {
@@ -212,6 +303,8 @@ export interface MicroFeedback {
 export interface Evaluation {
   overall_score?: number;  // Made optional since it might not always be present
   detailed_feedback?: string;  // Made optional
+  // Optional peer benchmark insight (only present when learning is enabled and sample size is sufficient)
+  learning_insight?: string | null;
   strengths: {
     items: string[];
   };
@@ -304,6 +397,41 @@ export async function ratePracticeFeedback(
     method: 'POST',
     body: JSON.stringify(payload),
   });
+}
+
+// ============================================================================
+// Post-session outcome: self-reported confidence (Phase 4)
+// ============================================================================
+
+export type SubmitSessionConfidenceResult =
+  | { ok: true }
+  | { ok: false; disabled?: boolean; status?: number };
+
+export async function submitSessionConfidence(
+  sessionId: string,
+  confidence_1_5: number
+): Promise<SubmitSessionConfidenceResult> {
+  const sid = sessionId?.trim();
+  if (!sid) throw new Error('sessionId is required');
+  if (!Number.isFinite(confidence_1_5) || confidence_1_5 < 1 || confidence_1_5 > 5) {
+    throw new Error('confidence_1_5 must be between 1 and 5');
+  }
+
+  const res = await strataxFetch(
+    `${API_BASE_URL}/api/practice/session/${encodeURIComponent(sid)}/outcome/confidence`,
+    {
+      method: 'POST',
+      body: JSON.stringify({ confidence_1_5 }),
+      throwOnError: false,
+    }
+  );
+
+  // Feature flag disabled on backend.
+  if (res.status === 404) return { ok: false, disabled: true, status: 404 };
+
+  if (!res.ok) return { ok: false, status: res.status };
+
+  return { ok: true };
 }
 
 // ============================================================================
@@ -644,11 +772,14 @@ export async function startInterview(
   enableTTS: boolean = false,
   category?: string,
   userProfile?: UserProfile,  // Optional adaptive intelligence
-  questionCount?: number  // NEW - Number of questions (1-10, default 5)
+  questionCount?: number,  // NEW - Number of questions (1-10, default 5)
+  proctoringGate?: { screen_shared: boolean; camera_enabled: boolean }
 ): Promise<StartInterviewResponse> {
   const requestBody: any = {
     difficulty,
     enable_tts: enableTTS,
+    screen_shared: !!proctoringGate?.screen_shared,
+    camera_enabled: !!proctoringGate?.camera_enabled,
   };
 
   // Add optional fields
@@ -844,12 +975,15 @@ export async function quickStartInterview(
   enableTTS: boolean = true,
   questionCount?: number,
   targetCompany?: string,
-  targetRound?: InterviewRound
+  targetRound?: InterviewRound,
+  proctoringGate?: { screen_shared: boolean; camera_enabled: boolean }
 ): Promise<QuickStartResponse> {
   const requestBody: any = {
     voice_input: voiceInput,
     auto_mode: autoMode,
     enable_tts: enableTTS,
+    screen_shared: !!proctoringGate?.screen_shared,
+    camera_enabled: !!proctoringGate?.camera_enabled,
   };
 
   // Add optional parameters if provided

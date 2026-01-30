@@ -16,15 +16,18 @@ const input = arg("--input", path.join(iconsDir, "source.png"));
 // Background fill for generated icons.
 // Use --background "auto" (default) to sample from the source image.
 const bg = arg("--background", "auto");
+// If auto sampling produces a near-white background, fall back to this.
+// This avoids the iOS home-screen icon showing a light/white "border" around the rounded mask.
+const fallbackBg = arg("--fallback-background", "#171b3c");
 // Non-maskable icon style:
 // - badge (default): circular badge behind the logo (helps splash look rounded even if OS/browser shows square icons)
 // - fullbleed: use the source image as full canvas
-const anyStyle = String(arg("--any-style", "badge")).toLowerCase();
+const anyStyle = String(arg("--any-style", "fullbleed")).toLowerCase();
 const anyBadgeOpacity = Number(arg("--any-badge-opacity", "0.08"));
 // When true, non-maskable icons are exported with transparent outer area.
 // This helps the splash/logo read as a true circle even on devices that use a squircle mask.
 // Keep maskable icons opaque.
-const anyAlpha = String(arg("--any-alpha", "true")).toLowerCase() !== "false";
+const anyAlpha = String(arg("--any-alpha", "false")).toLowerCase() !== "false";
 // Default keeps a safe zone for Android adaptive masks while still letting the logo feel large.
 // You can override per-run: `npm run icons:generate -- --maskable-scale 0.72`
 const maskableScale = Number(arg("--maskable-scale", "0.78"));
@@ -51,6 +54,27 @@ const toHex2 = (n) => Math.max(0, Math.min(255, Math.round(n))).toString(16).pad
 const rgbToHex = (r, g, b) => `#${toHex2(r)}${toHex2(g)}${toHex2(b)}`;
 
 let resolvedBg = bg;
+
+const hexToRgb = (hex) => {
+  const h = String(hex || "").trim().replace(/^#/, "");
+  if (!/^[0-9a-fA-F]{6}$/.test(h)) return null;
+  return {
+    r: parseInt(h.slice(0, 2), 16),
+    g: parseInt(h.slice(2, 4), 16),
+    b: parseInt(h.slice(4, 6), 16),
+  };
+};
+
+const relativeLuminance = (rgb) => {
+  const toLin = (v) => {
+    const s = v / 255;
+    return s <= 0.04045 ? s / 12.92 : Math.pow((s + 0.055) / 1.055, 2.4);
+  };
+  const r = toLin(rgb.r);
+  const g = toLin(rgb.g);
+  const b = toLin(rgb.b);
+  return 0.2126 * r + 0.7152 * g + 0.0722 * b;
+};
 
 const clamp01 = (n, fallback) => {
   const v = Number.isFinite(n) ? n : fallback;
@@ -161,7 +185,44 @@ const makeLogoIcon = async (size, scale) => {
   );
 };
 
+const makeAppleTouchIcon = async (size) => {
+  // iOS home-screen icons are always rendered as a rounded rect mask.
+  // If we export a badge-style icon (circle in a square) and the background is light,
+  // it reads as an ugly border. For apple-touch-icon, always export full-bleed.
+  const src = sharp(input).ensureAlpha();
+  const meta = await src.metadata();
+  const w = meta.width ?? 0;
+  const h = meta.height ?? 0;
+
+  const crop = clamp01(bleedCrop, 0.03);
+  const useCrop = Number.isFinite(bleedCrop) && bleedCrop > 0.0001 && w > 0 && h > 0;
+  const inset = useCrop ? Math.round(Math.min(w, h) * crop) : 0;
+  const extracted = useCrop && inset > 0
+    ? src.extract({ left: inset, top: inset, width: Math.max(1, w - inset * 2), height: Math.max(1, h - inset * 2) })
+    : src;
+
+  return finalizeOpaquePng(extracted.resize(size, size, { fit: "cover", position: "centre" }));
+};
+
 const makeAnyIcon = async (size) => {
+  // For non-maskable PWA icons, prefer full-bleed output (like app icons) to avoid
+  // visible borders/edges when the OS applies its own rounded-rect mask.
+  if (anyStyle === "fullbleed") {
+    const src = sharp(input).ensureAlpha();
+    const meta = await src.metadata();
+    const w = meta.width ?? 0;
+    const h = meta.height ?? 0;
+
+    const crop = clamp01(bleedCrop, 0.03);
+    const useCrop = Number.isFinite(bleedCrop) && bleedCrop > 0.0001 && w > 0 && h > 0;
+    const inset = useCrop ? Math.round(Math.min(w, h) * crop) : 0;
+    const extracted = useCrop && inset > 0
+      ? src.extract({ left: inset, top: inset, width: Math.max(1, w - inset * 2), height: Math.max(1, h - inset * 2) })
+      : src;
+
+    return finalizeOpaquePng(extracted.resize(size, size, { fit: "cover", position: "centre" }));
+  }
+
   // For non-maskable icons we optionally keep alpha outside the badge.
   // This makes the visible icon read as a circle on splash screens.
   const s = clamp01(anyLogoScale, 0.78);
@@ -267,6 +328,17 @@ const main = async () => {
       resolvedBg = rgbToHex(r / n, g / n, b / n);
     }
     console.log(`ℹ Using auto background: ${resolvedBg}`);
+
+    // If the sampled background is near-white, it will show up as a visible border
+    // once iOS applies a rounded-rect mask to the home-screen icon.
+    const rgb = hexToRgb(resolvedBg);
+    if (rgb) {
+      const lum = relativeLuminance(rgb);
+      if (lum >= 0.92) {
+        console.log(`⚠ Auto background is very light (${resolvedBg}); using fallback ${fallbackBg}`);
+        resolvedBg = fallbackBg;
+      }
+    }
   }
 
   // Output set used by your index.html + manifest
@@ -277,7 +349,7 @@ const main = async () => {
     { file: "stratax-ai-maskable-512.png", build: async () => await makeMaskable(512) },
 
     // iOS best-practice
-    { file: "apple-touch-icon.png", build: async () => await makeLogoIcon(180, logoScale) },
+    { file: "apple-touch-icon.png", build: async () => await makeAppleTouchIcon(180) },
   ];
 
   for (const out of outputs) {

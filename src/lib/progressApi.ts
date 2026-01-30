@@ -57,6 +57,18 @@ export interface SessionScore {
   improvement_plan?: string[];
   next_session_plan?: string[];
   evaluation_report?: unknown;
+
+  // Live Practice additions
+  media?: {
+    screen_recording_url?: string;
+    camera_recording_url?: string;
+    [key: string]: unknown;
+  };
+  proctoring_summary?: {
+    violation_count?: number;
+    events?: unknown[];
+    [key: string]: unknown;
+  };
 }
 
 type RawSessionScore = {
@@ -70,6 +82,9 @@ type RawSessionScore = {
   next_session_plan?: unknown;
   action_plan?: unknown;
   evaluation_report?: unknown;
+
+  media?: unknown;
+  proctoring_summary?: unknown;
 };
 
 // ============================================================================
@@ -219,5 +234,7 @@ export async function getSessionScore(sessionId: string): Promise<SessionScore> 
     improvement_plan,
     next_session_plan,
     evaluation_report: data.evaluation_report,
+    media: (data.media && typeof data.media === 'object') ? (data.media as any) : undefined,
+    proctoring_summary: (data.proctoring_summary && typeof data.proctoring_summary === 'object') ? (data.proctoring_summary as any) : undefined,
   };
 }

@@ -15,6 +15,14 @@ export interface ApiError {
   detail: string | RateLimitInfo;
 }
 
+async function safeReadJson(res: Response): Promise<any> {
+  return await res.json().catch(() => null);
+}
+
+async function safeReadText(res: Response): Promise<string> {
+  return await res.text().catch(() => "");
+}
+
 function isLikelyJwtAuthFailure(endpoint: string, responseBody: any): boolean {
   const ep = (endpoint || '').toLowerCase();
   if (ep.startsWith('/auth/')) return true;
@@ -105,6 +113,61 @@ export async function apiCall<T = any>(
   }
 
   return response.json();
+}
+
+export async function requestEmailVerification(): Promise<void> {
+  await apiCall('/auth/request-email-verification', 'POST');
+}
+
+export async function forgotPassword(email: string): Promise<void> {
+  await apiCall('/auth/forgot-password', 'POST', { email });
+}
+
+export async function verifyEmailToken(token: string): Promise<{ ok: boolean; message?: string }>{
+  const safeToken = String(token || '').trim();
+  if (!safeToken) return { ok: false, message: 'Missing token' };
+
+  const guestId = getOrCreateStrataxGuestId();
+  const res = await fetch(`${API_BASE_URL}/auth/verify-email?token=${encodeURIComponent(safeToken)}`, {
+    method: 'GET',
+    headers: {
+      [STRATAX_GUEST_ID_HEADER]: guestId,
+      [STRATAX_CLIENT_ID_HEADER]: guestId,
+    }
+  });
+
+  if (res.ok) return { ok: true };
+  const body = await safeReadJson(res);
+  const detail = body?.detail ?? body;
+  const msg = typeof detail === 'string' ? detail : (detail?.message || 'Verification failed');
+  return { ok: false, message: `${res.status} ${msg}`.trim() };
+}
+
+export async function resetPasswordWithToken(opts: { token: string; new_password: string }): Promise<{ ok: boolean; message?: string }>{
+  const safeToken = String(opts?.token || '').trim();
+  const newPassword = String(opts?.new_password || '');
+  if (!safeToken) return { ok: false, message: 'Missing token' };
+  if (!newPassword) return { ok: false, message: 'Missing new password' };
+
+  const guestId = getOrCreateStrataxGuestId();
+  const res = await fetch(`${API_BASE_URL}/auth/reset-password`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      [STRATAX_GUEST_ID_HEADER]: guestId,
+      [STRATAX_CLIENT_ID_HEADER]: guestId,
+    },
+    body: JSON.stringify({ token: safeToken, new_password: newPassword }),
+  });
+
+  if (res.ok) return { ok: true };
+
+  const body = await safeReadJson(res);
+  const detail = body?.detail ?? body;
+  const msgFromJson = typeof detail === 'string' ? detail : (detail?.message || detail?.error);
+  const msgFromText = msgFromJson ? '' : await safeReadText(res);
+  const msg = (msgFromJson || msgFromText || 'Reset failed').toString();
+  return { ok: false, message: `${res.status} ${msg}`.trim() };
 }
 
 /**
