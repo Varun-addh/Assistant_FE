@@ -81,9 +81,27 @@ const main = async () => {
         // Resize the icon to be about 36% of the shorter edge so it reads well on all screens.
         const iconSize = Math.round(Math.min(s.w, s.h) * 0.36);
 
-        // Load and prepare the icon: remove any alpha by flattening onto the background color
-        // so there are no semi-transparent edges.
-        const iconBuffer = await sharp(iconPath).ensureAlpha().resize(iconSize, iconSize, { fit: 'contain' }).flatten({ background: hexToRgba(bg) }).png().toBuffer();
+        // Load and prepare the icon: first trim any uniform border (e.g. a rounded-rect
+        // background baked into the artwork), then resize and flatten onto the
+        // target background color so there are no semi-transparent or light edges.
+        let iconBuffer;
+        try {
+          iconBuffer = await sharp(iconPath)
+            .ensureAlpha()
+            .trim({ threshold: 10 })
+            .resize(iconSize, iconSize, { fit: 'contain' })
+            .flatten({ background: hexToRgba(bg) })
+            .png()
+            .toBuffer();
+        } catch (e) {
+          // Fallback to a safer pipeline if trim fails for this image.
+          iconBuffer = await sharp(iconPath)
+            .ensureAlpha()
+            .resize(iconSize, iconSize, { fit: 'contain' })
+            .flatten({ background: hexToRgba(bg) })
+            .png()
+            .toBuffer();
+        }
 
         // Composite at center
         canvas = canvas.composite([{ input: iconBuffer, left: Math.round((s.w - iconSize) / 2), top: Math.round((s.h - iconSize) / 2) }]);
