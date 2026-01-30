@@ -81,26 +81,36 @@ const main = async () => {
         // Resize the icon to be about 36% of the shorter edge so it reads well on all screens.
         const iconSize = Math.round(Math.min(s.w, s.h) * 0.36);
 
-        // Load and prepare the icon: first trim any uniform border (e.g. a rounded-rect
-        // background baked into the artwork), then resize and flatten onto the
-        // target background color so there are no semi-transparent or light edges.
+        // Stronger emblem extraction pipeline:
+        // 1) Resize a large working copy of the icon.
+        // 2) Produce a mask by greyscaling + blur + threshold to isolate the bright emblem
+        //    from a darker rounded-rect background baked into the artwork.
+        // 3) Apply the mask (dest-in) to the original icon to remove the rounded rect.
+        // 4) Resize to final icon size and flatten onto the target background.
         let iconBuffer;
         try {
-          iconBuffer = await sharp(iconPath)
-            .ensureAlpha()
-            .trim({ threshold: 10 })
-            .resize(iconSize, iconSize, { fit: 'contain' })
-            .flatten({ background: hexToRgba(bg) })
-            .png()
-            .toBuffer();
+          const workSize = Math.max(1024, iconSize * 2);
+          const source = sharp(iconPath).ensureAlpha().resize(workSize, workSize, { fit: 'contain' });
+
+          // Create mask: dark background becomes black, bright emblem becomes white
+          // Tune threshold (0-255) if needed.
+          const mask = await source.clone().greyscale().blur(1).threshold(120).png().toBuffer();
+
+          // Original high-res icon buffer
+          const iconHigh = await source.png().toBuffer();
+
+          // Apply mask to icon (keep only masked area)
+          const masked = await sharp(iconHigh).composite([{ input: mask, blend: 'dest-in' }]).png().toBuffer();
+
+          // Final resize and flatten to remove any remaining transparent edges
+          iconBuffer = await sharp(masked).resize(iconSize, iconSize, { fit: 'contain' }).flatten({ background: hexToRgba(bg) }).png().toBuffer();
         } catch (e) {
-          // Fallback to a safer pipeline if trim fails for this image.
-          iconBuffer = await sharp(iconPath)
-            .ensureAlpha()
-            .resize(iconSize, iconSize, { fit: 'contain' })
-            .flatten({ background: hexToRgba(bg) })
-            .png()
-            .toBuffer();
+          // If mask pipeline fails, fall back to previous conservative approach.
+          try {
+            iconBuffer = await sharp(iconPath).ensureAlpha().resize(iconSize, iconSize, { fit: 'contain' }).flatten({ background: hexToRgba(bg) }).png().toBuffer();
+          } catch (err) {
+            throw err;
+          }
         }
 
         // Composite at center
