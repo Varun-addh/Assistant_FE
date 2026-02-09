@@ -1,25 +1,11 @@
 // NOTE: Bump this when changing caching logic.
-const CACHE_NAME = 'stratax-ai-v22';
+const CACHE_NAME = 'stratax-ai-v18';
 const ASSETS = [
   '/index.html',
   '/manifest.webmanifest',
-  '/icons/stratax-ai-192.png?v=22',
-  '/icons/stratax-ai-512.png?v=22',
-  '/icons/stratax-ai-maskable-192.png?v=22',
-  '/icons/stratax-ai-maskable-512.png?v=22',
-  '/icons/apple-touch-icon.png?v=22',
-  // iOS startup images (plain background)
-  '/splash/ios-1170x2532.png?v=22',
-  '/splash/ios-1284x2778.png?v=22',
-  '/splash/ios-1125x2436.png?v=22',
-  '/splash/ios-1242x2688.png?v=22',
-  '/splash/ios-828x1792.png?v=22',
-  '/splash/ios-750x1334.png?v=22',
-  '/splash/ios-1242x2208.png?v=22',
-  '/splash/ios-1536x2048.png?v=22',
-  '/splash/ios-1668x2224.png?v=22',
-  '/splash/ios-1668x2388.png?v=22',
-  '/splash/ios-2048x2732.png?v=22'
+  '/icons/stratax-ai-192.png?v=18',
+  '/icons/stratax-ai-512.png?v=18',
+  '/icons/apple-touch-icon.png?v=18'
 ];
 
 self.addEventListener('install', (event) => {

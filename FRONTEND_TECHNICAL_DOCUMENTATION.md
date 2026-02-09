@@ -285,7 +285,6 @@ High-level:
 - Sets `background_color` and `theme_color` (also used for Android splash background matching).
 - Declares icons:
   - Standard: `stratax-ai-192.png`, `stratax-ai-512.png`
-  - Maskable: `stratax-ai-maskable-192.png`, `stratax-ai-maskable-512.png`
 - Uses query-string cache busting (e.g. `?v=15`).
 
 ### Service worker

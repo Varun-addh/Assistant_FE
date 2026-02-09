@@ -41,7 +41,7 @@ export default function VerifyEmail() {
   const goDashboard = () => navigate("/app");
 
   return (
-    <div className="min-h-[calc(100vh-4rem)] flex items-center justify-center px-4 py-10">
+    <div className="min-h-[calc(var(--app-height)-4rem)] flex items-center justify-center px-4 py-10">
       <Card className="w-full max-w-lg border-white/10 bg-white/5 backdrop-blur">
         <CardHeader>
           <CardTitle className="text-xl">Verify Email</CardTitle>

@@ -67,7 +67,6 @@ Environment:
 - Icons: place exact filenames in `public/icons/`:
   - `stratax-ai-192.png` (192×192)
   - `stratax-ai-512.png` (512×512)
-  - `stratax-ai-maskable-512.png` (512×512, mask‑safe)
 - Service worker: `public/sw.js` provides simple cache‑first for core assets.
 - Registration: handled in `src/main.tsx`.
 

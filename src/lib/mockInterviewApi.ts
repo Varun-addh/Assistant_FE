@@ -32,6 +32,29 @@ export type InterviewType = "coding" | "behavioral" | "system_design" | "technic
 export type Difficulty = "easy" | "medium" | "hard";
 export type InputMethod = "text" | "voice";
 
+// Optional runtime coaching extensions (may be absent on older backends)
+export type EvaluationTrace = {
+  why?: string[];
+  criteria_averages?: Record<string, number>;
+  [key: string]: unknown;
+};
+
+export type Trajectory = {
+  note?: string;
+  points?: Array<{
+    question?: number;
+    question_number?: number;
+    overall?: number;
+    overall_score?: number;
+    dimensions?: Record<string, number>;
+    dimension_scores?: Record<string, number>;
+    [key: string]: unknown;
+  }>;
+  overall?: { delta?: number; [key: string]: unknown };
+  dimensions?: Record<string, { delta?: number; [key: string]: unknown }>;
+  [key: string]: unknown;
+};
+
 export interface StartSessionRequest {
   user_id: string;
   interview_type: InterviewType;
@@ -101,6 +124,10 @@ export interface SubmitAnswerResponse {
     total: number;
     percentage: number;
   };
+
+  // Optional runtime extensions
+  evaluation_trace?: EvaluationTrace;
+  trajectory?: Trajectory;
 }
 
 export interface SessionStatusResponse {
@@ -135,6 +162,10 @@ export interface SessionSummaryResponse {
     rating: string;
     summary: string;
   }>;
+
+  // Optional runtime extensions
+  trajectory?: Trajectory;
+  evaluation_trace?: EvaluationTrace;
 }
 
 export type EndSessionResponse = Partial<SessionSummaryResponse> & {

@@ -1,10 +1,19 @@
-import { useState, useEffect, useRef } from 'react';
+import { useMemo, useState, useEffect, useRef } from 'react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { Separator } from '@/components/ui/separator';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Progress as ProgressBar } from '@/components/ui/progress';
+import { Skeleton } from '@/components/ui/skeleton';
+import {
+  ChartContainer,
+  ChartLegend,
+  ChartLegendContent,
+  ChartTooltip,
+  ChartTooltipContent,
+  type ChartConfig,
+} from '@/components/ui/chart';
+import { CartesianGrid, Line, LineChart, XAxis, YAxis } from 'recharts';
 import { useToast } from '@/hooks/use-toast';
 import { useNavigate } from 'react-router-dom';
 import {
@@ -18,6 +27,7 @@ import {
   Sparkles,
   Play,
   AlertCircle,
+  RefreshCcw,
 } from 'lucide-react';
 import {
   getProgressSummary,
@@ -76,7 +86,13 @@ export default function Progress() {
 
       // If we just completed a session and the DB write is async, retry ONCE after a short delay.
       // Use refs (not state) to avoid stale-closure infinite loops.
-      if (summaryData.attempts === 0 && !retriedOnceRef.current) {
+      const hasAnyProgressSignal =
+        (summaryData.attempts ?? 0) > 0 ||
+        Boolean(summaryData.last_completed_at) ||
+        (summaryData.average_overall_score ?? 0) > 0 ||
+        heatmapData.some((p) => (p.attempts ?? 0) > 0);
+
+      if (!hasAnyProgressSignal && !retriedOnceRef.current) {
         retriedOnceRef.current = true;
         if (retryTimerRef.current) window.clearTimeout(retryTimerRef.current);
         retryTimerRef.current = window.setTimeout(() => {
@@ -142,6 +158,98 @@ export default function Progress() {
     return date.toLocaleDateString();
   };
 
+  const formatWeekShort = (isoDate: string): string => {
+    const d = new Date(isoDate);
+    if (Number.isNaN(d.getTime())) return isoDate;
+    return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+  };
+
+  const normalizeKey = (value: string): string => value.toLowerCase().trim().replace(/[^a-z0-9]+/g, '_');
+
+  const hasAnyProgressSignal =
+    Boolean(summary?.last_completed_at) ||
+    (summary?.attempts ?? 0) > 0 ||
+    (summary?.average_overall_score ?? 0) > 0 ||
+    heatmap.some((p) => (p.attempts ?? 0) > 0);
+
+  const nextPlanFields = useMemo(() => {
+    const plan = nextPlan ?? null;
+    const getStr = (k: string): string | null => {
+      const v = plan?.[k];
+      return typeof v === 'string' && v.trim() ? v.trim() : null;
+    };
+    const getNum = (k: string): number | null => {
+      const v = plan?.[k];
+      return typeof v === 'number' && Number.isFinite(v) ? v : null;
+    };
+
+    return {
+      focus_dimension: getStr('focus_dimension') ?? getStr('focus') ?? null,
+      recommended_round: getStr('recommended_round') ?? getStr('round') ?? null,
+      difficulty: getStr('difficulty') ?? null,
+      reason: getStr('reason') ?? null,
+      question_count: getNum('question_count') ?? getNum('questions') ?? null,
+    };
+  }, [nextPlan]);
+
+  const { timeSeries, dimensionKeyToLabel, dimensionKeys } = useMemo(() => {
+    const keyToLabel = new Map<string, string>();
+    const byWeek = new Map<string, Record<string, unknown>>();
+
+    for (const point of heatmap) {
+      const key = normalizeKey(point.dimension);
+      keyToLabel.set(key, point.dimension);
+
+      const week = point.week_start;
+      const row = byWeek.get(week) ?? { week_start: week };
+      row[key] = point.avg_score;
+      byWeek.set(week, row);
+    }
+
+    const series = Array.from(byWeek.values()).sort((a, b) => {
+      const da = new Date(String(a.week_start)).getTime();
+      const db = new Date(String(b.week_start)).getTime();
+      return (Number.isNaN(da) ? 0 : da) - (Number.isNaN(db) ? 0 : db);
+    });
+
+    const keys = Array.from(keyToLabel.keys());
+
+    return {
+      timeSeries: series,
+      dimensionKeyToLabel: Object.fromEntries(Array.from(keyToLabel.entries())),
+      dimensionKeys: keys,
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [heatmap]);
+
+  const chartConfig: ChartConfig = useMemo(() => {
+    const basePalette: Record<string, { light: string; dark: string }> = {
+      correctness: { light: 'hsl(221 83% 53%)', dark: 'hsl(217 91% 60%)' },
+      delivery: { light: 'hsl(142 71% 45%)', dark: 'hsl(142 70% 45%)' },
+      clarity: { light: 'hsl(38 92% 50%)', dark: 'hsl(43 96% 56%)' },
+      structure: { light: 'hsl(262 83% 58%)', dark: 'hsl(263 70% 64%)' },
+    };
+
+    const fallback = [
+      { light: 'hsl(221 83% 53%)', dark: 'hsl(217 91% 60%)' },
+      { light: 'hsl(142 71% 45%)', dark: 'hsl(142 70% 45%)' },
+      { light: 'hsl(38 92% 50%)', dark: 'hsl(43 96% 56%)' },
+      { light: 'hsl(262 83% 58%)', dark: 'hsl(263 70% 64%)' },
+      { light: 'hsl(199 89% 48%)', dark: 'hsl(199 89% 48%)' },
+      { light: 'hsl(0 84% 60%)', dark: 'hsl(0 84% 60%)' },
+    ];
+
+    const cfg: ChartConfig = {};
+    dimensionKeys.forEach((key, idx) => {
+      const palette = basePalette[key] ?? fallback[idx % fallback.length];
+      cfg[key] = {
+        label: dimensionKeyToLabel[key] ?? key,
+        theme: { light: palette.light, dark: palette.dark },
+      };
+    });
+    return cfg;
+  }, [dimensionKeyToLabel, dimensionKeys]);
+
   // Group heatmap by dimension for line chart
   const groupHeatmapByDimension = () => {
     const grouped: Record<string, { week: string; score: number; attempts: number }[]> = {};
@@ -158,260 +266,401 @@ export default function Progress() {
     return grouped;
   };
 
-  if (loading) {
-    return (
-      <div className="flex items-center justify-center h-screen">
-        <Loader2 className="w-8 h-8 animate-spin text-primary" />
-      </div>
-    );
-  }
-
-  // Empty state - no attempts yet
-  if (!summary || summary.attempts === 0) {
-    return (
-      <div className="container mx-auto p-6 max-w-4xl">
-        <div className="mb-8">
-          <h1 className="text-3xl font-bold mb-2">Your Progress</h1>
-          <p className="text-muted-foreground">Track your practice journey and identify areas for improvement</p>
-        </div>
-
-        <Card className="border-dashed">
-          <CardContent className="flex flex-col items-center justify-center py-16">
-            <BarChart3 className="w-16 h-16 text-muted-foreground mb-4" />
-            <h3 className="text-xl font-semibold mb-2">No attempts yet</h3>
-            <p className="text-muted-foreground text-center mb-6">
-              Start Practice Mode to begin tracking your progress and get personalized recommendations.
-            </p>
-            <Button size="lg" onClick={() => navigate('/app', { state: { openTab: 'practice' } })}>
-              <Play className="mr-2" />
-              Start Practice Mode
-            </Button>
-          </CardContent>
-        </Card>
-      </div>
-    );
-  }
 
   const groupedHeatmap = groupHeatmapByDimension();
 
-  return (
-    <div className="container mx-auto p-6 max-w-7xl">
-      <div className="mb-8 flex justify-between items-start">
-        <div>
-          <h1 className="text-3xl font-bold mb-2">Your Progress</h1>
-          <p className="text-muted-foreground">Last {lookbackDays} days of practice</p>
-        </div>
-        <div className="flex gap-2">
-          <Button
-            variant={lookbackDays === 7 ? 'default' : 'outline'}
-            size="sm"
-            onClick={() => setLookbackDays(7)}
-          >
-            7 days
-          </Button>
-          <Button
-            variant={lookbackDays === 30 ? 'default' : 'outline'}
-            size="sm"
-            onClick={() => setLookbackDays(30)}
-          >
-            30 days
-          </Button>
-          <Button
-            variant={lookbackDays === 90 ? 'default' : 'outline'}
-            size="sm"
-            onClick={() => setLookbackDays(90)}
-          >
-            90 days
-          </Button>
+  const header = (
+    <div className="border-b bg-background/70 backdrop-blur supports-[backdrop-filter]:bg-background/60">
+      <div className="container mx-auto max-w-7xl px-4 sm:px-6 py-4">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div className="min-w-0">
+            <div className="flex items-center gap-2">
+              <BarChart3 className="w-5 h-5 text-primary" />
+              <h1 className="text-xl sm:text-2xl font-semibold tracking-tight">Progress</h1>
+            </div>
+            <p className="text-sm text-muted-foreground mt-1">
+              {loading ? 'Loading your analytics…' : `Last ${lookbackDays} days of practice`}
+            </p>
+          </div>
+
+          <div className="flex flex-wrap items-center gap-2">
+            <div className="flex items-center gap-1 rounded-full border bg-card/50 p-1">
+              <Button
+                variant={lookbackDays === 7 ? 'default' : 'ghost'}
+                size="sm"
+                className="h-8 rounded-full px-3"
+                onClick={() => setLookbackDays(7)}
+              >
+                7d
+              </Button>
+              <Button
+                variant={lookbackDays === 30 ? 'default' : 'ghost'}
+                size="sm"
+                className="h-8 rounded-full px-3"
+                onClick={() => setLookbackDays(30)}
+              >
+                30d
+              </Button>
+              <Button
+                variant={lookbackDays === 90 ? 'default' : 'ghost'}
+                size="sm"
+                className="h-8 rounded-full px-3"
+                onClick={() => setLookbackDays(90)}
+              >
+                90d
+              </Button>
+            </div>
+
+            <Button
+              variant="outline"
+              size="sm"
+              className="h-9"
+              onClick={() => {
+                retriedOnceRef.current = false;
+                loadProgressData();
+              }}
+              aria-label="Refresh progress"
+            >
+              {loading ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <RefreshCcw className="w-4 h-4 mr-2" />}
+              Refresh
+            </Button>
+
+            <Button
+              size="sm"
+              className="h-9"
+              onClick={() => navigate('/app', { state: { openTab: 'practice' } })}
+            >
+              <Play className="w-4 h-4 mr-2" />
+              Practice
+            </Button>
+          </div>
         </div>
       </div>
+    </div>
+  );
 
-      <ScrollArea className="h-[calc(100vh-180px)]">
-        <div className="space-y-6 pb-8">
-          {/* Summary Card */}
-          <Card className="border-2">
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <Award className="w-6 h-6 text-primary" />
-                Performance Summary
+  const loadingView = (
+    <div className="space-y-6 pb-10">
+      <div className="grid grid-cols-1 md:grid-cols-12 gap-4">
+        <Card className="md:col-span-7 border-2">
+          <CardHeader className="pb-4">
+            <div className="flex items-center justify-between">
+              <Skeleton className="h-6 w-40" />
+              <Skeleton className="h-6 w-20" />
+            </div>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-4">
+              <div className="flex items-end justify-between gap-4">
+                <div className="space-y-2">
+                  <Skeleton className="h-4 w-44" />
+                  <Skeleton className="h-12 w-32" />
+                </div>
+                <Skeleton className="h-10 w-28" />
+              </div>
+              <Skeleton className="h-3 w-full" />
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card className="md:col-span-5 border-2">
+          <CardHeader className="pb-4">
+            <Skeleton className="h-6 w-44" />
+            <Skeleton className="h-4 w-56" />
+          </CardHeader>
+          <CardContent className="space-y-3">
+            <Skeleton className="h-9 w-full" />
+            <Skeleton className="h-9 w-full" />
+            <Skeleton className="h-9 w-2/3" />
+          </CardContent>
+        </Card>
+      </div>
+
+      <Card>
+        <CardHeader>
+          <Skeleton className="h-6 w-56" />
+          <Skeleton className="h-4 w-72" />
+        </CardHeader>
+        <CardContent>
+          <Skeleton className="h-56 w-full" />
+        </CardContent>
+      </Card>
+    </div>
+  );
+
+  const emptyView = (
+    <Card className="border-dashed">
+      <CardContent className="py-14 sm:py-16">
+        <div className="mx-auto max-w-lg text-center space-y-4">
+          <div className="mx-auto w-14 h-14 rounded-2xl border bg-muted/30 flex items-center justify-center">
+            <BarChart3 className="w-7 h-7 text-muted-foreground" />
+          </div>
+          <div className="space-y-2">
+            <h2 className="text-xl font-semibold">No attempts yet</h2>
+            <p className="text-sm text-muted-foreground">
+              Start a practice session to unlock analytics, trends, and personalized recommendations.
+            </p>
+          </div>
+          <div className="flex flex-col sm:flex-row gap-2 justify-center">
+            <Button size="lg" onClick={() => navigate('/app', { state: { openTab: 'practice' } })}>
+              <Play className="mr-2" />
+              Start Practice
+            </Button>
+            <Button
+              size="lg"
+              variant="outline"
+              onClick={() => {
+                retriedOnceRef.current = false;
+                loadProgressData();
+              }}
+            >
+              <RefreshCcw className="mr-2" />
+              Refresh
+            </Button>
+          </div>
+        </div>
+      </CardContent>
+    </Card>
+  );
+
+  const dataView = summary ? (
+    <div className="space-y-6 pb-10">
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-4">
+        {/* Overview */}
+        <Card className="lg:col-span-7 border-2">
+          <CardHeader className="pb-4">
+            <div className="flex items-center justify-between gap-3">
+              <CardTitle className="text-lg flex items-center gap-2">
+                <Award className="w-5 h-5 text-primary" />
+                Overview
               </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
-                {/* Average Score - Big Number */}
-                <div className="md:col-span-2 flex flex-col justify-center items-center p-6 rounded-lg bg-gradient-to-br from-primary/10 to-primary/5">
-                  <p className="text-sm text-muted-foreground mb-2">Average Overall Score</p>
-                  <p className={`text-6xl font-bold ${getScoreColor(summary.avg_overall_score)}`}>
-                    {summary.avg_overall_score.toFixed(0)}
-                  </p>
-                  <p className="text-sm text-muted-foreground mt-2">
-                    {summary.attempts} attempt{summary.attempts !== 1 ? 's' : ''}
-                  </p>
-                </div>
-
-                {/* Best & Worst Dimensions */}
-                <div className="space-y-4">
-                  {summary.best_dimension && (
-                    <div className={`p-4 rounded-lg border ${getScoreBgColor(summary.best_dimension.score)}`}>
-                      <div className="flex items-center gap-2 mb-2">
-                        <TrendingUp className="w-4 h-4 text-green-600 dark:text-green-400" />
-                        <span className="text-xs font-semibold text-green-600 dark:text-green-400">
-                          BEST
-                        </span>
+              <Badge variant="outline" className="font-medium">
+                {summary.attempts} attempt{summary.attempts !== 1 ? 's' : ''}
+              </Badge>
+            </div>
+            <CardDescription>
+              A quick snapshot of your recent performance
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div className="sm:col-span-2 rounded-xl border bg-gradient-to-br from-primary/10 to-primary/5 p-5">
+                <div className="flex items-end justify-between gap-4">
+                  <div className="space-y-1">
+                    <div className="text-sm text-muted-foreground">Average Overall Score</div>
+                    <div className="flex items-end gap-2">
+                      <div
+                        className={`text-5xl font-bold tracking-tight ${getScoreColor(summary.average_overall_score ?? 0)}`}
+                      >
+                        {typeof summary.average_overall_score === 'number'
+                          ? summary.average_overall_score.toFixed(0)
+                          : '—'}
                       </div>
-                      <p className="font-semibold capitalize">{summary.best_dimension.name}</p>
-                      <p className={`text-2xl font-bold ${getScoreColor(summary.best_dimension.score)}`}>
-                        {summary.best_dimension.score.toFixed(0)}
-                      </p>
+                      <div className="text-muted-foreground pb-1">/100</div>
                     </div>
-                  )}
-                </div>
-
-                <div className="space-y-4">
-                  {summary.worst_dimension && (
-                    <div className={`p-4 rounded-lg border ${getScoreBgColor(summary.worst_dimension.score)}`}>
-                      <div className="flex items-center gap-2 mb-2">
-                        <TrendingDown className="w-4 h-4 text-amber-600 dark:text-amber-400" />
-                        <span className="text-xs font-semibold text-amber-600 dark:text-amber-400">
-                          WEAKEST
-                        </span>
-                      </div>
-                      <p className="font-semibold capitalize">{summary.worst_dimension.name}</p>
-                      <p className={`text-2xl font-bold ${getScoreColor(summary.worst_dimension.score)}`}>
-                        {summary.worst_dimension.score.toFixed(0)}
-                      </p>
-                    </div>
-                  )}
-
-                  {/* Last Practiced */}
-                  <div className="p-4 rounded-lg border bg-muted/30">
-                    <div className="flex items-center gap-2 mb-2">
-                      <Calendar className="w-4 h-4 text-muted-foreground" />
-                      <span className="text-xs font-semibold text-muted-foreground">
-                        LAST PRACTICED
-                      </span>
-                    </div>
-                    <p className="text-sm font-medium">
-                      {formatDate(summary.last_completed_at)}
-                    </p>
                   </div>
+                  <div className="text-right">
+                    <div className="text-xs text-muted-foreground">Last practiced</div>
+                    <div className="text-sm font-medium">{formatDate(summary.last_completed_at)}</div>
+                  </div>
+                </div>
+                <div className="mt-4">
+                  <ProgressBar value={summary.average_overall_score ?? 0} className="h-3" />
                 </div>
               </div>
-            </CardContent>
-          </Card>
 
-          {/* Next Targeted Session CTA */}
-          {nextPlan ? (
-            <Card className="border-2 border-primary/50 bg-gradient-to-br from-primary/5 to-primary/10">
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <Target className="w-6 h-6 text-primary" />
-                  Next Targeted Session
-                </CardTitle>
-                <CardDescription>
-                  Recommended based on your weaknesses
-                </CardDescription>
-              </CardHeader>
-              <CardContent>
-                <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-                  <div className="space-y-3 flex-1">
-                    <div className="flex flex-wrap gap-2">
-                      <Badge variant="outline" className="capitalize">
-                        Focus: {nextPlan.focus_dimension}
-                      </Badge>
-                      <Badge variant="outline">
-                        {nextPlan.question_count} questions
-                      </Badge>
-                      <Badge variant="outline" className="capitalize">
-                        {nextPlan.difficulty}
-                      </Badge>
-                      <Badge variant="outline">
-                        {nextPlan.recommended_round}
-                      </Badge>
-                    </div>
-                    <p className="text-sm text-muted-foreground">
-                      {nextPlan.reason}
-                    </p>
+              <div className="rounded-xl border bg-card/50 p-4">
+                <div className="flex items-center justify-between">
+                  <div className="text-xs text-muted-foreground">Best Dimension</div>
+                  <TrendingUp className="w-4 h-4 text-green-600 dark:text-green-400" />
+                </div>
+                {summary.best_dimension ? (
+                  <div className="mt-2">
+                    <div className="font-medium capitalize">{summary.best_dimension}</div>
                   </div>
-                  <Button size="lg" onClick={handleStartTargetedSession} className="shrink-0">
-                    <Sparkles className="mr-2" />
-                    Start Session
-                  </Button>
-                </div>
-              </CardContent>
-            </Card>
-          ) : (
-            <Card className="border-dashed">
-              <CardContent className="flex items-center justify-center py-8">
-                <div className="text-center">
-                  <AlertCircle className="w-8 h-8 text-muted-foreground mx-auto mb-2" />
-                  <p className="text-sm text-muted-foreground">
-                    Complete more practice sessions to get personalized recommendations
-                  </p>
-                  <Button className="mt-4" onClick={() => navigate('/app', { state: { openTab: 'practice' } })}>
-                    <Play className="mr-2" />
-                    Start Your First Session
-                  </Button>
-                </div>
-              </CardContent>
-            </Card>
-          )}
+                ) : (
+                  <div className="mt-2 text-sm text-muted-foreground">—</div>
+                )}
+              </div>
 
-          {/* Weakness Heatmap */}
-          {heatmap.length > 0 && (
-            <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <BarChart3 className="w-6 h-6" />
-                  Performance Over Time
-                </CardTitle>
-                <CardDescription>
-                  Weekly average scores by dimension (last 90 days)
-                </CardDescription>
-              </CardHeader>
-              <CardContent>
-                <div className="space-y-6">
-                  {Object.entries(groupedHeatmap).map(([dimension, data]) => (
-                    <div key={dimension}>
-                      <div className="flex items-center justify-between mb-2">
-                        <h4 className="text-sm font-semibold capitalize">{dimension}</h4>
-                        <span className="text-xs text-muted-foreground">
-                          {data.reduce((sum, d) => sum + d.attempts, 0)} attempts
+              <div className="rounded-xl border bg-card/50 p-4">
+                <div className="flex items-center justify-between">
+                  <div className="text-xs text-muted-foreground">Weakest Dimension</div>
+                  <TrendingDown className="w-4 h-4 text-amber-600 dark:text-amber-400" />
+                </div>
+                {summary.worst_dimension ? (
+                  <div className="mt-2">
+                    <div className="font-medium capitalize">{summary.worst_dimension}</div>
+                  </div>
+                ) : (
+                  <div className="mt-2 text-sm text-muted-foreground">—</div>
+                )}
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* Next Session */}
+        <Card className={nextPlan ? 'lg:col-span-5 border-2 border-primary/40 bg-gradient-to-br from-primary/5 to-primary/10' : 'lg:col-span-5 border-dashed'}>
+          <CardHeader className="pb-4">
+            <CardTitle className="text-lg flex items-center gap-2">
+              <Target className="w-5 h-5 text-primary" />
+              Next Session
+            </CardTitle>
+            <CardDescription>
+              {nextPlan ? 'Recommended based on your recent performance' : 'Complete more sessions to unlock recommendations'}
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            {nextPlan ? (
+              <>
+                <div className="flex flex-wrap gap-2">
+                  {nextPlanFields.focus_dimension ? (
+                    <Badge variant="outline" className="capitalize">Focus: {nextPlanFields.focus_dimension}</Badge>
+                  ) : null}
+                  {typeof nextPlanFields.question_count === 'number' ? (
+                    <Badge variant="outline">{nextPlanFields.question_count} questions</Badge>
+                  ) : null}
+                  {nextPlanFields.difficulty ? (
+                    <Badge variant="outline" className="capitalize">{nextPlanFields.difficulty}</Badge>
+                  ) : null}
+                  {nextPlanFields.recommended_round ? (
+                    <Badge variant="outline">{nextPlanFields.recommended_round}</Badge>
+                  ) : null}
+                </div>
+                {nextPlanFields.reason ? (
+                  <p className="text-sm text-muted-foreground leading-relaxed">{nextPlanFields.reason}</p>
+                ) : null}
+                <Button size="lg" onClick={handleStartTargetedSession} className="w-full">
+                  <Sparkles className="mr-2" />
+                  Start Targeted Session
+                </Button>
+              </>
+            ) : (
+              <div className="text-center py-6">
+                <div className="mx-auto w-12 h-12 rounded-2xl border bg-muted/30 flex items-center justify-center mb-3">
+                  <AlertCircle className="w-6 h-6 text-muted-foreground" />
+                </div>
+                <p className="text-sm text-muted-foreground">Practice a bit more to unlock personalized focus areas.</p>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* Trend Chart */}
+      {heatmap.length > 0 && timeSeries.length > 0 ? (
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-lg flex items-center gap-2">
+              <BarChart3 className="w-5 h-5 text-primary" />
+              Performance Trend
+            </CardTitle>
+            <CardDescription>Weekly average scores by dimension (last 90 days)</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <ChartContainer
+              config={chartConfig}
+              className="h-[280px] w-full"
+            >
+              <LineChart data={timeSeries} margin={{ left: 8, right: 16, top: 8, bottom: 8 }}>
+                <CartesianGrid vertical={false} />
+                <XAxis
+                  dataKey="week_start"
+                  tickMargin={8}
+                  tickFormatter={(v) => formatWeekShort(String(v))}
+                />
+                <YAxis domain={[0, 100]} tickMargin={8} width={36} />
+                <ChartTooltip
+                  cursor={false}
+                  content={
+                    <ChartTooltipContent
+                      labelKey="week_start"
+                      labelFormatter={(label) => `Week of ${formatWeekShort(String(label))}`}
+                      formatter={(value, name) => (
+                        <div className="flex w-full items-center justify-between gap-2">
+                          <span className="text-muted-foreground">{String(name)}</span>
+                          <span className="font-mono font-medium tabular-nums">{Number(value).toFixed(0)}</span>
+                        </div>
+                      )}
+                    />
+                  }
+                />
+                <ChartLegend content={<ChartLegendContent />} />
+                {dimensionKeys.map((key) => (
+                  <Line
+                    key={key}
+                    type="monotone"
+                    dataKey={key}
+                    name={dimensionKeyToLabel[key] ?? key}
+                    stroke={`var(--color-${key})`}
+                    strokeWidth={2}
+                    dot={false}
+                    connectNulls
+                  />
+                ))}
+              </LineChart>
+            </ChartContainer>
+          </CardContent>
+        </Card>
+      ) : null}
+
+      {/* Detailed breakdown (compact) */}
+      {heatmap.length > 0 && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-lg">Weekly Breakdown</CardTitle>
+            <CardDescription>Quick per-week score bars per dimension</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-6">
+              {Object.entries(groupedHeatmap).map(([dimension, data]) => (
+                <div key={dimension}>
+                  <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
+                    <div className="font-medium capitalize">{dimension}</div>
+                    <div className="text-xs text-muted-foreground">
+                      {data.reduce((sum, d) => sum + d.attempts, 0)} attempts
+                    </div>
+                  </div>
+                  <div className="space-y-2">
+                    {data.map((point, idx) => (
+                      <div key={`${dimension}-${idx}`} className="flex items-center gap-3">
+                        <span className="text-xs text-muted-foreground w-14 shrink-0">
+                          {formatWeekShort(point.week)}
+                        </span>
+                        <div className="flex-1 flex items-center gap-2">
+                          <ProgressBar value={point.score} className="h-2.5" />
+                          <span className={`text-sm font-semibold w-10 ${getScoreColor(point.score)}`}>
+                            {point.score.toFixed(0)}
+                          </span>
+                        </div>
+                        <span className="text-xs text-muted-foreground w-14 text-right">
+                          {point.attempts}x
                         </span>
                       </div>
-                      <div className="space-y-2">
-                        {data.map((point, idx) => {
-                          const weekLabel = new Date(point.week).toLocaleDateString('en-US', {
-                            month: 'short',
-                            day: 'numeric',
-                          });
-                          return (
-                            <div key={idx} className="flex items-center gap-3">
-                              <span className="text-xs text-muted-foreground w-16 shrink-0">
-                                {weekLabel}
-                              </span>
-                              <div className="flex-1 flex items-center gap-2">
-                                <ProgressBar
-                                  value={point.score}
-                                  className="h-3"
-                                />
-                                <span className={`text-sm font-semibold w-10 ${getScoreColor(point.score)}`}>
-                                  {point.score.toFixed(0)}
-                                </span>
-                              </div>
-                              <span className="text-xs text-muted-foreground w-12 text-right">
-                                {point.attempts} test{point.attempts !== 1 ? 's' : ''}
-                              </span>
-                            </div>
-                          );
-                        })}
-                      </div>
-                    </div>
-                  ))}
+                    ))}
+                  </div>
                 </div>
-              </CardContent>
-            </Card>
-          )}
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+      )}
+    </div>
+  ) : null;
+
+  const content = loading
+    ? loadingView
+    : (!summary || !hasAnyProgressSignal)
+      ? emptyView
+      : dataView;
+
+  return (
+    <div className="h-[var(--app-height)] min-h-[var(--app-height)] flex flex-col overflow-hidden">
+      {header}
+      <ScrollArea className="flex-1">
+        <div className="container mx-auto max-w-7xl px-4 sm:px-6 py-6">
+          {content}
         </div>
       </ScrollArea>
     </div>

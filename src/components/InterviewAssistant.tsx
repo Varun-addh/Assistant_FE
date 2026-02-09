@@ -75,7 +75,7 @@ import { apiGetMockInterviewHistory, apiDeleteMockInterviewSession, apiDeleteAll
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { useToast } from "@/hooks/use-toast";
-import { Button } from "@/components/ui/button";
+import { Button, buttonVariants } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -83,6 +83,16 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigge
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import { startEvaluationOverlay } from "@/overlayHost";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { BYOKOnboarding } from "./BYOKOnboarding";
 import { OnboardingOverlay } from "./OnboardingOverlay";
 import { ApiKeySettings } from "./ApiKeySettings";
@@ -93,14 +103,11 @@ import { PoweredByBadge } from "./PoweredByBadge";
 import { isDevelopmentMode, hasValidApiKeys } from "@/lib/devUtils";
 import { useAuth } from "@/context/AuthContext";
 import { Badge } from "@/components/ui/badge";
-
-interface BeforeInstallPromptEvent extends Event {
-  prompt: () => Promise<void>;
-  userChoice: Promise<{ outcome: 'accepted' | 'dismissed' }>;
-}
+import { usePwaInstall } from "@/context/PwaInstallContext";
 
 export const InterviewAssistant = () => {
   const { user, loading: authLoading, logout } = useAuth();
+  const { canPrompt, deferredPrompt, installHelpText, isStandalone, promptInstall } = usePwaInstall();
   const mainScrollRef = useRef<HTMLDivElement>(null);
   const viewportBaseHeightRef = useRef<number>(0);
   const [question, setQuestion] = useState("");
@@ -140,7 +147,6 @@ export const InterviewAssistant = () => {
       return true;
     }
   });
-  const [deferredPrompt, setDeferredPrompt] = useState<BeforeInstallPromptEvent | null>(null);
   const [showInstallBanner, setShowInstallBanner] = useState(false);
   const location = useLocation();
   const navigate = useNavigate();
@@ -311,6 +317,7 @@ export const InterviewAssistant = () => {
 
   const [showKeyOnboarding, setShowKeyOnboarding] = useState(false);
   const [hasApiKey, setHasApiKey] = useState(false);
+  const [bridgeSettingsOpen, setBridgeSettingsOpen] = useState(false);
   const [showOnboardingTour, setShowOnboardingTour] = useState(false);
 
   // Profile upload state
@@ -331,6 +338,11 @@ export const InterviewAssistant = () => {
   const [newSessionTitle, setNewSessionTitle] = useState("");
   const [isRenaming, setIsRenaming] = useState(false);
 
+  // Destructive confirmation: delete conversation (in-app modal; replaces native window.confirm)
+  const [deleteConversationDialogOpen, setDeleteConversationDialogOpen] = useState(false);
+  const [deleteConversationTarget, setDeleteConversationTarget] = useState<{ sessionId: string; title?: string } | null>(null);
+  const [isDeletingConversation, setIsDeletingConversation] = useState(false);
+
   // Streaming state for typewriter animation
   const [streaming, setStreaming] = useState(false);
 
@@ -340,6 +352,67 @@ export const InterviewAssistant = () => {
   // 📄 PDF Export: Track export progress
   const [isExportingPdf, setIsExportingPdf] = useState(false);
   const [exportingSessionId, setExportingSessionId] = useState<string | null>(null);
+
+  const openDeleteConversationDialog = (targetSessionId: string) => {
+    const currentSession = Array.isArray(sessions) ? sessions.find((s) => s.session_id === targetSessionId) : null;
+    setDeleteConversationTarget({
+      sessionId: targetSessionId,
+      title: currentSession?.custom_title || currentSession?.title || undefined,
+    });
+    setDeleteConversationDialogOpen(true);
+  };
+
+  const closeDeleteConversationDialog = () => {
+    if (isDeletingConversation) return;
+    setDeleteConversationDialogOpen(false);
+    setDeleteConversationTarget(null);
+  };
+
+  const confirmDeleteConversation = async () => {
+    if (!deleteConversationTarget) return;
+    const targetSessionId = deleteConversationTarget.sessionId;
+    setIsDeletingConversation(true);
+    try {
+      markSessionDeleted(targetSessionId);
+      await apiDeleteSession(targetSessionId);
+      setSessions((prev) => prev.filter((ps) => ps.session_id !== targetSessionId));
+
+      try {
+        // Clear the history archive for this session (if present)
+        window.localStorage.removeItem(`ia_history_archive_${targetSessionId}`);
+      } catch {
+        // ignore
+      }
+
+      if (targetSessionId === sessionId) {
+        setShowAnswer(false);
+        setAnswer("");
+        setLastQuestion("");
+        setQuestion("");
+        setHistory(null);
+        setSessionId("");
+        setOriginalQA(null);
+        setLatestQA(null);
+        setCurrentVersion(0);
+        try {
+          window.localStorage.removeItem("ia_session_id");
+          window.localStorage.removeItem("ia_last_question");
+          window.localStorage.removeItem("ia_last_answer");
+          window.localStorage.setItem("ia_show_answer", "false");
+        } catch {
+          // ignore
+        }
+      }
+
+      toast({ title: "Conversation deleted" });
+      setDeleteConversationDialogOpen(false);
+      setDeleteConversationTarget(null);
+    } catch (err) {
+      toast({ title: "Delete failed", variant: "destructive" });
+    } finally {
+      setIsDeletingConversation(false);
+    }
+  };
 
   const isValidSessionId = (value: unknown): value is string => {
     if (typeof value !== "string") return false;
@@ -809,6 +882,25 @@ export const InterviewAssistant = () => {
     setShowOnboardingTour(false);
     setShowKeyOnboarding(false);
   }, [authLoading, user]);
+
+  // If backend reports missing/invalid LLM key (401/403 not related to JWT), open Bridge Settings.
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+
+    const onByokRequired = () => {
+      if (!user || authLoading) return;
+      setBridgeSettingsOpen(true);
+      toast({
+        title: 'API key required',
+        description: 'Open Bridge Settings to add/refresh your key.',
+      });
+    };
+
+    window.addEventListener('byok:required', onByokRequired as any);
+    return () => {
+      window.removeEventListener('byok:required', onByokRequired as any);
+    };
+  }, [user, authLoading, toast]);
 
   // Handle onboarding tour completion
   const handleOnboardingTourComplete = () => {
@@ -1743,23 +1835,22 @@ export const InterviewAssistant = () => {
     loadSessions();
   }, []);
 
-  // Capture install prompt and surface an Install action
+  // Show install banner briefly when install becomes available (once per device for a while).
   useEffect(() => {
-    const handler = (e: Event) => {
-      e.preventDefault();
-      setDeferredPrompt(e as BeforeInstallPromptEvent);
+    if (!canPrompt || isStandalone) return;
+    try {
+      const key = 'pwa_install_banner_dismissed_until';
+      const raw = window.localStorage.getItem(key);
+      const until = raw ? Number(raw) : 0;
+      if (Number.isFinite(until) && until > Date.now()) return;
+    } catch {
+      // ignore
+    }
 
-      // Proactively show install banner for 5 seconds on initial detection
-      setShowInstallBanner(true);
-      const timer = setTimeout(() => {
-        setShowInstallBanner(false);
-      }, 5000);
-
-      return () => clearTimeout(timer);
-    };
-    window.addEventListener('beforeinstallprompt', handler);
-    return () => window.removeEventListener('beforeinstallprompt', handler);
-  }, []);
+    setShowInstallBanner(true);
+    const timer = window.setTimeout(() => setShowInstallBanner(false), 5000);
+    return () => window.clearTimeout(timer);
+  }, [canPrompt, isStandalone]);
 
   // Load history when sessionId available or reset token changes
   useEffect(() => {
@@ -2575,6 +2666,46 @@ export const InterviewAssistant = () => {
 
   return (
     <div className="relative h-[var(--app-height)] overflow-hidden overflow-x-hidden bg-background" style={{ overscrollBehavior: 'none' }}>
+      {user && !authLoading && (
+        <Dialog open={bridgeSettingsOpen} onOpenChange={setBridgeSettingsOpen}>
+          <DialogContent className="w-[calc(100vw-2rem)] sm:max-w-[450px] p-0 border-none bg-transparent">
+            <ApiKeySettings />
+          </DialogContent>
+        </Dialog>
+      )}
+
+      <AlertDialog
+        open={deleteConversationDialogOpen}
+        onOpenChange={(open) => {
+          if (!open) closeDeleteConversationDialog();
+          else setDeleteConversationDialogOpen(true);
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete conversation?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This will permanently delete this conversation. This action cannot be undone.
+              {deleteConversationTarget?.title ? (
+                <span className="block mt-2">Conversation: “{deleteConversationTarget.title}”</span>
+              ) : null}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={isDeletingConversation}>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              className={buttonVariants({ variant: "destructive" })}
+              disabled={isDeletingConversation || !deleteConversationTarget}
+              onClick={(e) => {
+                e.preventDefault();
+                void confirmDeleteConversation();
+              }}
+            >
+              {isDeletingConversation ? "Deleting..." : "Delete"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
       {/* World-Class Futuristic Background - Glassmorphism + Gradient Mesh */}
       <div className="absolute inset-0 pointer-events-none overflow-hidden">
         {/* Primary gradient mesh */}
@@ -2596,10 +2727,17 @@ export const InterviewAssistant = () => {
 
       {/* Premium Install Notification Banner */}
       <AnimatePresence>
-        {showInstallBanner && deferredPrompt && (
+        {showInstallBanner && canPrompt && deferredPrompt && (
           <div
             className="fixed top-24 left-1/2 -translate-x-1/2 z-[100] w-[90%] max-w-sm pointer-events-auto"
-            onClick={() => setShowInstallBanner(false)}
+            onClick={() => {
+              setShowInstallBanner(false);
+              try {
+                window.localStorage.setItem('pwa_install_banner_dismissed_until', String(Date.now() + 7 * 24 * 60 * 60 * 1000));
+              } catch {
+                // ignore
+              }
+            }}
           >
             <div className="bg-primary/10 backdrop-blur-xl border border-primary/20 rounded-2xl p-4 shadow-2xl shadow-primary/20 flex items-center gap-4 animate-in fade-in zoom-in slide-in-from-top-4 duration-500">
               <div className="w-10 h-10 rounded-xl bg-primary flex items-center justify-center shadow-lg shadow-primary/30">
@@ -2614,13 +2752,13 @@ export const InterviewAssistant = () => {
                 className="h-8 rounded-lg font-bold shadow-md shadow-primary/20"
                 onClick={async (e) => {
                   e.stopPropagation();
-                  const prompt = deferredPrompt;
-                  setDeferredPrompt(null);
                   setShowInstallBanner(false);
-                  try {
-                    await prompt.prompt();
-                    await prompt.userChoice;
-                  } catch { }
+                  const outcome = await promptInstall();
+                  if (outcome === 'accepted') {
+                    toast({ title: 'Installed', description: 'Stratax AI is now available on your device.' });
+                  } else if (outcome === 'dismissed') {
+                    toast({ title: 'Install dismissed', description: 'You can install later from the menu.' });
+                  }
                 }}
               >
                 Install
@@ -2691,16 +2829,14 @@ export const InterviewAssistant = () => {
                 )
               )}
               {user && !authLoading && (
-                <Dialog>
-                  <DialogTrigger asChild>
-                    <Button variant="ghost" size="sm" className={`h-8 w-8 p-0 hover:bg-white/10 ${!hasApiKey ? 'bg-amber-500/10 text-amber-500' : ''}`}>
-                      <Settings className="h-3.5 w-3.5" />
-                    </Button>
-                  </DialogTrigger>
-                  <DialogContent className="w-[calc(100vw-2rem)] sm:max-w-[450px] p-0 border-none bg-transparent">
-                    <ApiKeySettings />
-                  </DialogContent>
-                </Dialog>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className={`h-8 w-8 p-0 hover:bg-white/10 ${!hasApiKey ? 'bg-amber-500/10 text-amber-500' : ''}`}
+                  onClick={() => setBridgeSettingsOpen(true)}
+                >
+                  <Settings className="h-3.5 w-3.5" />
+                </Button>
               )}
             </div>
           </div>
@@ -2883,31 +3019,8 @@ export const InterviewAssistant = () => {
                                     className="text-destructive focus:text-destructive"
                                     onClick={async (e) => {
                                       e.stopPropagation();
-                                      if (!window.confirm("Delete this conversation?")) return;
                                       setIsMobileSidebarOpen(false);
-                                      try {
-                                        markSessionDeleted(sessionId);
-                                        await apiDeleteSession(sessionId);
-                                        setSessions((prev) => prev.filter((ps) => ps.session_id !== sessionId));
-                                        setShowAnswer(false);
-                                        setAnswer("");
-                                        setLastQuestion("");
-                                        setQuestion("");
-                                        setHistory(null);
-                                        setSessionId("");
-                                        setOriginalQA(null);
-                                        setLatestQA(null);
-                                        setCurrentVersion(0);
-                                        try {
-                                          window.localStorage.removeItem("ia_session_id");
-                                          window.localStorage.removeItem("ia_last_question");
-                                          window.localStorage.removeItem("ia_last_answer");
-                                          window.localStorage.setItem("ia_show_answer", "false");
-                                        } catch { }
-                                        toast({ title: "Conversation deleted" });
-                                      } catch (err) {
-                                        toast({ title: "Delete failed", variant: "destructive" });
-                                      }
+                                      openDeleteConversationDialog(sessionId);
                                     }}
                                   >
                                     <Trash2 className="h-4 w-4 mr-2" />
@@ -3040,23 +3153,36 @@ export const InterviewAssistant = () => {
                   </div>
 
                   {/* Install Option */}
-                  {deferredPrompt && (
+                  {!isStandalone && (
                     <div className="pt-4 border-t border-border/40">
                       <Button
                         variant="ghost"
                         onClick={async () => {
-                          const prompt = deferredPrompt;
-                          setDeferredPrompt(null);
-                          try {
-                            await prompt.prompt();
-                            await prompt.userChoice;
-                          } catch { }
+                          if (canPrompt) {
+                            const outcome = await promptInstall();
+                            if (outcome === 'accepted') {
+                              toast({ title: 'Installed', description: 'Stratax AI is now available on your device.' });
+                            } else if (outcome === 'dismissed') {
+                              toast({ title: 'Install dismissed', description: 'You can install later from the menu.' });
+                            }
+                            return;
+                          }
+
+                          toast({
+                            title: 'Install on this device',
+                            description: installHelpText,
+                          });
                         }}
                         className="w-full justify-start h-10 px-3 gap-3 rounded-xl text-primary font-bold hover:bg-primary/5"
                       >
                         <Sparkles className="h-4 w-4" />
                         <span className="text-sm">Install Stratax AI</span>
                       </Button>
+                      {!canPrompt && (
+                        <div className="mt-2 px-3 text-[10px] leading-relaxed text-muted-foreground">
+                          {installHelpText}
+                        </div>
+                      )}
                     </div>
                   )}
                 </div>
@@ -3533,37 +3659,7 @@ export const InterviewAssistant = () => {
                                           className="text-destructive focus:text-destructive"
                                           onClick={async (e) => {
                                             e.stopPropagation();
-                                            if (!window.confirm("Delete this session?")) return;
-                                            try {
-                                              markSessionDeleted(s.session_id);
-                                              await apiDeleteSession(s.session_id);
-                                              setSessions((prev) => prev.filter((ps) => ps.session_id !== s.session_id));
-                                              if (sessionId === s.session_id) {
-                                                // Clear ALL UI state to prevent stale data
-                                                setHistory(null);
-                                                setShowAnswer(false);
-                                                setAnswer("");
-                                                setLastQuestion("");
-                                                setQuestion("");
-                                                setSessionId("");
-                                                // Clear version tracking
-                                                setOriginalQA(null);
-                                                setLatestQA(null);
-                                                setCurrentVersion(0);
-                                                // Clear localStorage to prevent restoration
-                                                try {
-                                                  window.localStorage.removeItem("ia_session_id");
-                                                  window.localStorage.removeItem("ia_last_question");
-                                                  window.localStorage.removeItem("ia_last_answer");
-                                                  window.localStorage.setItem("ia_show_answer", "false");
-                                                  // Clear the history archive for this session
-                                                  window.localStorage.removeItem(`ia_history_archive_${s.session_id}`);
-                                                } catch { }
-                                              }
-                                              toast({ title: "Session deleted" });
-                                            } catch (err) {
-                                              toast({ title: "Delete failed", variant: "destructive" });
-                                            }
+                                            openDeleteConversationDialog(s.session_id);
                                           }}
                                         >
                                           <Trash2 className="h-4 w-4 mr-2" />
@@ -3690,36 +3786,7 @@ export const InterviewAssistant = () => {
                                       className="text-destructive focus:text-destructive"
                                       onClick={async (e) => {
                                         e.stopPropagation();
-                                        if (!window.confirm("Delete this entire conversation?")) return;
-                                        try {
-                                          markSessionDeleted(sessionId);
-                                          await apiDeleteSession(sessionId);
-                                          // Remove from sessions list in sidebar
-                                          setSessions((prev) => prev.filter((ps) => ps.session_id !== sessionId));
-                                          // Clear ALL UI state completely
-                                          setShowAnswer(false);
-                                          setAnswer("");
-                                          setLastQuestion("");
-                                          setQuestion("");
-                                          setHistory(null);
-                                          setSessionId("");
-                                          // Clear version tracking
-                                          setOriginalQA(null);
-                                          setLatestQA(null);
-                                          setCurrentVersion(0);
-                                          // Clear localStorage to prevent restoration
-                                          try {
-                                            window.localStorage.removeItem("ia_session_id");
-                                            window.localStorage.removeItem("ia_last_question");
-                                            window.localStorage.removeItem("ia_last_answer");
-                                            window.localStorage.setItem("ia_show_answer", "false");
-                                            // Clear the history archive for this session
-                                            window.localStorage.removeItem(`ia_history_archive_${sessionId}`);
-                                          } catch { }
-                                          toast({ title: "Conversation deleted" });
-                                        } catch (err) {
-                                          toast({ title: "Delete failed", variant: "destructive" });
-                                        }
+                                        openDeleteConversationDialog(sessionId);
                                       }}
                                     >
                                       <Trash2 className="h-4 w-4 mr-2" />
@@ -3841,25 +3908,19 @@ export const InterviewAssistant = () => {
                   </Link>
                 )}
                 {user && !authLoading && (
-                  <Dialog>
-                    <DialogTrigger asChild>
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        disabled={practiceScreenShareLock}
-                        className={`h-9 flex items-center gap-2 transition-all duration-300 ${!hasApiKey
-                          ? 'bg-amber-500/10 text-amber-500 border-amber-500/50 hover:bg-amber-500/20 shadow-[0_0_15px_-5px_rgba(245,158,11,0.3)]'
-                          : 'hover:bg-accent'
-                          }`}
-                      >
-                        <Settings className="h-4 w-4" />
-                        <span className="font-semibold">{hasApiKey ? 'Bridge Settings' : 'Connect AI Bridge'}</span>
-                      </Button>
-                    </DialogTrigger>
-                    <DialogContent className="w-[calc(100vw-2rem)] sm:max-w-[450px] p-0 border-none bg-transparent">
-                      <ApiKeySettings />
-                    </DialogContent>
-                  </Dialog>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    disabled={practiceScreenShareLock}
+                    onClick={() => setBridgeSettingsOpen(true)}
+                    className={`h-9 flex items-center gap-2 transition-all duration-300 ${!hasApiKey
+                      ? 'bg-amber-500/10 text-amber-500 border-amber-500/50 hover:bg-amber-500/20 shadow-[0_0_15px_-5px_rgba(245,158,11,0.3)]'
+                      : 'hover:bg-accent'
+                      }`}
+                  >
+                    <Settings className="h-4 w-4" />
+                    <span className="font-semibold">{hasApiKey ? 'Bridge Settings' : 'Connect AI Bridge'}</span>
+                  </Button>
                 )}
                 <Link
                   to="/run"

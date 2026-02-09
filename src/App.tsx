@@ -16,6 +16,7 @@ import { ProtectedRoute } from "./components/ProtectedRoute";
 import { UpgradeModal } from "./components/UpgradeModal";
 import { RateLimitWarning } from "./components/RateLimitWarning";
 import { DemoGateModal } from "./components/DemoGateModal";
+import { PwaInstallProvider } from "./context/PwaInstallContext";
 
 
 const queryClient = new QueryClient();
@@ -23,53 +24,55 @@ const queryClient = new QueryClient();
 const App = () => (
   <QueryClientProvider client={queryClient}>
     <TooltipProvider>
-      <Toaster />
-      <UpgradeModal />
-      <DemoGateModal />
-      <RateLimitWarning onUpgradeClick={() => {
-        // Trigger upgrade modal
-        window.dispatchEvent(new CustomEvent('ratelimit:exceeded', { 
-          detail: { 
-            message: 'You are approaching your rate limit.',
-            current_usage: 0,
-            limit: 0,
-            tier: 'free'
-          } 
-        }));
-      }} />
-      <BrowserRouter>
-        <Routes>
-          <Route path="/login" element={
-            <ProtectedRoute requireAuth={false}>
-              <Auth />
-            </ProtectedRoute>
-          } />
-          <Route path="/auth/google/callback" element={<GoogleCallback />} />
-          <Route path="/auth/verify-email" element={<VerifyEmail />} />
-          <Route path="/auth/reset-password" element={<ResetPassword />} />
-          <Route path="/" element={<Index />} />
-          <Route path="/app" element={
-            <InterviewAssistant />
-          } />
-          <Route path="/run" element={
-            <ProtectedRoute>
-              <Runner />
-            </ProtectedRoute>
-          } />
-          <Route path="/architecture" element={
-            <ProtectedRoute>
-              <ArchitecturePage />
-            </ProtectedRoute>
-          } />
-          <Route path="/progress" element={
-            <ProtectedRoute>
-              <Progress />
-            </ProtectedRoute>
-          } />
-          {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
-          <Route path="*" element={<NotFound />} />
-        </Routes>
-      </BrowserRouter>
+      <PwaInstallProvider>
+        <Toaster />
+        <UpgradeModal />
+        <DemoGateModal />
+        <RateLimitWarning onUpgradeClick={() => {
+          // Trigger upgrade modal
+          window.dispatchEvent(new CustomEvent('ratelimit:exceeded', { 
+            detail: { 
+              message: 'You are approaching your rate limit.',
+              current_usage: 0,
+              limit: 0,
+              tier: 'free'
+            } 
+          }));
+        }} />
+        <BrowserRouter>
+          <Routes>
+            <Route path="/login" element={
+              <ProtectedRoute requireAuth={false}>
+                <Auth />
+              </ProtectedRoute>
+            } />
+            <Route path="/auth/google/callback" element={<GoogleCallback />} />
+            <Route path="/auth/verify-email" element={<VerifyEmail />} />
+            <Route path="/auth/reset-password" element={<ResetPassword />} />
+            <Route path="/" element={<Index />} />
+            <Route path="/app" element={
+              <InterviewAssistant />
+            } />
+            <Route path="/run" element={
+              <ProtectedRoute>
+                <Runner />
+              </ProtectedRoute>
+            } />
+            <Route path="/architecture" element={
+              <ProtectedRoute>
+                <ArchitecturePage />
+              </ProtectedRoute>
+            } />
+            <Route path="/progress" element={
+              <ProtectedRoute>
+                <Progress />
+              </ProtectedRoute>
+            } />
+            {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
+            <Route path="*" element={<NotFound />} />
+          </Routes>
+        </BrowserRouter>
+      </PwaInstallProvider>
     </TooltipProvider>
   </QueryClientProvider>
 );

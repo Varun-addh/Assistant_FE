@@ -69,6 +69,14 @@ export const ApiKeySettings = () => {
         }
 
         localStorage.setItem("user_api_key", groqKey.trim());
+        // Mark BYOK as intentionally enabled (used by the API client to decide
+        // whether it should attach user keys even without JWT).
+        localStorage.setItem("api_keys_connected", "true");
+        try {
+            window.dispatchEvent(new CustomEvent('byok:updated', { detail: { engine: 'groq' } }));
+        } catch {
+            // ignore
+        }
         setHasGroqKey(true);
         setGroqKey("********************************");
         toast({
@@ -96,6 +104,12 @@ export const ApiKeySettings = () => {
         }
 
         localStorage.setItem("gemini_api_key", geminiKey.trim());
+        localStorage.setItem("api_keys_connected", "true");
+        try {
+            window.dispatchEvent(new CustomEvent('byok:updated', { detail: { engine: 'gemini' } }));
+        } catch {
+            // ignore
+        }
         setHasGeminiKey(true);
         setGeminiKey("********************************");
         toast({

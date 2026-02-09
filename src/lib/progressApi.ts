@@ -13,19 +13,100 @@ const API_BASE_URL = STRATAX_API_BASE_URL;
 
 export interface ProgressSummary {
   attempts: number;
-  avg_overall_score: number;
+  average_overall_score: number | null;
   last_completed_at: string | null;
-  best_dimension: {
-    name: string;
-    score: number;
-  } | null;
-  worst_dimension: {
-    name: string;
-    score: number;
-  } | null;
+  best_dimension: string | null;
+  worst_dimension: string | null;
   lookback_days: number;
   domain?: string;
 }
+
+type RawProgressSummary = Record<string, unknown>;
+
+const asNumber = (value: unknown, fallback = 0): number => {
+  if (typeof value === 'number' && Number.isFinite(value)) return value;
+  if (typeof value === 'string') {
+    const n = Number(value);
+    if (Number.isFinite(n)) return n;
+  }
+  return fallback;
+};
+
+const asStringOrNull = (value: unknown): string | null => {
+  if (typeof value === 'string') return value;
+  return null;
+};
+
+const asNumberOrNull = (value: unknown): number | null => {
+  if (value === null) return null;
+  if (typeof value === 'number' && Number.isFinite(value)) return value;
+  if (typeof value === 'string') {
+    const trimmed = value.trim();
+    if (!trimmed) return null;
+    const n = Number(trimmed);
+    if (Number.isFinite(n)) return n;
+  }
+  return null;
+};
+
+const coerceDimensionName = (value: unknown): string | null => {
+  if (!value) return null;
+  if (typeof value === 'string') return value;
+  if (typeof value === 'object') {
+    const obj = value as Record<string, unknown>;
+    const nameRaw = obj.name ?? obj.dimension ?? obj.dimension_name;
+    if (typeof nameRaw === 'string') return nameRaw;
+  }
+  return null;
+};
+
+const coerceProgressSummary = (
+  raw: unknown,
+  lookbackDays: number,
+  domain?: string
+): ProgressSummary => {
+  const root = (raw ?? {}) as Record<string, unknown>;
+  // Backend may wrap this in { summary: {...} } or { data: {...} }.
+  const payload = ((root.summary ?? root.data ?? root) ?? {}) as RawProgressSummary;
+
+  const attempts = asNumber(
+    payload.attempts ?? payload.attempt_count ?? payload.total_attempts ?? payload.sessions,
+    0
+  );
+
+  const average_overall_score =
+    asNumberOrNull(
+      payload.average_overall_score ??
+        payload.avg_overall_score ??
+        payload.avg_score ??
+        payload.average_score ??
+        payload.overall_avg
+    ) ?? null;
+
+  const last_completed_at =
+    asStringOrNull(payload.last_completed_at) ??
+    asStringOrNull(payload.last_attempt_at) ??
+    asStringOrNull(payload.last_session_at);
+
+  const best_dimension = coerceDimensionName(payload.best_dimension ?? payload.best ?? payload.top_dimension);
+  const worst_dimension = coerceDimensionName(
+    payload.worst_dimension ?? payload.worst ?? payload.bottom_dimension
+  );
+
+  const lookback_days = asNumber(payload.lookback_days, lookbackDays);
+
+  const domainValue = typeof payload.domain === 'string' ? payload.domain : domain;
+
+  return {
+    attempts,
+    average_overall_score,
+    last_completed_at,
+    best_dimension,
+    worst_dimension,
+    lookback_days,
+    domain: domainValue,
+  };
+};
 
 export interface HeatmapPoint {
   week_start: string;  // ISO date string (Monday)
@@ -34,14 +115,8 @@ export interface HeatmapPoint {
   attempts: number;    // Number of attempts in this week/dimension
 }
 
-export interface NextSessionPlan {
-  focus_dimension: string;
-  question_count: number;
-  recommended_round: string;
-  difficulty: 'easy' | 'medium' | 'hard';
-  reason: string;
-  domain?: string;
-}
+// Intentionally flexible: backend returns `{ plan: object | null }` and the plan shape may evolve.
+export type NextSessionPlan = Record<string, unknown>;
 
 export interface SessionScore {
   session_id?: string;
@@ -57,6 +132,10 @@ export interface SessionScore {
   improvement_plan?: string[];
   next_session_plan?: string[];
   evaluation_report?: unknown;
+
+  // Optional runtime extensions (may be absent on older backends)
+  evaluation_trace?: unknown;
+  trajectory?: unknown;
 
   // Live Practice additions
   media?: {
@@ -83,6 +162,9 @@ type RawSessionScore = {
   action_plan?: unknown;
   evaluation_report?: unknown;
 
+  evaluation_trace?: unknown;
+  trajectory?: unknown;
+
   media?: unknown;
   proctoring_summary?: unknown;
 };
@@ -106,10 +188,12 @@ export async function getProgressSummary(
     params.set('domain', domain);
   }
 
-  return await strataxFetchJson(
+  const raw = (await strataxFetchJson(
     `${API_BASE_URL}/api/practice/progress/summary?${params.toString()}`,
     { method: 'GET' }
-  );
+  )) as unknown;
+
+  return coerceProgressSummary(raw, lookbackDays, domain);
 }
 
 /**
@@ -133,9 +217,29 @@ export async function getProgressHeatmap(
   )) as unknown;
 
   // Backend may return either `{ points: [...] }` or the points array directly.
-  if (Array.isArray(response)) return response as HeatmapPoint[];
-  const obj = response as { points?: HeatmapPoint[] } | null;
-  return obj?.points ?? [];
+  const pointsRaw = Array.isArray(response)
+    ? response
+    : ((response as { points?: unknown[] } | null)?.points ?? []);
+
+  if (!Array.isArray(pointsRaw)) return [];
+
+  return pointsRaw
+    .map((p): HeatmapPoint | null => {
+      if (!p || typeof p !== 'object') return null;
+      const obj = p as Record<string, unknown>;
+      const week_start = typeof obj.week_start === 'string'
+        ? obj.week_start
+        : (typeof obj.week === 'string' ? obj.week : '');
+      const dimension = typeof obj.dimension === 'string'
+        ? obj.dimension
+        : (typeof obj.metric === 'string' ? obj.metric : '');
+      const avg_score = asNumber(obj.avg_score ?? obj.score ?? obj.average, NaN);
+      const attempts = asNumber(obj.attempts ?? obj.count ?? obj.attempt_count, 0);
+
+      if (!week_start || !dimension || Number.isNaN(avg_score)) return null;
+      return { week_start, dimension, avg_score, attempts };
+    })
+    .filter((x): x is HeatmapPoint => x !== null);
 }
 
 /**
@@ -234,6 +338,8 @@ export async function getSessionScore(sessionId: string): Promise<SessionScore> 
     improvement_plan,
     next_session_plan,
     evaluation_report: data.evaluation_report,
+    evaluation_trace: data.evaluation_trace,
+    trajectory: data.trajectory,
     media: (data.media && typeof data.media === 'object') ? (data.media as any) : undefined,
     proctoring_summary: (data.proctoring_summary && typeof data.proctoring_summary === 'object') ? (data.proctoring_summary as any) : undefined,
   };

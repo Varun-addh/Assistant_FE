@@ -36,6 +36,9 @@ import {
   type Evaluation,
   type SpeechMetrics,
   type MicroFeedback,
+  type EvaluationTrace,
+  type Trajectory,
+  type Pressure,
   type QuickStartResponse,
   type Question,
   type QuestionType,
@@ -110,6 +113,7 @@ export const PracticeMode = () => {
   const [isQuestionStreaming, setIsQuestionStreaming] = useState(false);
   const questionAudioDurationRef = useRef<number | null>(null);
   const questionStreamTimerRef = useRef<number | null>(null);
+  const questionStreamRafRef = useRef<number | null>(null);
   const questionStreamKeyRef = useRef<string>('');
   const questionStreamRunIdRef = useRef(0);
 
@@ -117,6 +121,14 @@ export const PracticeMode = () => {
     if (questionStreamTimerRef.current != null) {
       window.clearTimeout(questionStreamTimerRef.current);
       questionStreamTimerRef.current = null;
+    }
+    if (questionStreamRafRef.current != null) {
+      try {
+        cancelAnimationFrame(questionStreamRafRef.current);
+      } catch {
+        // ignore
+      }
+      questionStreamRafRef.current = null;
     }
     // Bump run id and clear key so any in-flight callbacks become no-ops.
     questionStreamRunIdRef.current += 1;
@@ -413,6 +425,9 @@ export const PracticeMode = () => {
     transcript?: string;
     metrics?: SpeechMetrics | null;
     microFeedback?: MicroFeedback | null;
+    evaluationTrace?: EvaluationTrace | null;
+    trajectory?: Trajectory | null;
+    pressure?: Pressure | null;
     codeEvaluation?: CodeEvaluationFeedback | null;
     testResults?: CodeTestResult[] | null;
     createdAt: string;
@@ -1030,6 +1045,9 @@ export const PracticeMode = () => {
   const [transcription, setTranscription] = useState<string>('');
   const [speechMetrics, setSpeechMetrics] = useState<SpeechMetrics | null>(null);
   const [microFeedback, setMicroFeedback] = useState<MicroFeedback | null>(null);
+  const [evaluationTrace, setEvaluationTrace] = useState<EvaluationTrace | null>(null);
+  const [trajectory, setTrajectory] = useState<Trajectory | null>(null);
+  const [pressure, setPressure] = useState<Pressure | null>(null);
   const [evaluation, setEvaluation] = useState<Evaluation | null>(null);
   const [completionPending, setCompletionPending] = useState(false);
 
@@ -1148,9 +1166,9 @@ export const PracticeMode = () => {
   const [isSubmittingCode, setIsSubmittingCode] = useState(false);
 
   // Recording timer
-  const recordingTimerRef = useRef<NodeJS.Timeout | null>(null);
-  const countdownTimerRef = useRef<NodeJS.Timeout | null>(null);
-  const audioLevelIntervalRef = useRef<NodeJS.Timeout | null>(null);
+  const recordingTimerRef = useRef<ReturnType<typeof window.setInterval> | null>(null);
+  const countdownTimerRef = useRef<ReturnType<typeof window.setInterval> | null>(null);
+  const audioLevelIntervalRef = useRef<ReturnType<typeof window.setInterval> | null>(null);
 
   useEffect(() => {
     return () => {
@@ -1212,11 +1230,15 @@ export const PracticeMode = () => {
 
   // Reset and stream question text when a new question is shown.
   useEffect(() => {
-    cancelQuestionStreaming();
-
-    if (phase !== 'question' || !currentQuestion) {
+    // NOTE: During answer submission we keep phase='question' for UX stability.
+    // Without this guard, moving from 'recording' -> 'question' while submitting
+    // would cause the SAME question to restart streaming.
+    if (phase !== 'question' || !currentQuestion || isProcessing) {
+      cancelQuestionStreaming();
       return;
     }
+
+    cancelQuestionStreaming();
 
     const full = getQuestionPromptText(currentQuestion);
     setStreamedQuestionText('');
@@ -1240,45 +1262,75 @@ export const PracticeMode = () => {
     // Mark as streaming immediately so answer UI can be gated even while we wait for audio metadata.
     setIsQuestionStreaming(true);
 
-    const startStreaming = (baseMsPerWord: number) => {
-      let i = 0;
-      setStreamedQuestionText('');
+    // Smooth fallback streamer (no TTS): reveal progressively over time.
+    const startTimeBasedStreaming = (targetMsPerWord: number) => {
+      const targetTotalMs = Math.round(Math.max(600, Math.min(120_000, targetMsPerWord * words.length)));
+      const startAt = performance.now();
+      let lastLen = -1;
 
-      const step = () => {
+      const tick = (now: number) => {
         if (questionStreamKeyRef.current !== key) return;
         if (questionStreamRunIdRef.current !== runId) return;
 
-        if (i >= words.length) {
+        const elapsed = now - startAt;
+        const progress = Math.min(1, Math.max(0, elapsed / targetTotalMs));
+        const len = Math.floor(progress * full.length);
+
+        if (len !== lastLen) {
+          lastLen = len;
+          setStreamedQuestionText(full.slice(0, len));
+        }
+
+        if (progress >= 1) {
           setIsQuestionStreaming(false);
           setStreamedQuestionText(full);
-          questionStreamTimerRef.current = null;
+          questionStreamRafRef.current = null;
           return;
         }
 
-        const remaining = words.length - i;
-        const chunkSize =
-          words.length > 90 ? 3 :
-          words.length > 45 ? 2 :
-          1;
-
-        const take = Math.min(chunkSize, remaining);
-        const chunkWords = words.slice(i, i + take);
-        i += take;
-
-        const chunkText = chunkWords.join(' ');
-        setStreamedQuestionText((prev) => (prev ? `${prev} ${chunkText}` : chunkText));
-
-        const lastWord = chunkWords[chunkWords.length - 1];
-        const punct = /[\.\!\?;,]$/.test(lastWord);
-        const baseDelay = baseMsPerWord * take;
-        const delay = punct
-          ? Math.min(900, Math.round(baseDelay * 1.4))
-          : baseDelay;
-
-        questionStreamTimerRef.current = window.setTimeout(step, delay);
+        questionStreamRafRef.current = requestAnimationFrame(tick);
       };
 
-      questionStreamTimerRef.current = window.setTimeout(step, baseMsPerWord);
+      questionStreamRafRef.current = requestAnimationFrame(tick);
+    };
+
+    // TTS-synced streamer: drive reveal directly off the audio playback position.
+    const startTtsSyncedStreaming = () => {
+      const audio = audioPlayerRef.current;
+      const duration = audio?.duration;
+      const hasDuration = Number.isFinite(duration) && (duration ?? 0) > 0;
+      if (!audio || !hasDuration) return false;
+
+      let lastLen = -1;
+
+      const tick = () => {
+        if (questionStreamKeyRef.current !== key) return;
+        if (questionStreamRunIdRef.current !== runId) return;
+
+        const d = audio.duration;
+        const t = audio.currentTime;
+        const progress = (Number.isFinite(d) && d > 0 && Number.isFinite(t) && t >= 0)
+          ? Math.min(1, Math.max(0, t / d))
+          : 0;
+
+        const len = Math.floor(progress * full.length);
+        if (len !== lastLen) {
+          lastLen = len;
+          setStreamedQuestionText(full.slice(0, len));
+        }
+
+        if (progress >= 1 || audio.ended) {
+          setIsQuestionStreaming(false);
+          setStreamedQuestionText(full);
+          questionStreamRafRef.current = null;
+          return;
+        }
+
+        questionStreamRafRef.current = requestAnimationFrame(tick);
+      };
+
+      questionStreamRafRef.current = requestAnimationFrame(tick);
+      return true;
     };
 
     const computeMsPerWord = () => {
@@ -1301,8 +1353,13 @@ export const PracticeMode = () => {
       if (questionStreamRunIdRef.current !== runId) return;
       const duration = audioPlayerRef.current?.duration;
       const hasDuration = Number.isFinite(duration) && (duration ?? 0) > 0;
-      if (hasDuration || tries >= 10 || !enableTTS) {
-        startStreaming(computeMsPerWord());
+      if (enableTTS && hasDuration) {
+        // Sync exactly to TTS playback (pauses/buffering will also pause text).
+        if (startTtsSyncedStreaming()) return;
+      }
+
+      if (tries >= 60 || !enableTTS) {
+        startTimeBasedStreaming(computeMsPerWord());
         return;
       }
       tries += 1;
@@ -1315,7 +1372,7 @@ export const PracticeMode = () => {
       cancelQuestionStreaming();
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [phase, currentQuestion, currentQuestionNumber, enableTTS, sessionId]);
+  }, [phase, currentQuestion, currentQuestionNumber, enableTTS, sessionId, isProcessing]);
 
   const handleStartInterview = async () => {
     cancelQuestionStreaming();
@@ -1645,6 +1702,14 @@ export const PracticeMode = () => {
       const response = await submitAnswer(sessionId, effectiveQuestionId, audioBlob);
       console.log('📊 [Practice Mode] Submit Answer Response:', response);
 
+      // Populate the per-question feedback UI state
+      setTranscription(response.transcript || '');
+      setSpeechMetrics(response.metrics || null);
+      setMicroFeedback(response.micro_feedback || null);
+      setEvaluationTrace(response.evaluation_trace ?? null);
+      setTrajectory(response.trajectory ?? null);
+      setPressure(response.pressure ?? null);
+
       // Store per-question evaluation for the final report (do not render per-question feedback).
       setQuestionEvaluations((prev) => ([
         ...prev,
@@ -1656,90 +1721,22 @@ export const PracticeMode = () => {
           transcript: response.transcript,
           metrics: response.metrics,
           microFeedback: response.micro_feedback,
+          evaluationTrace: response.evaluation_trace ?? null,
+          trajectory: response.trajectory ?? null,
+          pressure: response.pressure ?? null,
           createdAt: new Date().toISOString(),
         },
       ]));
 
       setCompletionPending(!!response.complete);
 
-      if (response.complete) {
-        // Session is complete, but always show the final feedback first.
-        console.log('🎉 [Practice Mode] Session complete; loading final report.');
-
-        if (!response.evaluation_report) {
-          console.warn('⚠️ [Practice Mode] No evaluation_report in response, attempting diagnostic fetch...');
-
-          // Try to fetch evaluation using diagnostic endpoint
-          try {
-            const diagnosticData = await getSessionEvaluation(sessionId);
-            console.log('📊 [Diagnostic] Evaluation data:', diagnosticData);
-
-            if (diagnosticData.evaluation) {
-              setEvaluation(diagnosticData.evaluation);
-              console.log('✅ [Diagnostic] Evaluation loaded successfully');
-            } else if (diagnosticData.error) {
-              console.error('❌ [Diagnostic] Evaluation error:', diagnosticData.error);
-              toast({
-                title: '⚠️ Evaluation Error',
-                description: diagnosticData.error,
-                variant: 'destructive',
-              });
-            }
-          } catch (diagError) {
-            console.error('❌ [Diagnostic] Failed to fetch evaluation:', diagError);
-          }
-        } else {
-          setEvaluation(response.evaluation_report);
-        }
-
-        setPhase('complete');
-        setCompletionPending(false);
-      } else {
-        // Auto-advance to next question (no per-question evaluation UI).
-        console.log('✅ [Practice Mode] Answer submitted; auto-advancing to next question');
-        console.log('🔄 [Practice Mode] Requires acknowledgment:', response.requires_acknowledgment);
-
-        const ack = await acknowledgeFeedback(sessionId, effectiveQuestionId);
-
-        if (ack.complete) {
-          if (ack.evaluation_report) {
-            setEvaluation(ack.evaluation_report);
-          }
-          setPhase('complete');
-          setCompletionPending(false);
-          toast({
-            title: '🎉 Interview Complete!',
-            description: `Completed all ${totalQuestions} questions successfully!`,
-          });
-          return;
-        }
-
-        if (!ack.next_question) {
-          throw new Error('No next question in response but complete=false');
-        }
-
-        setCurrentQuestion(ack.next_question);
-        setCurrentQuestionNumber((prev) => prev + 1);
-        setTimeRemaining(ack.next_question.time_limit);
-        setCompletionPending(false);
-        setPhase('question');
-
-        // ✅ IMPORTANT: Play Q2/Q3... audio on auto-advance too (not only on manual Next Question).
-        if (ack.tts_audio_url && enableTTS) {
-          void playTtsBestEffort(ack.tts_audio_url);
-        }
-
-        // Clear per-question UI state
-        setTranscription('');
-        setSpeechMetrics(null);
-        setMicroFeedback(null);
-        setCodeTestResults(null);
-        setCodeEvaluation(null);
-        if (countdownTimerRef.current) {
-          clearInterval(countdownTimerRef.current);
-          countdownTimerRef.current = null;
-        }
+      // If backend already included final report, keep it ready for the completion screen.
+      if (response.complete && response.evaluation_report) {
+        setEvaluation(response.evaluation_report);
       }
+
+      // Show the existing post-answer feedback screen (micro-feedback + optional extensions).
+      setPhase('feedback');
     } catch (error: any) {
       console.error('❌ [Practice Mode] Submit Answer Error:', error);
       console.error('❌ [Practice Mode] Error Details:', {
@@ -2117,6 +2114,9 @@ export const PracticeMode = () => {
         setTranscription('');
         setSpeechMetrics(null);
         setMicroFeedback(null);
+        setEvaluationTrace(null);
+        setTrajectory(null);
+        setPressure(null);
 
         // Clear code submission state (for coding questions)
         setCodeTestResults(null);
@@ -2846,20 +2846,20 @@ export const PracticeMode = () => {
     const deliveredQuestionText = streamedQuestionText || '';
 
     return (
-      <div className="max-w-4xl mx-auto w-full px-4 flex flex-col space-y-4">
+      <div className="max-w-4xl mx-auto w-full px-3 sm:px-4 flex flex-col space-y-4 pb-[env(safe-area-inset-bottom)]">
         {renderGuestGateBanner()}
         {renderFacePreview()}
 
         {/* Header */}
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-3">
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+          <div className="flex flex-wrap items-center gap-2">
             {currentRoundConfig && (
-              <Badge variant="outline" className="text-sm px-3 py-1 bg-muted/20 border-border/50">
+              <Badge variant="outline" className="text-[11px] sm:text-sm px-2.5 py-1 bg-muted/20 border-border/50">
                 <Target className="w-3 h-3 mr-1" />
                 {currentRoundConfig.name}
               </Badge>
             )}
-            <Badge variant="outline" className="text-sm px-3 py-1">
+            <Badge variant="outline" className="text-[11px] sm:text-sm px-2.5 py-1">
               Question {currentQuestionNumber} / {totalQuestions}
             </Badge>
 
@@ -2896,7 +2896,7 @@ export const PracticeMode = () => {
               {currentQuestion?.programming_language && ` (${currentQuestion.programming_language})`}
             </Badge>
 
-            <Badge className="bg-primary text-primary-foreground">
+            <Badge className="bg-primary text-primary-foreground text-[11px] sm:text-sm">
               {selectedDifficulty}
             </Badge>
             {phase === 'recording' ? (
@@ -2915,13 +2915,13 @@ export const PracticeMode = () => {
             )}
 
             {(isProcessing || isSubmittingCode) && (
-              <Badge variant="secondary" className="animate-pulse">
+              <Badge variant="secondary" className="animate-pulse text-[11px] sm:text-sm">
                 <Loader2 className="w-3 h-3 mr-1 animate-spin" />
                 Submitting…
               </Badge>
             )}
           </div>
-          <Progress value={(currentQuestionNumber / totalQuestions) * 100} className="w-32" />
+          <Progress value={(currentQuestionNumber / totalQuestions) * 100} className="w-full sm:w-32" />
         </div>
 
         {/* Question Card */}
@@ -2929,7 +2929,7 @@ export const PracticeMode = () => {
           {/* Check question type and render appropriate UI */}
           {isCodingQuestion(currentQuestion) ? (
             /* Coding Question - Show Code Editor */
-            <div className="p-6">
+            <div className="p-3 sm:p-6">
               <InterviewCodeEditor
                 question={{
                   ...(currentQuestion as Question),
@@ -3155,6 +3155,29 @@ export const PracticeMode = () => {
           </Badge>
         </div>
 
+        {/* Pressure / Mode indicator */}
+        {pressure && (pressure.mode || pressure.reason) && (
+          <Card className="border-muted">
+            <CardContent className="pt-4 px-3 sm:px-6 pb-4 sm:pb-5">
+              <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <div className="text-sm font-semibold">Mode</div>
+                  {pressure.reason ? (
+                    <div className="text-xs sm:text-sm text-muted-foreground mt-1 leading-relaxed">
+                      {pressure.reason}
+                    </div>
+                  ) : null}
+                </div>
+                {pressure.mode ? (
+                  <Badge variant="outline" className="capitalize shrink-0">
+                    {pressure.mode}
+                  </Badge>
+                ) : null}
+              </div>
+            </CardContent>
+          </Card>
+        )}
+
         {/* Speech Metrics - Compact Mobile Grid */}
         <div className="grid grid-cols-3 gap-2 sm:gap-4">
           <Card className="border-muted overflow-hidden">
@@ -3376,6 +3399,90 @@ export const PracticeMode = () => {
                           </li>
                         ))}
                       </ul>
+                    </div>
+                  )}
+                </div>
+                <Separator />
+              </>
+            )}
+
+            {/* Why this score */}
+            {evaluationTrace && Array.isArray(evaluationTrace.why) && evaluationTrace.why.length > 0 && (
+              <>
+                <div className="space-y-2 p-3 sm:p-4 bg-muted/50 rounded-lg border">
+                  <div className="text-sm sm:text-base font-semibold">Why this score</div>
+                  <ul className="text-xs sm:text-sm space-y-1.5">
+                    {evaluationTrace.why.map((line, idx) => (
+                      <li key={idx} className="flex items-start gap-2">
+                        <span className="text-primary mt-0.5 shrink-0">•</span>
+                        <span className="text-muted-foreground leading-relaxed">{String(line)}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+                <Separator />
+              </>
+            )}
+
+            {/* Session trajectory */}
+            {trajectory && (trajectory.points || trajectory.overall || trajectory.dimensions || trajectory.note) && (
+              <>
+                <div className="space-y-2 p-3 sm:p-4 bg-muted/50 rounded-lg border">
+                  <div className="flex items-center justify-between gap-2">
+                    <div className="text-sm sm:text-base font-semibold">Session trajectory</div>
+                    {typeof trajectory?.overall?.delta === 'number' && (
+                      <Badge variant="outline">
+                        Overall Δ {trajectory.overall.delta > 0 ? '+' : ''}{trajectory.overall.delta}
+                      </Badge>
+                    )}
+                  </div>
+
+                  {typeof trajectory.note === 'string' && trajectory.note.trim() && (
+                    <div className="text-xs sm:text-sm text-muted-foreground leading-relaxed">
+                      {trajectory.note}
+                    </div>
+                  )}
+
+                  {trajectory.dimensions && typeof trajectory.dimensions === 'object' && (
+                    <div className="flex flex-wrap gap-2 pt-1">
+                      {Object.entries(trajectory.dimensions as Record<string, any>).map(([dim, info]) => {
+                        const delta = (info as any)?.delta;
+                        if (typeof delta !== 'number') return null;
+                        return (
+                          <Badge key={dim} variant="secondary" className="capitalize">
+                            {dim} Δ {delta > 0 ? '+' : ''}{delta}
+                          </Badge>
+                        );
+                      })}
+                    </div>
+                  )}
+
+                  {Array.isArray(trajectory.points) && trajectory.points.length > 0 && (
+                    <div className="pt-2 space-y-1.5">
+                      {trajectory.points.map((p: any, idx: number) => {
+                        const qn = p?.question_number ?? p?.question ?? idx + 1;
+                        const overall = p?.overall ?? p?.overall_score;
+                        const dims = p?.dimensions ?? p?.dimension_scores;
+                        return (
+                          <div key={idx} className="text-xs sm:text-sm text-muted-foreground flex flex-wrap items-center gap-2">
+                            <Badge variant="outline">Q{qn}</Badge>
+                            {typeof overall === 'number' && (
+                              <span>
+                                Overall: <span className="font-medium text-foreground">{overall}</span>
+                              </span>
+                            )}
+                            {dims && typeof dims === 'object' && (
+                              <span className="truncate">
+                                {Object.entries(dims as Record<string, any>)
+                                  .filter(([, v]) => typeof v === 'number')
+                                  .slice(0, 4)
+                                  .map(([k, v]) => `${k}: ${v}`)
+                                  .join(' • ')}
+                              </span>
+                            )}
+                          </div>
+                        );
+                      })}
                     </div>
                   )}
                 </div>

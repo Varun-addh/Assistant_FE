@@ -500,6 +500,35 @@ export interface StartInterviewResponse {
   progress: string;  // NEW - e.g., "1/3", "1/5", "1/10"
 }
 
+// Optional runtime coaching extensions (may be absent on older backends)
+export type EvaluationTrace = {
+  why?: string[];
+  criteria_averages?: Record<string, number>;
+  [key: string]: unknown;
+};
+
+export type Trajectory = {
+  note?: string;
+  points?: Array<{
+    question?: number;
+    question_number?: number;
+    overall?: number;
+    overall_score?: number;
+    dimensions?: Record<string, number>;
+    dimension_scores?: Record<string, number>;
+    [key: string]: unknown;
+  }>;
+  overall?: { delta?: number; [key: string]: unknown };
+  dimensions?: Record<string, { delta?: number; [key: string]: unknown }>;
+  [key: string]: unknown;
+};
+
+export type Pressure = {
+  mode?: 'supportive' | 'balanced' | 'challenging' | (string & {});
+  reason?: string;
+  [key: string]: unknown;
+};
+
 export interface SubmitAnswerResponse {
   transcript: string;
   metrics: SpeechMetrics;
@@ -510,6 +539,11 @@ export interface SubmitAnswerResponse {
   evaluation_report?: Evaluation;
   progress?: string;  // e.g., "2/5", "3/5"
   requires_acknowledgment?: boolean;  // NEW - If true, user must click "Next Question" button
+
+  // Optional runtime extensions
+  evaluation_trace?: EvaluationTrace;
+  trajectory?: Trajectory;
+  pressure?: Pressure;
 }
 
 export interface AcknowledgeFeedbackResponse {
@@ -518,6 +552,9 @@ export interface AcknowledgeFeedbackResponse {
   progress: string;  // e.g., "3/5", "4/5"
   complete: boolean;  // If true, no more questions
   evaluation_report?: Evaluation;  // Final evaluation if complete=true
+
+  // Optional runtime extensions
+  pressure?: Pressure;
 }
 
 export interface PracticeModeStatus {

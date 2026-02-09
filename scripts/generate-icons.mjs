@@ -345,8 +345,6 @@ const main = async () => {
   const outputs = [
     { file: "stratax-ai-192.png", build: async () => await makeAnyIcon(192) },
     { file: "stratax-ai-512.png", build: async () => await makeAnyIcon(512) },
-    { file: "stratax-ai-maskable-192.png", build: async () => await makeMaskable(192) },
-    { file: "stratax-ai-maskable-512.png", build: async () => await makeMaskable(512) },
 
     // iOS best-practice
     { file: "apple-touch-icon.png", build: async () => await makeAppleTouchIcon(180) },

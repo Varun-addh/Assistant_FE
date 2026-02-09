@@ -114,6 +114,15 @@ function getUserKeys(): { groqKey?: string; geminiKey?: string } {
   return { groqKey: groqKey || undefined, geminiKey: geminiKey || undefined };
 }
 
+function hasExplicitByokConnectionFlag(): boolean {
+  if (typeof window === 'undefined') return false;
+  try {
+    return localStorage.getItem('api_keys_connected') === 'true';
+  } catch {
+    return false;
+  }
+}
+
 export type BuildHeadersOptions = {
   json?: boolean;
   forceGeminiAsPrimary?: boolean;
@@ -140,9 +149,12 @@ export function buildStrataxHeaders(options?: BuildHeadersOptions): HeadersInit 
   if (jwt) headers["Authorization"] = `Bearer ${jwt}`;
 
   // User-provided LLM keys
-  // IMPORTANT: In guest/demo mode (no JWT), do NOT attach BYOK headers.
-  // Otherwise stale localStorage keys can flip the backend into "registered" mode.
-  const allowUserKeys = !!jwt;
+  // Attach keys when:
+  // - authenticated via JWT, OR
+  // - user explicitly connected keys (api_keys_connected=true)
+  // This supports Quick Start/BYOK flows without requiring JWT while still
+  // avoiding accidental attachment from stale localStorage in true demo mode.
+  const allowUserKeys = !!jwt || hasExplicitByokConnectionFlag();
   const { groqKey, geminiKey } = allowUserKeys ? getUserKeys() : {};
   if (groqKey) headers["X-API-Key"] = groqKey;
   if (geminiKey) headers["X-Gemini-Key"] = geminiKey;
@@ -214,6 +226,15 @@ function shouldLogoutFor401(url: string, body: any): boolean {
 
   // Default: be conservative and don't log out.
   return false;
+}
+
+function dispatchByokRequiredEvent(opts: { status: number; url: string; detail: any }) {
+  if (typeof window === 'undefined') return;
+  try {
+    window.dispatchEvent(new CustomEvent('byok:required', { detail: opts }));
+  } catch {
+    // ignore
+  }
 }
 
 function dispatchDemoEvents(opts: {
@@ -297,6 +318,8 @@ export async function strataxFetch(
         }
 
         if (!shouldLogoutFor401(url, body)) {
+          // Surface a UI hint for missing/invalid user key.
+          dispatchByokRequiredEvent({ status: res.status, url, detail: body?.detail ?? body });
           return res;
         }
 
@@ -336,6 +359,11 @@ export async function strataxFetch(
       } catch {
         // ignore
       }
+    }
+
+    // Non-session 401/403 (e.g. missing/invalid LLM API key): prompt BYOK settings.
+    if ((res.status === 401 || res.status === 403) && typeof window !== 'undefined' && !shouldLogoutFor401(url, body)) {
+      dispatchByokRequiredEvent({ status: res.status, url, detail: body?.detail ?? body });
     }
 
     const detail = body?.detail ?? body;

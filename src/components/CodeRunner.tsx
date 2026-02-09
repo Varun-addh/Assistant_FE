@@ -789,7 +789,7 @@ export const CodeRunner = () => {
   };
 
   return (
-    <div className="w-screen max-w-none px-0 h-screen md:h-[calc(100vh-48px)]">
+    <div className="w-full max-w-none px-0 h-[var(--app-height)] md:h-[calc(100vh-48px)] overflow-x-hidden">
       {/* Top toolbar - Mobile Optimized */}
       <div className="flex items-center justify-between gap-2 px-2 md:px-4 py-2 border-b bg-background/95">
         <div className="flex items-center gap-1 md:gap-2">

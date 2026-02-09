@@ -37,8 +37,16 @@ html {
    Uses CSS variables updated by JS (see InterviewAssistant).
    Goal: prevent whole-page jump when keyboard opens; lift fixed footer instead. */
 :root {
-  --app-height: 100vh;
+  --app-height: 100dvh;
   --keyboard-offset: 0px;
+  --safe-top: env(safe-area-inset-top);
+  --safe-bottom: env(safe-area-inset-bottom);
+}
+
+@supports not (height: 100dvh) {
+  :root {
+    --app-height: 100vh;
+  }
 }
 
 .ia-fixed-bottom {

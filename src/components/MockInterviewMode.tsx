@@ -128,6 +128,8 @@ export const MockInterviewMode = ({ selectedHistorySession, onHistoryUpdate }: M
   // Feedback state
   const [currentFeedback, setCurrentFeedback] = useState<SubmitAnswerResponse["evaluation"] | null>(null);
   const [followUpQuestions, setFollowUpQuestions] = useState<string[]>([]);
+  const [evaluationTrace, setEvaluationTrace] = useState<SubmitAnswerResponse["evaluation_trace"] | null>(null);
+  const [trajectory, setTrajectory] = useState<SubmitAnswerResponse["trajectory"] | null>(null);
 
   // Summary state
   const [summary, setSummary] = useState<SessionSummaryResponse | null>(null);
@@ -138,6 +140,8 @@ export const MockInterviewMode = ({ selectedHistorySession, onHistoryUpdate }: M
     answer: string;
     feedback: SubmitAnswerResponse["evaluation"];
     followUps: string[];
+    evaluationTrace?: SubmitAnswerResponse["evaluation_trace"] | null;
+    trajectory?: SubmitAnswerResponse["trajectory"] | null;
   }>>([]);
 
   // Selected question for side-by-side comparison in summary
@@ -463,11 +467,15 @@ export const MockInterviewMode = ({ selectedHistorySession, onHistoryUpdate }: M
           answer: answerText,
           feedback: response.evaluation,
           followUps: response.follow_up_questions || [],
+          evaluationTrace: response.evaluation_trace ?? null,
+          trajectory: response.trajectory ?? null,
         }]);
       }
 
       setCurrentFeedback(response.evaluation);
       setFollowUpQuestions(response.follow_up_questions || []);
+      setEvaluationTrace(response.evaluation_trace ?? null);
+      setTrajectory(response.trajectory ?? null);
       setPhase("feedback");
 
       if (response.is_last_question) {
@@ -573,6 +581,8 @@ export const MockInterviewMode = ({ selectedHistorySession, onHistoryUpdate }: M
     } else {
       setPhase("interview");
       setCurrentFeedback(null);
+      setEvaluationTrace(null);
+      setTrajectory(null);
       setCurrentHint(null);
       setHintLevel(1);
       setQuestionStartTime(Date.now());
@@ -587,6 +597,8 @@ export const MockInterviewMode = ({ selectedHistorySession, onHistoryUpdate }: M
     setSessionId(null);
     setCurrentQuestion(null);
     setCurrentFeedback(null);
+    setEvaluationTrace(null);
+    setTrajectory(null);
     setSummary(null);
     setUserAnswer("");
     setCodeAnswer("");
@@ -1722,6 +1734,8 @@ export const MockInterviewMode = ({ selectedHistorySession, onHistoryUpdate }: M
 
   const handleCloseFeedback = () => {
     setPhase("interview");
+    setEvaluationTrace(null);
+    setTrajectory(null);
   };
 
   const handleViewPreviousQuestion = (index: number) => {
@@ -1729,6 +1743,8 @@ export const MockInterviewMode = ({ selectedHistorySession, onHistoryUpdate }: M
       const previous = questionHistory[index];
       setCurrentFeedback(previous.feedback);
       setFollowUpQuestions(previous.followUps);
+      setEvaluationTrace(previous.evaluationTrace ?? null);
+      setTrajectory(previous.trajectory ?? null);
       setCurrentQuestion(previous.question);
     }
   };
@@ -1789,6 +1805,51 @@ export const MockInterviewMode = ({ selectedHistorySession, onHistoryUpdate }: M
                 </h3>
                 <p className="text-sm text-muted-foreground leading-relaxed">{currentFeedback.performance_summary}</p>
               </div>
+
+              {/* Why this score */}
+              {evaluationTrace && Array.isArray((evaluationTrace as any).why) && (evaluationTrace as any).why.length > 0 && (
+                <div className="bg-muted/50 rounded-lg p-5 border">
+                  <h3 className="text-base font-semibold mb-3">Why this score</h3>
+                  <ul className="space-y-2">
+                    {(evaluationTrace as any).why.map((line: any, idx: number) => (
+                      <li key={idx} className="flex gap-2 items-start text-sm">
+                        <span className="text-primary font-bold mt-0.5">•</span>
+                        <span className="text-muted-foreground flex-1">{String(line)}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+
+              {/* Session trajectory */}
+              {trajectory && ((trajectory as any).note || (trajectory as any).overall || (trajectory as any).dimensions) && (
+                <div className="bg-muted/50 rounded-lg p-5 border">
+                  <div className="flex items-center justify-between gap-3 mb-2">
+                    <h3 className="text-base font-semibold">Session trajectory</h3>
+                    {typeof (trajectory as any)?.overall?.delta === 'number' && (
+                      <Badge variant="outline">
+                        Overall Δ {(trajectory as any).overall.delta > 0 ? '+' : ''}{(trajectory as any).overall.delta}
+                      </Badge>
+                    )}
+                  </div>
+                  {typeof (trajectory as any).note === 'string' && (trajectory as any).note.trim() && (
+                    <p className="text-sm text-muted-foreground leading-relaxed">{(trajectory as any).note}</p>
+                  )}
+                  {(trajectory as any).dimensions && typeof (trajectory as any).dimensions === 'object' && (
+                    <div className="flex flex-wrap gap-2 pt-3">
+                      {Object.entries((trajectory as any).dimensions as Record<string, any>).map(([dim, info]) => {
+                        const delta = (info as any)?.delta;
+                        if (typeof delta !== 'number') return null;
+                        return (
+                          <Badge key={dim} variant="secondary" className="capitalize">
+                            {dim} Δ {delta > 0 ? '+' : ''}{delta}
+                          </Badge>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+              )}
 
               {/* Criteria Scores */}
               <div>
@@ -2253,6 +2314,69 @@ export const MockInterviewMode = ({ selectedHistorySession, onHistoryUpdate }: M
               </div>
 
               <Separator />
+
+              {/* Optional: trajectory + evaluation trace */}
+              {summary.trajectory && (
+                ((summary.trajectory as any).note || (summary.trajectory as any).overall || (summary.trajectory as any).dimensions) && (
+                  <div className="bg-muted/50 rounded-lg p-4 border">
+                    <div className="flex items-center justify-between gap-2">
+                      <div className="text-sm font-semibold">Session trajectory</div>
+                      {typeof (summary.trajectory as any)?.overall?.delta === 'number' && (
+                        <Badge variant="outline">
+                          Overall Δ {(summary.trajectory as any).overall.delta > 0 ? '+' : ''}{(summary.trajectory as any).overall.delta}
+                        </Badge>
+                      )}
+                    </div>
+                    {typeof (summary.trajectory as any).note === 'string' && (summary.trajectory as any).note.trim() && (
+                      <div className="text-xs text-muted-foreground mt-2 leading-relaxed">{(summary.trajectory as any).note}</div>
+                    )}
+                    {(summary.trajectory as any).dimensions && typeof (summary.trajectory as any).dimensions === 'object' && (
+                      <div className="flex flex-wrap gap-2 pt-3">
+                        {Object.entries((summary.trajectory as any).dimensions as Record<string, any>).map(([dim, info]) => {
+                          const delta = (info as any)?.delta;
+                          if (typeof delta !== 'number') return null;
+                          return (
+                            <Badge key={dim} variant="secondary" className="capitalize">
+                              {dim} Δ {delta > 0 ? '+' : ''}{delta}
+                            </Badge>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
+                )
+              )}
+
+              {summary.evaluation_trace && (
+                (((summary.evaluation_trace as any).criteria_averages && typeof (summary.evaluation_trace as any).criteria_averages === 'object') ||
+                  (Array.isArray((summary.evaluation_trace as any).why) && (summary.evaluation_trace as any).why.length > 0)) && (
+                  <div className="bg-muted/50 rounded-lg p-4 border">
+                    <div className="text-sm font-semibold mb-2">Why this score</div>
+                    {(summary.evaluation_trace as any).criteria_averages && typeof (summary.evaluation_trace as any).criteria_averages === 'object' && (
+                      <div className="flex flex-wrap gap-2">
+                        {Object.entries((summary.evaluation_trace as any).criteria_averages as Record<string, any>).map(([k, v]) => {
+                          if (typeof v !== 'number') return null;
+                          return (
+                            <Badge key={k} variant="secondary" className="capitalize">
+                              {k}: {v}
+                            </Badge>
+                          );
+                        })}
+                      </div>
+                    )}
+                    {Array.isArray((summary.evaluation_trace as any).why) && (summary.evaluation_trace as any).why.length > 0 && (
+                      <ul className="space-y-1.5 mt-3">
+                        {(summary.evaluation_trace as any).why.map((line: any, idx: number) => (
+                          <li key={idx} className="flex gap-2 items-start text-xs">
+                            <span className="text-primary font-bold mt-0.5">•</span>
+                            <span className="text-muted-foreground flex-1">{String(line)}</span>
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+                  </div>
+                )
+              )}
 
               <div>
                 <h3 className="text-sm font-semibold mb-3">Question Performance - Click to Compare Answers</h3>

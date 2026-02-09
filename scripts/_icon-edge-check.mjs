@@ -58,9 +58,7 @@ async function borderStats(file) {
 
 const files = [
   "public/icons/stratax-ai-512.png",
-  "public/icons/stratax-ai-maskable-512.png",
   "public/icons/stratax-ai-192.png",
-  "public/icons/stratax-ai-maskable-192.png",
 ];
 
 for (const f of files) {
