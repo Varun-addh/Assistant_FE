@@ -232,9 +232,9 @@ export const ArchitectureGenerator: React.FC<ArchitectureGeneratorProps> = ({
     // ============================================================================
 
     const renderFormSection = () => (
-        <div className="space-y-6 bg-white dark:bg-gray-800 rounded-lg shadow-lg p-6">
+        <div className="space-y-6 bg-white dark:bg-gray-800 rounded-lg shadow-lg p-4 sm:p-6">
             <div>
-                <h2 className="text-2xl font-bold text-gray-900 dark:text-white mb-2">
+                <h2 className="text-xl sm:text-2xl font-bold text-gray-900 dark:text-white mb-2">
                     Generate Architecture Diagrams
                 </h2>
                 <p className="text-gray-600 dark:text-gray-400">
@@ -430,11 +430,11 @@ export const ArchitectureGenerator: React.FC<ArchitectureGeneratorProps> = ({
         const currentSvg = renderedSvgs.get(currentView.view_type);
 
         return (
-            <div className="space-y-6 bg-white dark:bg-gray-800 rounded-lg shadow-lg p-6">
+            <div className="space-y-6 bg-white dark:bg-gray-800 rounded-lg shadow-lg p-4 sm:p-6">
                 {/* Header */}
                 <div className="flex items-start justify-between">
                     <div>
-                        <h2 className="text-2xl font-bold text-gray-900 dark:text-white mb-2">
+                        <h2 className="text-xl sm:text-2xl font-bold text-gray-900 dark:text-white mb-2">
                             {architecturePackage.system_name}
                         </h2>
                         <p className="text-gray-600 dark:text-gray-400">
@@ -564,7 +564,7 @@ export const ArchitectureGenerator: React.FC<ArchitectureGeneratorProps> = ({
     // ============================================================================
 
     return (
-        <div className={`max-w-7xl mx-auto p-6 space-y-8 ${className}`}>
+        <div className={`max-w-7xl mx-auto px-3 py-4 sm:p-6 space-y-6 sm:space-y-8 ${className}`}>
             {renderFormSection()}
             {renderResultsSection()}
         </div>

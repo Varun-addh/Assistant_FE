@@ -154,7 +154,7 @@ export const InterviewCodeEditor = ({
 
       {/* Main Editor Area */}
       <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-        <TabsList className="grid w-full grid-cols-4">
+        <TabsList className="grid w-full grid-cols-2 sm:grid-cols-4">
           <TabsTrigger value="editor">Editor</TabsTrigger>
           <TabsTrigger value="tests">Test Cases ({testCases.length})</TabsTrigger>
           <TabsTrigger value="hints" disabled={hints.length === 0}>

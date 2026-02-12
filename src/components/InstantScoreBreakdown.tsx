@@ -106,11 +106,11 @@ export default function InstantScoreBreakdown({ sessionId, onViewProgress }: Ins
         </CardHeader>
         <CardContent>
           <div className="text-center mb-6">
-            <div className="flex items-center justify-center gap-3 mb-2">
-              <span className={`text-7xl font-bold ${getScoreColor(score.overall_score)}`}>
+            <div className="flex items-center justify-center gap-2 sm:gap-3 mb-2">
+              <span className={`text-5xl sm:text-7xl font-bold ${getScoreColor(score.overall_score)}`}>
                 {score.overall_score.toFixed(0)}
               </span>
-              <span className="text-3xl text-muted-foreground">/100</span>
+              <span className="text-xl sm:text-3xl text-muted-foreground">/100</span>
             </div>
             <Progress value={score.overall_score} className="h-3 max-w-md mx-auto" />
           </div>

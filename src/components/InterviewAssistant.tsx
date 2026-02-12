@@ -70,7 +70,7 @@ import { apiCreateSession, apiSubmitQuestion, apiSubmitQuestionStream, apiGetHis
 import { apiRenderMermaid } from "@/lib/api";
 import { downloadAnswerPdf } from "@/lib/utils";
 import { generateArchitecture, type ArchitecturePackage } from "@/lib/architectureApi";
-import { Plus, Check } from "lucide-react";
+import { Plus, Check, FileText, XCircle } from "lucide-react";
 import { apiGetMockInterviewHistory, apiDeleteMockInterviewSession, apiDeleteAllMockInterviewSessions, type MockInterviewHistorySession } from "@/lib/mockInterviewApi";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -93,6 +93,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
+import { Checkbox } from "@/components/ui/checkbox";
 import { BYOKOnboarding } from "./BYOKOnboarding";
 import { OnboardingOverlay } from "./OnboardingOverlay";
 import { ApiKeySettings } from "./ApiKeySettings";
@@ -104,6 +105,12 @@ import { isDevelopmentMode, hasValidApiKeys } from "@/lib/devUtils";
 import { useAuth } from "@/context/AuthContext";
 import { Badge } from "@/components/ui/badge";
 import { usePwaInstall } from "@/context/PwaInstallContext";
+
+/** Extract short extension label from a filename */
+const ext = (name: string) => {
+  const parts = name.split('.');
+  return parts.length > 1 ? parts.pop()!.toUpperCase() : 'FILE';
+};
 
 export const InterviewAssistant = () => {
   const { user, loading: authLoading, logout } = useAuth();
@@ -324,6 +331,7 @@ export const InterviewAssistant = () => {
   const profileInputRef = useRef<HTMLInputElement>(null);
   const [isUploadingProfile, setIsUploadingProfile] = useState(false);
   const [lastUploadedProfile, setLastUploadedProfile] = useState<{ name: string; characters: number } | null>(null);
+  const [pendingAttachment, setPendingAttachment] = useState<{ name: string; type: string } | null>(null);
 
   // Architecture mode selection state
   const [showArchitectureChoice, setShowArchitectureChoice] = useState(false);
@@ -338,10 +346,18 @@ export const InterviewAssistant = () => {
   const [newSessionTitle, setNewSessionTitle] = useState("");
   const [isRenaming, setIsRenaming] = useState(false);
 
-  // Destructive confirmation: delete conversation (in-app modal; replaces native window.confirm)
-  const [deleteConversationDialogOpen, setDeleteConversationDialogOpen] = useState(false);
-  const [deleteConversationTarget, setDeleteConversationTarget] = useState<{ sessionId: string; title?: string } | null>(null);
-  const [isDeletingConversation, setIsDeletingConversation] = useState(false);
+  type DestructiveConfirmConfig = {
+    title: string;
+    description: React.ReactNode;
+    confirmLabel?: string;
+    requireAckLabel?: string;
+    onConfirm: () => Promise<void>;
+  };
+
+  const [destructiveConfirmOpen, setDestructiveConfirmOpen] = useState(false);
+  const [destructiveConfirmConfig, setDestructiveConfirmConfig] = useState<DestructiveConfirmConfig | null>(null);
+  const [destructiveConfirmBusy, setDestructiveConfirmBusy] = useState(false);
+  const [destructiveConfirmAck, setDestructiveConfirmAck] = useState(false);
 
   // Streaming state for typewriter animation
   const [streaming, setStreaming] = useState(false);
@@ -353,65 +369,87 @@ export const InterviewAssistant = () => {
   const [isExportingPdf, setIsExportingPdf] = useState(false);
   const [exportingSessionId, setExportingSessionId] = useState<string | null>(null);
 
-  const openDeleteConversationDialog = (targetSessionId: string) => {
-    const currentSession = Array.isArray(sessions) ? sessions.find((s) => s.session_id === targetSessionId) : null;
-    setDeleteConversationTarget({
-      sessionId: targetSessionId,
-      title: currentSession?.custom_title || currentSession?.title || undefined,
-    });
-    setDeleteConversationDialogOpen(true);
+  const openDestructiveConfirm = (config: DestructiveConfirmConfig) => {
+    setDestructiveConfirmConfig(config);
+    setDestructiveConfirmAck(false);
+    setDestructiveConfirmOpen(true);
   };
 
-  const closeDeleteConversationDialog = () => {
-    if (isDeletingConversation) return;
-    setDeleteConversationDialogOpen(false);
-    setDeleteConversationTarget(null);
+  const closeDestructiveConfirm = () => {
+    if (destructiveConfirmBusy) return;
+    setDestructiveConfirmOpen(false);
+    setDestructiveConfirmConfig(null);
+    setDestructiveConfirmAck(false);
   };
 
-  const confirmDeleteConversation = async () => {
-    if (!deleteConversationTarget) return;
-    const targetSessionId = deleteConversationTarget.sessionId;
-    setIsDeletingConversation(true);
+  const runDestructiveConfirm = async () => {
+    if (!destructiveConfirmConfig) return;
+    if (destructiveConfirmConfig.requireAckLabel && !destructiveConfirmAck) return;
+    setDestructiveConfirmBusy(true);
     try {
-      markSessionDeleted(targetSessionId);
-      await apiDeleteSession(targetSessionId);
-      setSessions((prev) => prev.filter((ps) => ps.session_id !== targetSessionId));
+      await destructiveConfirmConfig.onConfirm();
+    } finally {
+      setDestructiveConfirmBusy(false);
+      setDestructiveConfirmOpen(false);
+      setDestructiveConfirmConfig(null);
+      setDestructiveConfirmAck(false);
+    }
+  };
 
+  const deleteConversationById = async (targetSessionId: string) => {
+    markSessionDeleted(targetSessionId);
+    await apiDeleteSession(targetSessionId);
+    setSessions((prev) => prev.filter((ps) => ps.session_id !== targetSessionId));
+    try {
+      window.localStorage.removeItem(`ia_history_archive_${targetSessionId}`);
+    } catch {
+      // ignore
+    }
+
+    if (targetSessionId === sessionId) {
+      setShowAnswer(false);
+      setAnswer("");
+      setLastQuestion("");
+      setQuestion("");
+      setHistory(null);
+      setSessionId("");
+      setOriginalQA(null);
+      setLatestQA(null);
+      setCurrentVersion(0);
       try {
-        // Clear the history archive for this session (if present)
-        window.localStorage.removeItem(`ia_history_archive_${targetSessionId}`);
+        window.localStorage.removeItem("ia_session_id");
+        window.localStorage.removeItem("ia_last_question");
+        window.localStorage.removeItem("ia_last_answer");
+        window.localStorage.setItem("ia_show_answer", "false");
       } catch {
         // ignore
       }
-
-      if (targetSessionId === sessionId) {
-        setShowAnswer(false);
-        setAnswer("");
-        setLastQuestion("");
-        setQuestion("");
-        setHistory(null);
-        setSessionId("");
-        setOriginalQA(null);
-        setLatestQA(null);
-        setCurrentVersion(0);
-        try {
-          window.localStorage.removeItem("ia_session_id");
-          window.localStorage.removeItem("ia_last_question");
-          window.localStorage.removeItem("ia_last_answer");
-          window.localStorage.setItem("ia_show_answer", "false");
-        } catch {
-          // ignore
-        }
-      }
-
-      toast({ title: "Conversation deleted" });
-      setDeleteConversationDialogOpen(false);
-      setDeleteConversationTarget(null);
-    } catch (err) {
-      toast({ title: "Delete failed", variant: "destructive" });
-    } finally {
-      setIsDeletingConversation(false);
     }
+  };
+
+  const openDeleteConversationDialog = (targetSessionId: string) => {
+    const currentSession = Array.isArray(sessions) ? sessions.find((s) => s.session_id === targetSessionId) : null;
+    const title = currentSession?.custom_title || currentSession?.title || undefined;
+
+    openDestructiveConfirm({
+      title: "Delete conversation?",
+      description: (
+        <>
+          This will permanently delete this conversation. This action cannot be undone.
+          {title ? <span className="block mt-2">Conversation: “{title}”</span> : null}
+        </>
+      ),
+      confirmLabel: "Delete",
+      onConfirm: async () => {
+        try {
+          await deleteConversationById(targetSessionId);
+          toast({ title: "Conversation deleted" });
+        } catch (err) {
+          toast({ title: "Delete failed", variant: "destructive" });
+          throw err;
+        }
+      },
+    });
   };
 
   const isValidSessionId = (value: unknown): value is string => {
@@ -1096,16 +1134,16 @@ export const InterviewAssistant = () => {
         onProgress: (stage) => {
           // Update toast with progress
           toast({
-            title: `📄 ${stage}`,
+            title: `Exporting: ${stage}`,
             description: stage === 'Complete!' ? 'PDF ready!' : 'Please wait...',
             duration: stage === 'Complete!' ? 3000 : 60000,
           });
         }
       });
-      toast({ title: "Export Complete!", description: "Your PDF has been downloaded." });
+      toast({ title: "Export complete", description: "Your PDF has been downloaded.", variant: 'success' });
     } catch (e) {
       console.error('[PDF Export] Error:', e);
-      toast({ title: "Export failed", description: String(e), variant: "destructive" });
+      toast({ title: 'Export failed', description: 'Could not generate the PDF. Please try again or check your connection.', variant: 'destructive' });
     } finally {
       // Always reset loading state
       setIsExportingPdf(false);
@@ -1145,17 +1183,17 @@ export const InterviewAssistant = () => {
         fileName: `Stratax-Interview-Intelligence-${tab.tab_id.slice(0, 8)}.pdf`,
         onProgress: (stage) => {
           toast({
-            title: `📄 ${stage}`,
+            title: `Exporting: ${stage}`,
             description: stage === 'Complete!' ? 'PDF ready!' : 'Please wait...',
             duration: stage === 'Complete!' ? 3000 : 60000,
           });
         }
       });
 
-      toast({ title: "Export Complete!", description: "Your PDF has been downloaded." });
+      toast({ title: "Export complete", description: "Your PDF has been downloaded.", variant: 'success' });
     } catch (e) {
       console.error('[PDF Export] Error:', e);
-      toast({ title: "Export failed", description: String(e), variant: "destructive" });
+      toast({ title: 'Export failed', description: 'Could not generate the PDF. Please try again or check your connection.', variant: 'destructive' });
     } finally {
       setIsExportingPdf(false);
       setExportingSessionId(null);
@@ -1163,37 +1201,47 @@ export const InterviewAssistant = () => {
   };
 
   const handleDeleteAllSessions = async () => {
-    if (!window.confirm("Delete ALL chat conversations? This cannot be undone.")) return;
-    if (!window.confirm("Are you absolutely sure? All your chat history will be permanently deleted.")) return;
-
-    try {
-      // Delete each session individually (backend doesn't have a bulk delete endpoint for chat sessions)
-      const sessionsToDelete = [...sessions]; // Copy to avoid state mutation during loop
-
-      for (const session of sessionsToDelete) {
+    openDestructiveConfirm({
+      title: "Delete all conversations?",
+      description: "This will permanently delete all chat conversations. This action cannot be undone.",
+      confirmLabel: "Delete all",
+      requireAckLabel: "I understand this will permanently delete all conversations",
+      onConfirm: async () => {
         try {
-          // Add to blacklist and persist immediately
-          markSessionDeleted(session.session_id);
-          await apiDeleteSession(session.session_id);
+          const sessionsToDelete = [...sessions];
+
+          for (const session of sessionsToDelete) {
+            try {
+              markSessionDeleted(session.session_id);
+              await apiDeleteSession(session.session_id);
+              try {
+                window.localStorage.removeItem(`ia_history_archive_${session.session_id}`);
+              } catch {
+                // ignore
+              }
+            } catch (err) {
+              console.error(`Failed to delete session ${session.session_id}:`, err);
+            }
+          }
+
+          setSessions([]);
+          setHistory(null);
+          setShowAnswer(false);
+          setSessionId("");
+          try {
+            window.localStorage.removeItem("ia_session_id");
+            window.localStorage.removeItem("ia_sessions_cache");
+          } catch {
+            // ignore
+          }
+
+          toast({ title: "All conversations deleted", description: `${sessionsToDelete.length} chat sessions removed` });
         } catch (err) {
-          console.error(`Failed to delete session ${session.session_id}:`, err);
+          toast({ title: "Failed to clear all conversations", variant: "destructive" });
+          throw err;
         }
-      }
-
-      // Clear UI state
-      setSessions([]);
-      setHistory(null);
-      setShowAnswer(false);
-      setSessionId("");
-      try {
-        window.localStorage.removeItem("ia_session_id");
-        window.localStorage.removeItem("ia_sessions_cache");
-      } catch { }
-
-      toast({ title: "All conversations deleted", description: `${sessionsToDelete.length} chat sessions removed` });
-    } catch (err) {
-      toast({ title: "Failed to clear all conversations", variant: "destructive" });
-    }
+      },
+    });
   };
 
   const handleNewChat = async () => {
@@ -1276,6 +1324,7 @@ export const InterviewAssistant = () => {
         if (!sid) sid = await ensureSession({ forceNew: false });
         const res = await apiUploadProfile({ session_id: sid as string, file });
         setLastUploadedProfile({ name: file.name, characters: res.characters });
+        setPendingAttachment({ name: file.name, type: file.type || ext(file.name) });
         toast({ title: "Profile uploaded", description: `${file.name} • ${res.characters.toLocaleString()} characters indexed.` });
       } catch (err: any) {
         const msg = String(err?.message || "");
@@ -1284,6 +1333,7 @@ export const InterviewAssistant = () => {
           sid = await ensureSession({ forceNew: true });
           const res = await apiUploadProfile({ session_id: sid as string, file });
           setLastUploadedProfile({ name: file.name, characters: res.characters });
+          setPendingAttachment({ name: file.name, type: file.type || ext(file.name) });
           toast({ title: "Profile uploaded", description: `${file.name} • ${res.characters.toLocaleString()} characters indexed.` });
         } else {
           throw err;
@@ -1344,80 +1394,88 @@ export const InterviewAssistant = () => {
   };
 
   const handleDeleteIntelligenceHistoryTab = async (tabId: string) => {
-    const confirmed = window.confirm("Delete this search history entry?");
-    if (!confirmed) return;
-    setIntelligenceHistoryDeletingTabId(tabId);
-    try {
-      await apiDeleteHistoryTab(tabId);
-      setIntelligenceHistoryTabs((prev) => {
-        const filtered = prev.filter((tab) => tab.tab_id !== tabId);
-        // If the deleted tab was selected, select the first remaining tab or clear selection
-        if (selectedIntelligenceHistoryTabId === tabId) {
-          if (filtered.length > 0) {
-            setSelectedIntelligenceHistoryTabId(filtered[0].tab_id);
-            // Navigate to the next available tab
-            setPendingIntelligenceHistorySelection({ tab: filtered[0], type: 'select', ts: Date.now() });
-          } else {
-            setSelectedIntelligenceHistoryTabId(null);
-            // Clear the view since no tabs remain
-            setPendingIntelligenceHistorySelection({ type: 'clear', ts: Date.now() });
+    openDestructiveConfirm({
+      title: "Delete saved search?",
+      description: "This will permanently delete this saved search. This action cannot be undone.",
+      confirmLabel: "Delete",
+      onConfirm: async () => {
+        setIntelligenceHistoryDeletingTabId(tabId);
+        try {
+          await apiDeleteHistoryTab(tabId);
+          setIntelligenceHistoryTabs((prev) => {
+            const filtered = prev.filter((tab) => tab.tab_id !== tabId);
+            if (selectedIntelligenceHistoryTabId === tabId) {
+              if (filtered.length > 0) {
+                setSelectedIntelligenceHistoryTabId(filtered[0].tab_id);
+                setPendingIntelligenceHistorySelection({ tab: filtered[0], type: 'select', ts: Date.now() });
+              } else {
+                setSelectedIntelligenceHistoryTabId(null);
+                setPendingIntelligenceHistorySelection({ type: 'clear', ts: Date.now() });
+              }
+            }
+            return filtered;
+          });
+          try {
+            const cached = window.localStorage.getItem('intelligence_history_cache');
+            if (cached) {
+              const tabs = JSON.parse(cached) as HistoryTabSummary[];
+              const updated = tabs.filter(t => t.tab_id !== tabId);
+              window.localStorage.setItem('intelligence_history_cache', JSON.stringify(updated));
+            }
+          } catch (e) {
+            console.warn("[InterviewAssistant] Failed to update history cache after delete", e);
           }
+          toast({
+            title: "History entry deleted",
+            description: "The saved search has been removed.",
+          });
+        } catch (err: unknown) {
+          toast({
+            title: "Failed to delete history",
+            description: (err as Error)?.message || "Could not remove saved search.",
+            variant: "destructive",
+          });
+          throw err;
+        } finally {
+          setIntelligenceHistoryDeletingTabId(null);
         }
-        return filtered;
-      });
-      // Also update localStorage cache to prevent reappearing on refresh
-      try {
-        const cached = window.localStorage.getItem('intelligence_history_cache');
-        if (cached) {
-          const tabs = JSON.parse(cached) as HistoryTabSummary[];
-          const updated = tabs.filter(t => t.tab_id !== tabId);
-          window.localStorage.setItem('intelligence_history_cache', JSON.stringify(updated));
-        }
-      } catch (e) {
-        console.warn("[InterviewAssistant] Failed to update history cache after delete", e);
-      }
-      toast({
-        title: "History entry deleted",
-        description: "The saved search has been removed.",
-      });
-    } catch (err: unknown) {
-      toast({
-        title: "Failed to delete history",
-        description: (err as Error)?.message || "Could not remove saved search.",
-        variant: "destructive",
-      });
-    } finally {
-      setIntelligenceHistoryDeletingTabId(null);
-    }
+      },
+    });
   };
 
   const handleDeleteAllIntelligenceHistory = async () => {
-    const confirmed = window.confirm("Delete ALL saved searches? This cannot be undone.");
-    if (!confirmed) return;
-    const doubleConfirmed = window.confirm("Are you absolutely sure? This action is permanent.");
-    if (!doubleConfirmed) return;
-    setIntelligenceHistoryClearingAll(true);
-    try {
-      const result = await apiDeleteAllHistory();
-      setIntelligenceHistoryTabs([]);
-      setSelectedIntelligenceHistoryTabId(null);
-      // Clear localStorage cache
-      try {
-        window.localStorage.removeItem('intelligence_history_cache');
-      } catch (e) { }
-      toast({
-        title: "History cleared",
-        description: result?.message || "All saved searches were deleted.",
-      });
-    } catch (err: unknown) {
-      toast({
-        title: "Failed to clear history",
-        description: (err as Error)?.message || "Could not delete saved searches.",
-        variant: "destructive",
-      });
-    } finally {
-      setIntelligenceHistoryClearingAll(false);
-    }
+    openDestructiveConfirm({
+      title: "Delete all saved searches?",
+      description: "This will permanently delete all saved searches. This action cannot be undone.",
+      confirmLabel: "Delete all",
+      requireAckLabel: "I understand this will permanently delete all saved searches",
+      onConfirm: async () => {
+        setIntelligenceHistoryClearingAll(true);
+        try {
+          const result = await apiDeleteAllHistory();
+          setIntelligenceHistoryTabs([]);
+          setSelectedIntelligenceHistoryTabId(null);
+          try {
+            window.localStorage.removeItem('intelligence_history_cache');
+          } catch {
+            // ignore
+          }
+          toast({
+            title: "History cleared",
+            description: result?.message || "All saved searches were deleted.",
+          });
+        } catch (err: unknown) {
+          toast({
+            title: "Failed to clear history",
+            description: (err as Error)?.message || "Could not delete saved searches.",
+            variant: "destructive",
+          });
+          throw err;
+        } finally {
+          setIntelligenceHistoryClearingAll(false);
+        }
+      },
+    });
   };
 
   const handleSelectIntelligenceHistoryTab = (tab: HistoryTabSummary) => {
@@ -1517,74 +1575,83 @@ export const InterviewAssistant = () => {
   };
 
   const handleDeleteMockInterviewSession = async (sessionId: string) => {
-    const confirmed = window.confirm("Delete this interview session?");
-    if (!confirmed) return;
-    setMockInterviewDeletingSessionId(sessionId);
-    try {
-      const userId = localStorage.getItem("mock_interview_user_id");
-      if (!userId) {
-        throw new Error("User ID not found");
-      }
-      await apiDeleteMockInterviewSession(userId, sessionId);
-      setMockInterviewSessions((prev) => prev.filter((s) => s.session_id !== sessionId));
-      if (selectedMockSession?.session_id === sessionId) {
-        setSelectedMockSession(null);
-      }
-      // Update localStorage cache
-      try {
-        const updated = (mockInterviewSessions as MockInterviewHistorySession[]).filter((s) => s.session_id !== sessionId);
-        localStorage.setItem(`mock_interview_history_${userId}`, JSON.stringify(updated));
-      } catch {
-        // Ignore localStorage errors
-      }
-      toast({
-        title: "Session deleted",
-        description: "The interview session has been removed.",
-      });
-    } catch (err: unknown) {
-      toast({
-        title: "Failed to delete session",
-        description: (err as Error)?.message || "Could not remove interview session.",
-        variant: "destructive",
-      });
-    } finally {
-      setMockInterviewDeletingSessionId(null);
-    }
+    openDestructiveConfirm({
+      title: "Delete interview session?",
+      description: "This will permanently delete this interview session. This action cannot be undone.",
+      confirmLabel: "Delete",
+      onConfirm: async () => {
+        setMockInterviewDeletingSessionId(sessionId);
+        try {
+          const userId = localStorage.getItem("mock_interview_user_id");
+          if (!userId) {
+            throw new Error("User ID not found");
+          }
+          await apiDeleteMockInterviewSession(userId, sessionId);
+          setMockInterviewSessions((prev) => prev.filter((s) => s.session_id !== sessionId));
+          if (selectedMockSession?.session_id === sessionId) {
+            setSelectedMockSession(null);
+          }
+          try {
+            const updated = (mockInterviewSessions as MockInterviewHistorySession[]).filter((s) => s.session_id !== sessionId);
+            localStorage.setItem(`mock_interview_history_${userId}`, JSON.stringify(updated));
+          } catch {
+            // Ignore localStorage errors
+          }
+          toast({
+            title: "Session deleted",
+            description: "The interview session has been removed.",
+          });
+        } catch (err: unknown) {
+          toast({
+            title: "Failed to delete session",
+            description: (err as Error)?.message || "Could not remove interview session.",
+            variant: "destructive",
+          });
+          throw err;
+        } finally {
+          setMockInterviewDeletingSessionId(null);
+        }
+      },
+    });
   };
 
   const handleDeleteAllMockInterviewSessions = async () => {
-    const confirmed = window.confirm("Delete ALL interview sessions? This cannot be undone.");
-    if (!confirmed) return;
-    const doubleConfirmed = window.confirm("Are you absolutely sure? This action is permanent.");
-    if (!doubleConfirmed) return;
-    setMockInterviewClearingAll(true);
-    try {
-      const userId = localStorage.getItem("mock_interview_user_id");
-      if (!userId) {
-        throw new Error("User ID not found");
-      }
-      const result = await apiDeleteAllMockInterviewSessions(userId);
-      setMockInterviewSessions([]);
-      setSelectedMockSession(null);
-      // Clear localStorage cache
-      try {
-        localStorage.removeItem(`mock_interview_history_${userId}`);
-      } catch {
-        // Ignore localStorage errors
-      }
-      toast({
-        title: "History cleared",
-        description: result?.message || `Deleted ${result?.deleted_count || 0} sessions.`,
-      });
-    } catch (err: unknown) {
-      toast({
-        title: "Failed to clear history",
-        description: (err as Error)?.message || "Could not delete all sessions.",
-        variant: "destructive",
-      });
-    } finally {
-      setMockInterviewClearingAll(false);
-    }
+    openDestructiveConfirm({
+      title: "Delete all interview sessions?",
+      description: "This will permanently delete all mock interview sessions. This action cannot be undone.",
+      confirmLabel: "Delete all",
+      requireAckLabel: "I understand this will permanently delete all interview sessions",
+      onConfirm: async () => {
+        setMockInterviewClearingAll(true);
+        try {
+          const userId = localStorage.getItem("mock_interview_user_id");
+          if (!userId) {
+            throw new Error("User ID not found");
+          }
+          const result = await apiDeleteAllMockInterviewSessions(userId);
+          setMockInterviewSessions([]);
+          setSelectedMockSession(null);
+          try {
+            localStorage.removeItem(`mock_interview_history_${userId}`);
+          } catch {
+            // Ignore localStorage errors
+          }
+          toast({
+            title: "History cleared",
+            description: result?.message || `Deleted ${result?.deleted_count || 0} sessions.`,
+          });
+        } catch (err: unknown) {
+          toast({
+            title: "Failed to clear history",
+            description: (err as Error)?.message || "Could not delete all sessions.",
+            variant: "destructive",
+          });
+          throw err;
+        } finally {
+          setMockInterviewClearingAll(false);
+        }
+      },
+    });
   };
 
   const handleSelectMockSession = (session: MockInterviewHistorySession) => {
@@ -2150,8 +2217,8 @@ export const InterviewAssistant = () => {
       console.error("[mirror] submit error", err);
       try {
         (toast as any) && toast({
-          title: "Mirror analysis failed",
-          description: String(err?.body ?? err?.message ?? "Unknown error"),
+          title: "Analysis failed",
+          description: 'Could not complete the analysis. Please try again.',
           variant: "destructive",
         });
       } catch { }
@@ -2196,6 +2263,9 @@ export const InterviewAssistant = () => {
         setShowAnswer(false);
       }
 
+      // Capture the attachment state before clearing
+      const sentAttachment = pendingAttachment;
+
       // Optimistic history insert (empty answer until completion)
       // Do this BEFORE the await ensureSession to prevent flicker
       setHistory((prev) => {
@@ -2204,7 +2274,7 @@ export const InterviewAssistant = () => {
           console.log('[Generation] Session mismatch in history update, starting fresh');
           return {
             session_id: immediateSid || "pending",
-            items: [{ question: currentQuestion, answer: '', style, created_at: new Date().toISOString(), mode: questionMode }],
+            items: [{ question: currentQuestion, answer: '', style, created_at: new Date().toISOString(), mode: questionMode, attachment: sentAttachment }],
           } as GetHistoryResponse;
         }
 
@@ -2215,7 +2285,7 @@ export const InterviewAssistant = () => {
 
         const next: HistoryItem[] = hasPending || hasAnswered
           ? [...items]
-          : [{ question: currentQuestion, answer: '', style, created_at: nowIso, mode: questionMode }];
+          : [{ question: currentQuestion, answer: '', style, created_at: nowIso, mode: questionMode, attachment: sentAttachment }];
 
         if (!hasPending && !hasAnswered) {
           next.push(...items);
@@ -2227,6 +2297,7 @@ export const InterviewAssistant = () => {
       // Clear input immediately on submit so it never "sticks" on early-return flows.
       // If the request fails, we restore the user's prompt in the catch block.
       if (!overrideQuestion) setQuestion("");
+      setPendingAttachment(null);
       setLastQuestion(currentQuestion);
 
       // Now ensure session (might take a second)
@@ -2283,7 +2354,7 @@ export const InterviewAssistant = () => {
             // Surface backend diagnostics in dev: show a toast with error body if available
             console.error('[question] submit error details', err);
             try {
-              (toast as any) && toast({ title: 'Request failed', description: String(err?.body ?? err?.message ?? 'Unknown error'), variant: 'destructive' });
+              (toast as any) && toast({ title: 'Request failed', description: 'Something went wrong while processing your question. Please try again.', variant: 'destructive' });
             } catch { }
             throw err;
           }
@@ -2675,33 +2746,48 @@ export const InterviewAssistant = () => {
       )}
 
       <AlertDialog
-        open={deleteConversationDialogOpen}
+        open={destructiveConfirmOpen}
         onOpenChange={(open) => {
-          if (!open) closeDeleteConversationDialog();
-          else setDeleteConversationDialogOpen(true);
+          if (!open) closeDestructiveConfirm();
+          else setDestructiveConfirmOpen(true);
         }}
       >
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Delete conversation?</AlertDialogTitle>
-            <AlertDialogDescription>
-              This will permanently delete this conversation. This action cannot be undone.
-              {deleteConversationTarget?.title ? (
-                <span className="block mt-2">Conversation: “{deleteConversationTarget.title}”</span>
-              ) : null}
-            </AlertDialogDescription>
+            <AlertDialogTitle>{destructiveConfirmConfig?.title || "Are you sure?"}</AlertDialogTitle>
+            <AlertDialogDescription>{destructiveConfirmConfig?.description}</AlertDialogDescription>
           </AlertDialogHeader>
+          {destructiveConfirmConfig?.requireAckLabel ? (
+            <div className="flex items-start gap-2">
+              <Checkbox
+                id="destructive-confirm-ack"
+                checked={destructiveConfirmAck}
+                onCheckedChange={(v) => setDestructiveConfirmAck(!!v)}
+                disabled={destructiveConfirmBusy}
+              />
+              <Label
+                htmlFor="destructive-confirm-ack"
+                className="text-sm text-muted-foreground leading-tight cursor-pointer"
+              >
+                {destructiveConfirmConfig.requireAckLabel}
+              </Label>
+            </div>
+          ) : null}
           <AlertDialogFooter>
-            <AlertDialogCancel disabled={isDeletingConversation}>Cancel</AlertDialogCancel>
+            <AlertDialogCancel disabled={destructiveConfirmBusy}>Cancel</AlertDialogCancel>
             <AlertDialogAction
               className={buttonVariants({ variant: "destructive" })}
-              disabled={isDeletingConversation || !deleteConversationTarget}
+              disabled={
+                destructiveConfirmBusy ||
+                !destructiveConfirmConfig ||
+                (!!destructiveConfirmConfig?.requireAckLabel && !destructiveConfirmAck)
+              }
               onClick={(e) => {
                 e.preventDefault();
-                void confirmDeleteConversation();
+                void runDestructiveConfirm();
               }}
             >
-              {isDeletingConversation ? "Deleting..." : "Delete"}
+              {destructiveConfirmBusy ? "Working..." : destructiveConfirmConfig?.confirmLabel || "Delete"}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
@@ -3120,7 +3206,7 @@ export const InterviewAssistant = () => {
                                   handleSelectMockSession(session);
                                   setIsMobileSidebarOpen(false);
                                 }}
-                                className="group relative flex items-center gap-3 p-3 rounded-xl hover:bg-muted/50 cursor-pointer transition-all border border-transparent hover:border-border/40"
+                                className="group relative flex items-center gap-3 p-3 rounded-xl hover:bg-muted/50 cursor-pointer transition-all duration-200 border border-transparent hover:border-border/30 hover:shadow-sm"
                               >
                                 <div className="p-2 rounded-lg bg-primary/5 text-primary">
                                   <HistoryIcon className="h-3.5 w-3.5" />
@@ -3451,7 +3537,7 @@ export const InterviewAssistant = () => {
                         <p>No completed interviews yet. Start your first interview!</p>
                       </div>
                     ) : (
-                      <div className="divide-y">
+                      <div className="space-y-1 p-1">
                         {(() => {
                           console.log("[MockHistory] Rendering sessions, count:", mockInterviewSessions.length);
                           console.log("[MockHistory] Sessions to render:", mockInterviewSessions);
@@ -3460,13 +3546,13 @@ export const InterviewAssistant = () => {
                             return (
                               <div
                                 key={session.session_id}
-                                className={`px-4 py-3 space-y-2 border-l-2 transition-colors cursor-pointer ${selectedMockSession?.session_id === session.session_id ? "border-l-primary bg-primary/5" : "border-l-transparent"
+                                className={`group px-4 py-3 space-y-2 rounded-lg border-l-2 transition-all duration-200 cursor-pointer hover:bg-muted/50 ${selectedMockSession?.session_id === session.session_id ? "border-l-primary bg-primary/5 shadow-[0_0_12px_-3px_hsl(var(--primary)/0.25)]" : "border-l-transparent hover:border-l-primary/30"
                                   }`}
                                 onClick={() => handleSelectMockSession(session)}
                               >
                                 <div className="flex items-start justify-between gap-3">
-                                  <div className="min-w-0 flex-1">
-                                    <p className="text-sm font-medium capitalize">
+                                <div className="min-w-0 flex-1">
+                                    <p className="text-sm font-medium capitalize group-hover:text-foreground transition-colors">
                                       {session.interview_type?.replace('_', ' ') || 'Interview'} • {session.difficulty || 'Unknown'}
                                     </p>
                                     <p className="text-xs text-muted-foreground">
@@ -3960,8 +4046,24 @@ export const InterviewAssistant = () => {
                             className="space-y-3 scroll-mt-24"
                           >
                             <div className="flex justify-end pr-3 md:pr-0">
-                              <div className="max-w-[80%] md:max-w-[70%] bg-primary text-primary-foreground rounded-2xl rounded-tr-sm px-4 py-3 shadow-sm">
-                                <p className="text-sm md:text-base">{item.question}</p>
+                              <div className="max-w-[80%] md:max-w-[70%] space-y-2">
+                                {/* File attachment chip in message bubble */}
+                                {item.attachment && (
+                                  <div className="flex justify-end">
+                                    <div className="inline-flex items-center gap-3 bg-muted/50 border border-border/50 rounded-xl px-3 py-2.5 shadow-sm">
+                                      <div className="w-9 h-9 rounded-lg bg-red-500/90 flex items-center justify-center flex-shrink-0">
+                                        <FileText className="h-4 w-4 text-white" />
+                                      </div>
+                                      <div className="min-w-0">
+                                        <p className="text-sm font-medium text-foreground truncate max-w-[200px]">{item.attachment.name}</p>
+                                        <p className="text-xs text-muted-foreground">{ext(item.attachment.name)}</p>
+                                      </div>
+                                    </div>
+                                  </div>
+                                )}
+                                <div className="bg-primary text-primary-foreground rounded-2xl rounded-tr-sm px-4 py-3 shadow-sm">
+                                  <p className="text-sm md:text-base">{item.question}</p>
+                                </div>
                               </div>
                             </div>
 
@@ -4068,7 +4170,28 @@ export const InterviewAssistant = () => {
                         </div>
 
                         {/* Centered Search Bar */}
-                        <div className="flex items-end gap-3">
+                        <div className="space-y-2">
+                          {/* Pending file attachment chip */}
+                          {pendingAttachment && (
+                            <div className="flex items-center">
+                              <div className="inline-flex items-center gap-3 bg-muted/60 border border-border/60 rounded-xl px-3 py-2.5 shadow-sm max-w-xs">
+                                <div className="w-9 h-9 rounded-lg bg-red-500/90 flex items-center justify-center flex-shrink-0">
+                                  <FileText className="h-4 w-4 text-white" />
+                                </div>
+                                <div className="min-w-0 flex-1">
+                                  <p className="text-sm font-medium text-foreground truncate">{pendingAttachment.name}</p>
+                                  <p className="text-xs text-muted-foreground">{ext(pendingAttachment.name)}</p>
+                                </div>
+                                <button
+                                  onClick={() => { setPendingAttachment(null); setLastUploadedProfile(null); }}
+                                  className="flex-shrink-0 text-muted-foreground hover:text-foreground transition-colors"
+                                >
+                                  <XCircle className="h-4 w-4" />
+                                </button>
+                              </div>
+                            </div>
+                          )}
+                          <div className="flex items-end gap-3">
                           <DropdownMenu>
                             <DropdownMenuTrigger asChild>
                               <Button
@@ -4126,6 +4249,7 @@ export const InterviewAssistant = () => {
                               onModeClick={() => setQuestionMode(questionMode === "answer" ? "mirror" : "answer")}
                             />
                           </div>
+                        </div>
                         </div>
 
                         {/* Quick suggestions */}
@@ -4214,19 +4338,40 @@ export const InterviewAssistant = () => {
 
               {/* Search bar container */}
               <div className="px-4 pb-4 md:px-6 md:pb-6">
-                {/* Upload Status Indicator - Positioned absolutely above search bar */}
-                {lastUploadedProfile && (
-                  <div className="absolute bottom-full left-0 right-0 pb-2 flex items-center justify-center">
-                    <div className="bg-primary/5 dark:backdrop-blur-sm px-3 py-1 rounded-full border border-primary/10 flex items-center gap-1.5 animate-in fade-in slide-in-from-bottom-2 duration-300">
-                      <Check className="h-3 w-3 text-primary" />
-                      <span className="text-[10px] md:text-xs text-muted-foreground font-medium">
-                        Indexed: <span className="text-foreground">{lastUploadedProfile.name}</span> ({lastUploadedProfile.characters.toLocaleString()} chars)
-                      </span>
+                <div className="max-w-4xl mx-auto space-y-2">
+                  {/* Pending file attachment chip */}
+                  {pendingAttachment && (
+                    <div className="flex items-center">
+                      <div className="inline-flex items-center gap-3 bg-muted/60 border border-border/60 rounded-xl px-3 py-2.5 shadow-sm max-w-xs">
+                        <div className="w-9 h-9 rounded-lg bg-red-500/90 flex items-center justify-center flex-shrink-0">
+                          <FileText className="h-4 w-4 text-white" />
+                        </div>
+                        <div className="min-w-0 flex-1">
+                          <p className="text-sm font-medium text-foreground truncate">{pendingAttachment.name}</p>
+                          <p className="text-xs text-muted-foreground">{ext(pendingAttachment.name)}</p>
+                        </div>
+                        <button
+                          onClick={() => { setPendingAttachment(null); setLastUploadedProfile(null); }}
+                          className="flex-shrink-0 text-muted-foreground hover:text-foreground transition-colors"
+                        >
+                          <XCircle className="h-4 w-4" />
+                        </button>
+                      </div>
                     </div>
-                  </div>
-                )}
+                  )}
+                  {/* Upload status (no pending chip) */}
+                  {!pendingAttachment && lastUploadedProfile && (
+                    <div className="flex items-center justify-center">
+                      <div className="bg-primary/5 dark:backdrop-blur-sm px-3 py-1 rounded-full border border-primary/10 flex items-center gap-1.5 animate-in fade-in slide-in-from-bottom-2 duration-300">
+                        <Check className="h-3 w-3 text-primary" />
+                        <span className="text-[10px] md:text-xs text-muted-foreground font-medium">
+                          Indexed: <span className="text-foreground">{lastUploadedProfile.name}</span> ({lastUploadedProfile.characters.toLocaleString()} chars)
+                        </span>
+                      </div>
+                    </div>
+                  )}
 
-                <div className="max-w-4xl mx-auto flex items-end gap-2 md:gap-3">
+                  <div className="flex items-end gap-2 md:gap-3">
                   <DropdownMenu>
                     <DropdownMenuTrigger asChild>
                       <Button
@@ -4284,6 +4429,7 @@ export const InterviewAssistant = () => {
                       onModeClick={() => setQuestionMode(questionMode === "answer" ? "mirror" : "answer")}
                     />
                   </div>
+                </div>
                 </div>
               </div>
 

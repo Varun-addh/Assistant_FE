@@ -514,7 +514,7 @@ export const SearchBar = ({ value, onChange, placeholder = "Type your question..
 
       const key = (import.meta as any).env?.VITE_DEEPGRAM_API_KEY;
       if (!key) {
-        toast({ title: 'Missing API key', description: 'Set VITE_DEEPGRAM_API_KEY in your env.', variant: 'destructive' });
+        toast({ title: 'Speech recognition unavailable', description: 'Real-time transcription is not configured for this environment. Please contact support.', variant: 'destructive' });
         try { stream.getTracks().forEach(t => t.stop()); } catch { }
         return;
       }
@@ -668,7 +668,7 @@ export const SearchBar = ({ value, onChange, placeholder = "Type your question..
 
       const key = (import.meta as any).env?.VITE_DEEPGRAM_API_KEY;
       if (!key) {
-        toast({ title: 'Missing API key', description: 'Set VITE_DEEPGRAM_API_KEY in your env.', variant: 'destructive' });
+        toast({ title: 'Speech recognition unavailable', description: 'Real-time transcription is not configured for this environment. Please contact support.', variant: 'destructive' });
         try { stream.getTracks().forEach(t => t.stop()); } catch { }
         return;
       }

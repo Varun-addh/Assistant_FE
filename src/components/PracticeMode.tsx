@@ -50,6 +50,8 @@ import {
   submitSessionConfidence,
   uploadPracticeSessionMedia,
   postPracticeSessionProctoringEvent,
+  endPracticeSession,
+  type EndPracticeSessionResponse,
 } from '@/lib/practiceModeApi';
 import { startPracticeProctoring } from '@/lib/practiceProctoring';
 import {
@@ -71,14 +73,19 @@ import {
   Sparkles,
   ArrowRight,
   ChevronLeft,
+  ChevronDown,
   RotateCcw,
   AlertCircle,
   Trophy,
   Star,
   Flame,
   Camera,
+  Settings,
 } from 'lucide-react';
 import RoundSelection from './RoundSelection';
+import ResumeUpload, { loadSavedResumeContext } from './ResumeUpload';
+import type { ResumeContext } from '../types/resume';
+import { Collapsible, CollapsibleTrigger, CollapsibleContent } from '@/components/ui/collapsible';
 import type { RoundConfig } from '@/lib/practiceModeApi';
 import { StrataxApiError } from '@/lib/strataxClient';
 
@@ -383,9 +390,11 @@ export const PracticeMode = () => {
 
   // Quick Start state
   const [useQuickStart, setUseQuickStart] = useState(false);
+  const [welcomeStep, setWelcomeStep] = useState<'gateway' | 'configure'>('gateway');
   const [quickStartInput, setQuickStartInput] = useState('');
   const [quickStartLoading, setQuickStartLoading] = useState(false);
   const [aiMessage, setAiMessage] = useState('');
+  const [sessionSettingsOpen, setSessionSettingsOpen] = useState(false);
 
   // Setup state
   const [selectedRole, setSelectedRole] = useState<string>('Software Engineer');
@@ -396,10 +405,23 @@ export const PracticeMode = () => {
 
   // Privacy-safe camera proctoring (opt-in; event-only)
   const [enableCameraProctoring, setEnableCameraProctoring] = useState(false);
+
+  // Resume-based interviewing — parsed resume context for claim-based probing
+  const [resumeContext, setResumeContext] = useState<ResumeContext | null>(() => loadSavedResumeContext());
   const [proctoringStatus, setProctoringStatus] = useState<'inactive' | 'starting' | 'active' | 'error'>('inactive');
   const [proctoringInfo, setProctoringInfo] = useState<string>('');
   const proctoringStopRef = useRef<null | (() => void)>(null);
   const proctoringSessionIdRef = useRef<string | null>(null);
+
+  // Multiple-face proctoring warnings (max 3 → auto-end)
+  const MAX_FACE_WARNINGS = 3;
+  const [faceWarningCount, setFaceWarningCount] = useState(0);
+  const [faceWarningVisible, setFaceWarningVisible] = useState(false);
+  const faceWarningCountRef = useRef(0);
+  const faceWarningTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Lock to prevent parallel ensureCameraForProctoring() calls (race-condition guard)
+  const cameraAcquiringRef = useRef(false);
 
   // Live Practice gate: screen share + camera required by backend.
   const [liveMediaStatus, setLiveMediaStatus] = useState<'inactive' | 'starting' | 'ready' | 'error'>('inactive');
@@ -434,6 +456,7 @@ export const PracticeMode = () => {
   };
 
   const [questionEvaluations, setQuestionEvaluations] = useState<QuestionEvaluationItem[]>([]);
+  const [endedEarlyData, setEndedEarlyData] = useState<EndPracticeSessionResponse | null>(null);
 
   const stopProctoring = () => {
     try {
@@ -459,6 +482,11 @@ export const PracticeMode = () => {
     setProctoringStatus('starting');
     setProctoringInfo('');
 
+    // Reset face warnings for new session
+    faceWarningCountRef.current = 0;
+    setFaceWarningCount(0);
+    setFaceWarningVisible(false);
+
     try {
       const controller = await startPracticeProctoring({
         sessionId: practiceSessionId,
@@ -466,6 +494,31 @@ export const PracticeMode = () => {
         onStatus: (status, info) => {
           setProctoringStatus(status);
           setProctoringInfo(info ?? '');
+        },
+        onMultipleFaces: (faceCount: number) => {
+          const newCount = faceWarningCountRef.current + 1;
+          faceWarningCountRef.current = newCount;
+          setFaceWarningCount(newCount);
+          setFaceWarningVisible(true);
+
+          // Clear any existing auto-hide timer
+          if (faceWarningTimerRef.current) {
+            clearTimeout(faceWarningTimerRef.current);
+            faceWarningTimerRef.current = null;
+          }
+
+          if (newCount >= MAX_FACE_WARNINGS) {
+            // Exceeded max warnings → auto-end interview
+            console.warn(`[Proctoring] ${newCount} face warnings — auto-ending interview`);
+            // Don't auto-hide; the overlay stays until the interview ends
+            void handleEndPracticeForProctoring(faceCount, newCount);
+          } else {
+            // Show warning for 6 seconds then auto-hide
+            faceWarningTimerRef.current = setTimeout(() => {
+              setFaceWarningVisible(false);
+              faceWarningTimerRef.current = null;
+            }, 6000);
+          }
         },
       });
 
@@ -498,6 +551,10 @@ export const PracticeMode = () => {
   useEffect(() => {
     return () => {
       stopProctoring();
+      if (faceWarningTimerRef.current) {
+        clearTimeout(faceWarningTimerRef.current);
+        faceWarningTimerRef.current = null;
+      }
       try { screenRecorderRef.current?.stop(); } catch { }
       try { cameraRecorderRef.current?.stop(); } catch { }
       try { screenStreamRef.current?.getTracks().forEach((t) => t.stop()); } catch { }
@@ -541,10 +598,25 @@ export const PracticeMode = () => {
 
     return (
       <div className="fixed top-4 left-4 z-[90]">
-        <div className="w-64 overflow-hidden rounded-2xl border border-border/60 bg-background/70 backdrop-blur shadow-lg">
+        <div className={`w-64 overflow-hidden rounded-2xl border bg-background/70 backdrop-blur shadow-lg ${
+          faceWarningCount > 0
+            ? faceWarningCount >= MAX_FACE_WARNINGS
+              ? 'border-red-500/80'
+              : 'border-amber-500/60'
+            : 'border-border/60'
+        }`}>
           <div className="px-3 py-2 text-[11px] text-muted-foreground flex items-center justify-between">
             <span>Camera</span>
-            <span className="text-[10px]">{trackLive ? 'Live' : 'Starting…'}</span>
+            <div className="flex items-center gap-2">
+              {faceWarningCount > 0 && (
+                <span className={`text-[10px] font-medium ${
+                  faceWarningCount >= MAX_FACE_WARNINGS ? 'text-red-400' : 'text-amber-500'
+                }`}>
+                  ⚠ {faceWarningCount}/{MAX_FACE_WARNINGS}
+                </span>
+              )}
+              <span className="text-[10px]">{trackLive ? 'Live' : 'Starting…'}</span>
+            </div>
           </div>
           <div className="relative w-64 h-64 bg-black">
             <video
@@ -563,6 +635,85 @@ export const PracticeMode = () => {
               </div>
             )}
           </div>
+        </div>
+      </div>
+    );
+  };
+
+  const renderFaceWarningOverlay = () => {
+    if (!faceWarningVisible || faceWarningCount === 0) return null;
+
+    const isTerminal = faceWarningCount >= MAX_FACE_WARNINGS;
+
+    return (
+      <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/60 backdrop-blur-sm animate-in fade-in duration-300">
+        <div className={`mx-4 max-w-md w-full rounded-2xl border-2 p-6 shadow-2xl ${
+          isTerminal
+            ? 'border-red-500 bg-red-950/95'
+            : 'border-amber-500 bg-background/95'
+        }`}>
+          {/* Warning Icon */}
+          <div className="flex justify-center mb-4">
+            <div className={`w-16 h-16 rounded-full flex items-center justify-center ${
+              isTerminal ? 'bg-red-500/20' : 'bg-amber-500/20'
+            }`}>
+              <span className="text-4xl">{isTerminal ? '⛔' : '⚠️'}</span>
+            </div>
+          </div>
+
+          {/* Title */}
+          <h3 className={`text-xl font-bold text-center mb-2 ${
+            isTerminal ? 'text-red-400' : 'text-amber-500'
+          }`}>
+            {isTerminal ? 'Interview Terminated' : 'Multiple People Detected'}
+          </h3>
+
+          {/* Message */}
+          <p className={`text-sm text-center mb-4 leading-relaxed ${
+            isTerminal ? 'text-red-300/80' : 'text-muted-foreground'
+          }`}>
+            {isTerminal
+              ? 'Your interview has been automatically ended because multiple people were detected on camera 3 times. This is a proctoring violation.'
+              : 'Our camera detected more than one person. Please ensure only you are visible on camera during the interview.'
+            }
+          </p>
+
+          {/* Warning counter */}
+          <div className="flex justify-center gap-2 mb-4">
+            {Array.from({ length: MAX_FACE_WARNINGS }).map((_, idx) => (
+              <div
+                key={idx}
+                className={`w-3 h-3 rounded-full transition-all ${
+                  idx < faceWarningCount
+                    ? isTerminal ? 'bg-red-500' : 'bg-amber-500'
+                    : 'bg-muted-foreground/20'
+                }`}
+              />
+            ))}
+          </div>
+
+          <p className={`text-xs text-center font-mono ${
+            isTerminal ? 'text-red-400' : 'text-amber-600 dark:text-amber-400'
+          }`}>
+            {isTerminal
+              ? `Warning ${faceWarningCount}/${MAX_FACE_WARNINGS} — Session ended`
+              : `Warning ${faceWarningCount}/${MAX_FACE_WARNINGS} — ${MAX_FACE_WARNINGS - faceWarningCount} remaining before auto-termination`
+            }
+          </p>
+
+          {/* Dismiss button (only for non-terminal) */}
+          {!isTerminal && (
+            <div className="mt-4 flex justify-center">
+              <Button
+                variant="outline"
+                size="sm"
+                className="border-amber-500/40 text-amber-600 dark:text-amber-400 hover:bg-amber-500/10"
+                onClick={() => setFaceWarningVisible(false)}
+              >
+                I understand, continue
+              </Button>
+            </div>
+          )}
         </div>
       </div>
     );
@@ -610,6 +761,89 @@ export const PracticeMode = () => {
       }
     } catch {
       // best effort
+    }
+  };
+
+  /**
+   * When camera-proctored mode is ON, ensure the camera is live before
+   * allowing the interview to start. If the camera isn't ready, request
+   * permission. Throws if the user denies or the camera is unavailable.
+   */
+  const ensureCameraForProctoring = async (): Promise<void> => {
+    if (!enableCameraProctoring) return; // Not proctored — no gate
+
+    // Race-condition lock: prevent parallel acquire attempts
+    if (cameraAcquiringRef.current) {
+      console.log('[Proctoring] Camera acquisition already in progress — skipping duplicate call');
+      return;
+    }
+
+    const hasLiveVideo = (stream: MediaStream | null): boolean => {
+      const t = stream?.getVideoTracks?.()?.[0];
+      return !!t && t.readyState === 'live';
+    };
+
+    // Camera already live
+    if (hasLiveVideo(cameraStreamRef.current)) {
+      setCameraPreviewStream(cameraStreamRef.current);
+      return;
+    }
+
+    // Try to acquire camera
+    if (!navigator?.mediaDevices?.getUserMedia) {
+      toast({
+        title: 'Camera required',
+        description: 'Your browser does not support camera access. Please use a modern browser.',
+        variant: 'destructive',
+      });
+      throw new Error('Camera access is required for proctored mode.');
+    }
+
+    cameraAcquiringRef.current = true;
+    try {
+      try { cameraStreamRef.current?.getTracks().forEach((t) => t.stop()); } catch { }
+      cameraStreamRef.current = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
+
+      if (!hasLiveVideo(cameraStreamRef.current)) {
+        throw new Error('Camera video track is not live');
+      }
+
+      setCameraPreviewStream(cameraStreamRef.current);
+
+      // Listen for camera track ending — enforce compliance: auto-end mid-interview
+      const cameraTrack = cameraStreamRef.current.getVideoTracks()[0];
+      try {
+        cameraTrack.addEventListener('ended', () => {
+          console.warn('[Proctoring] Camera track ended — enforcing session termination if active');
+          const activePhases = ['question', 'recording', 'feedback', 'processing'];
+          // Use refs/state to check if an interview session is active
+          if (sessionId && activePhases.includes(phase)) {
+            // Camera died mid-interview → compliance enforcement → auto-end
+            void handleEndPracticeForCameraLoss();
+          } else {
+            toast({
+              title: 'Camera stopped',
+              description: 'Camera was disconnected. Please reconnect before starting a proctored interview.',
+              variant: 'destructive',
+            });
+          }
+          // Clean up preview
+          setCameraPreviewStream(null);
+        }, { once: true });
+      } catch { }
+    } catch (err: any) {
+      try { cameraStreamRef.current?.getTracks().forEach((t) => t.stop()); } catch { }
+      cameraStreamRef.current = null;
+      setCameraPreviewStream(null);
+
+      toast({
+        title: 'Camera required for proctored mode',
+        description: 'Please allow camera access to start the interview. The camera must be on for proctored interviews.',
+        variant: 'destructive',
+      });
+      throw new Error('Camera is required for proctored mode. Please allow camera access and try again.');
+    } finally {
+      cameraAcquiringRef.current = false;
     }
   };
 
@@ -937,12 +1171,20 @@ export const PracticeMode = () => {
     try { window.localStorage.setItem('practice_last_domain', d); } catch { }
   }, [profileDomain]);
 
-  // If user toggles proctoring during an active session, start/stop immediately.
+  // When user toggles proctoring ON → immediately acquire camera (don't wait for Start).
+  // When toggled OFF → tear down proctoring. If a session is active, also start the proctoring loop.
   useEffect(() => {
     if (!enableCameraProctoring) {
       stopProctoring();
       return;
     }
+
+    // Eagerly acquire camera so the user sees preview instantly & we fail fast on denial
+    void ensureCameraForProctoring().catch((err) => {
+      console.warn('[Proctoring] Eager camera acquire failed on toggle ON:', err?.message);
+      // Flip toggle back off — user denied camera
+      setEnableCameraProctoring(false);
+    });
 
     if (sessionId) {
       void startProctoringBestEffort(sessionId);
@@ -1209,9 +1451,9 @@ export const PracticeMode = () => {
             console.log('⏰ [Coding Timer] Time limit exceeded');
 
             toast({
-              title: '⏰ Time\'s Up!',
+              title: 'Time\'s up',
               description: 'Time limit reached for this coding question.',
-              variant: 'destructive',
+              variant: 'warning',
             });
 
             return 0;
@@ -1378,6 +1620,8 @@ export const PracticeMode = () => {
     cancelQuestionStreaming();
     setIsProcessing(true);
     try {
+      // Gate: camera must be live if proctored mode is ON
+      await ensureCameraForProctoring();
       setQuestionEvaluations([]);
       const gate = await ensureLiveMediaReady();
 
@@ -1465,9 +1709,9 @@ export const PracticeMode = () => {
             setIsAudioLoading(false);
             setIsPlayingAudio(false);
             toast({
-              title: '⚠️ Audio Error',
+              title: 'Audio unavailable',
               description: 'Could not play question audio. You can still read and answer.',
-              variant: 'destructive',
+              variant: 'warning',
             });
           };
 
@@ -1477,22 +1721,23 @@ export const PracticeMode = () => {
           setIsAudioLoading(false);
           setIsPlayingAudio(false);
           toast({
-            title: '⚠️ Audio Error',
+            title: 'Audio unavailable',
             description: 'Could not play question audio. You can still read and answer.',
-            variant: 'destructive',
+            variant: 'warning',
           });
         }
       }
 
       toast({
-        title: '🎯 Interview Started!',
+        title: 'Interview started',
         description: `Question 1 of ${response.total_questions}`,
+        variant: 'success',
       });
     } catch (error: any) {
       console.error('❌ [Practice Mode] Start Interview Error:', error);
       toast({
-        title: '❌ Failed to Start',
-        description: error.message || 'Could not start the interview',
+        title: 'Failed to start',
+        description: 'Could not start the interview. Please check your connection and try again.',
         variant: 'destructive',
       });
     } finally {
@@ -1513,6 +1758,8 @@ export const PracticeMode = () => {
 
     setQuickStartLoading(true);
     try {
+      // Gate: camera must be live if proctored mode is ON
+      await ensureCameraForProctoring();
       setQuestionEvaluations([]);
       const gate = await ensureLiveMediaReady();
 
@@ -1524,7 +1771,8 @@ export const PracticeMode = () => {
         1,
         undefined,
         undefined,
-        gate
+        gate,
+        resumeContext
       );
       console.log('🚀 [Quick Start] Response:', response);
       console.log('📊 [Quick Start] Inferred Profile:', response.inferred_profile);
@@ -1597,14 +1845,15 @@ export const PracticeMode = () => {
       }
 
       toast({
-        title: '🎯 Quick Start Success!',
+        title: 'Interview started',
         description: response.ai_message,
+        variant: 'success',
       });
     } catch (error: any) {
       console.error('❌ [Quick Start] Error:', error);
       toast({
-        title: '❌ Quick Start Failed',
-        description: error.message || 'Could not start quick interview',
+        title: 'Quick start failed',
+        description: 'Could not start the interview. Please try again.',
         variant: 'destructive',
       });
     } finally {
@@ -1639,9 +1888,9 @@ export const PracticeMode = () => {
             console.log('⏰ [Practice Mode] Time limit exceeded - auto-submitting');
 
             toast({
-              title: '⏰ Time\'s Up!',
+              title: 'Time\'s up',
               description: 'Auto-submitting your answer...',
-              variant: 'default',
+              variant: 'warning',
             });
 
             // Trigger auto-submit
@@ -1662,14 +1911,15 @@ export const PracticeMode = () => {
       }, 50); // Update 20 times per second for smooth animation
 
       toast({
-        title: '🎤 Recording Started',
+        title: 'Recording started',
         description: 'Speak your answer clearly',
+        variant: 'success',
       });
     } catch (error: any) {
       console.error('❌ [Practice Mode] Microphone Error:', error);
       toast({
-        title: '❌ Microphone Error',
-        description: error.message || 'Could not access microphone',
+        title: 'Microphone error',
+        description: 'Could not access your microphone. Please check browser permissions and try again.',
         variant: 'destructive',
       });
     }
@@ -1701,6 +1951,8 @@ export const PracticeMode = () => {
       const effectiveQuestionId = currentQuestion?.id ?? currentQuestionNumber;
       const response = await submitAnswer(sessionId, effectiveQuestionId, audioBlob);
       console.log('📊 [Practice Mode] Submit Answer Response:', response);
+      console.log('🔍 [Practice Mode] evaluation_trace:', JSON.stringify(response.evaluation_trace, null, 2));
+      console.log('🔍 [Practice Mode] trajectory:', JSON.stringify(response.trajectory, null, 2));
 
       // Populate the per-question feedback UI state
       setTranscription(response.transcript || '');
@@ -1753,8 +2005,8 @@ export const PracticeMode = () => {
 
       setIsRecording(false);
       toast({
-        title: '❌ Submission Failed',
-        description: error.message || 'Could not submit your answer. Please try again.',
+        title: 'Submission failed',
+        description: 'Could not submit your answer. Please try again.',
         variant: 'destructive',
       });
       setPhase('question');
@@ -1823,8 +2075,9 @@ export const PracticeMode = () => {
           setPhase('complete');
           setCompletionPending(false);
           toast({
-            title: '🎉 Interview Complete!',
+            title: 'Interview complete',
             description: `Completed all ${totalQuestions} questions successfully!`,
+            variant: 'success',
           });
           return;
         }
@@ -1862,8 +2115,8 @@ export const PracticeMode = () => {
 
       setIsSubmittingCode(false);
       toast({
-        title: '❌ Submission Failed',
-        description: error.message || 'Could not submit your code. Please try again.',
+        title: 'Submission failed',
+        description: 'Could not submit your code. Please try again.',
         variant: 'destructive',
       });
       setPhase('question');
@@ -1886,6 +2139,98 @@ export const PracticeMode = () => {
     setEvaluation(null);
     setCompletionPending(false);
     setRecordingTime(0);
+    setEndedEarlyData(null);
+    // Reset face warnings
+    faceWarningCountRef.current = 0;
+    setFaceWarningCount(0);
+    setFaceWarningVisible(false);
+    if (faceWarningTimerRef.current) {
+      clearTimeout(faceWarningTimerRef.current);
+      faceWarningTimerRef.current = null;
+    }
+  };
+
+  const handleEndPractice = async () => {
+    if (!sessionId) return;
+    if (!confirm("End practice interview early? You'll receive feedback for questions answered so far.")) return;
+    try {
+      const result = await endPracticeSession(sessionId);
+      setEndedEarlyData(result);
+      stopProctoring();
+      cancelQuestionStreaming();
+      setPhase('complete');
+      toast({
+        title: "Interview Ended",
+        description: `Results ready for ${result.questions_answered ?? currentQuestionNumber} answered question${(result.questions_answered ?? currentQuestionNumber) !== 1 ? 's' : ''}.`,
+      });
+    } catch (err) {
+      console.error("Failed to end practice session:", err);
+      toast({
+        title: "Failed to end interview",
+        description: "Please try again.",
+        variant: "destructive",
+      });
+    }
+  };
+
+  // Auto-end triggered by proctoring (multiple faces detected too many times)
+  const handleEndPracticeForProctoring = async (faceCount: number, warningNumber: number) => {
+    if (!sessionId) return;
+    try {
+      const result = await endPracticeSession(sessionId);
+      setEndedEarlyData(result);
+      stopProctoring();
+      cancelQuestionStreaming();
+      setPhase('complete');
+      toast({
+        title: 'Interview terminated',
+        description: `Multiple people detected on camera (${faceCount} faces). Session ended after ${warningNumber} warning${warningNumber !== 1 ? 's' : ''}.`,
+        variant: 'destructive',
+      });
+    } catch (err) {
+      console.error("Failed to auto-end practice session:", err);
+      // Force end even if API fails
+      stopProctoring();
+      cancelQuestionStreaming();
+      setPhase('complete');
+      toast({
+        title: 'Interview terminated',
+        description: 'Multiple people detected. Session ended due to proctoring violation.',
+        variant: 'destructive',
+      });
+    }
+  };
+
+  /**
+   * Compliance enforcement: camera died/disconnected mid-interview.
+   * Treated as a proctoring violation — auto-terminates the session.
+   */
+  const handleEndPracticeForCameraLoss = async () => {
+    if (!sessionId) return;
+    console.warn('[Proctoring] Camera lost mid-interview — enforcing session termination');
+    try {
+      const result = await endPracticeSession(sessionId);
+      setEndedEarlyData(result);
+      stopProctoring();
+      cancelQuestionStreaming();
+      setPhase('complete');
+      toast({
+        title: 'Interview terminated — Camera lost',
+        description: 'Your camera was disconnected during a proctored interview. The session has been ended for compliance.',
+        variant: 'destructive',
+      });
+    } catch (err) {
+      console.error('[Proctoring] Failed to auto-end session after camera loss:', err);
+      // Force end even if API call fails
+      stopProctoring();
+      cancelQuestionStreaming();
+      setPhase('complete');
+      toast({
+        title: 'Interview terminated — Camera lost',
+        description: 'Camera disconnected. Session ended due to proctoring policy.',
+        variant: 'destructive',
+      });
+    }
   };
 
   const getQuestionPromptText = (question: any): string => {
@@ -2087,8 +2432,9 @@ export const PracticeMode = () => {
   setCompletionPending(false);
 
         toast({
-          title: '🎉 Interview Complete!',
+          title: 'Interview complete',
           description: `Completed all ${totalQuestions} questions successfully!`,
+          variant: 'success',
         });
       } else {
         // Validate next_question exists
@@ -2157,8 +2503,8 @@ export const PracticeMode = () => {
       }
 
       toast({
-        title: '❌ Failed to Load Next Question',
-        description: error.message || 'Could not load the next question. Please try again.',
+        title: 'Failed to load question',
+        description: 'Could not load the next question. Please try again.',
         variant: 'destructive',
       });
     } finally {
@@ -2167,6 +2513,20 @@ export const PracticeMode = () => {
   };
 
   const handleRoundStart = (sessionId: string, roundConfig: RoundConfig, firstQuestion: any, ttsAudioUrl?: string, totalQuestionsFromApi?: number) => {
+    // Note: For round-based starts, camera is already ensured in RoundSelection
+    // via ensureLiveMediaReady. But we also verify here as a safety net.
+    if (enableCameraProctoring) {
+      const track = cameraStreamRef.current?.getVideoTracks?.()?.[0];
+      if (!track || track.readyState !== 'live') {
+        toast({
+          title: 'Camera required',
+          description: 'Camera must be on for proctored interviews. Please enable your camera and try again.',
+          variant: 'destructive',
+        });
+        return;
+      }
+    }
+
     console.log('🎯 [Round-Based] Round started:', roundConfig);
     console.log('📝 [Round-Based] First question structure:', firstQuestion);
     console.log('🔍 [Question Type Debug]:', {
@@ -2234,9 +2594,9 @@ export const PracticeMode = () => {
           setIsAudioLoading(false);
           setIsPlayingAudio(false);
           toast({
-            title: '⚠️ Audio Error',
-            description: 'Could not play question audio',
-            variant: 'destructive',
+            title: 'Audio unavailable',
+            description: 'Could not play question audio. You can still read and answer.',
+            variant: 'warning',
           });
         };
 
@@ -2253,8 +2613,9 @@ export const PracticeMode = () => {
     }
 
     toast({
-      title: `🎯 ${roundConfig.name} Started!`,
+      title: `${roundConfig.name} started`,
       description: `${(typeof totalQuestionsFromApi === 'number' && totalQuestionsFromApi >= 1) ? totalQuestionsFromApi : roundConfig.question_count} questions • ${roundConfig.duration_minutes} minutes`,
+      variant: 'success',
     });
   };
 
@@ -2276,67 +2637,109 @@ export const PracticeMode = () => {
         <div className="flex justify-end pt-2">
           {viewProgressButton("h-8 px-3 md:hidden")}
         </div>
-        <Card className="w-full border border-border/50 bg-background/60 backdrop-blur-xl shadow-2xl shadow-black/40">
-          <CardHeader className="text-center space-y-2 pb-3 pt-6 px-4">
-            <div className="mx-auto w-12 h-12 md:w-14 md:h-14 bg-primary/15 border border-primary/20 rounded-2xl flex items-center justify-center shadow-lg shadow-black/30">
-              <Mic className="w-6 h-6 md:w-7 md:h-7 text-white" />
-            </div>
-            <div>
-              <CardTitle className="text-xl md:text-2xl font-bold text-foreground">
-                AI Interview Practice
-              </CardTitle>
-              <CardDescription className="text-[11px] md:text-sm mt-1 max-w-[250px] md:max-w-none mx-auto">
-                Practice real interview questions with AI-powered voice analysis
-              </CardDescription>
-            </div>
-          </CardHeader>
 
-          <CardContent className="space-y-4 pb-6">
+        {/* ── GATEWAY: Choose your practice mode ── */}
+        {welcomeStep === 'gateway' && (
+          <div className="space-y-5 animate-in fade-in slide-in-from-bottom-3 duration-500">
+            {/* Header */}
+            <div className="text-center space-y-2 pt-4">
+              <div className="mx-auto w-12 h-12 md:w-14 md:h-14 bg-primary/15 border border-primary/20 rounded-2xl flex items-center justify-center shadow-lg shadow-black/30">
+                <Mic className="w-6 h-6 md:w-7 md:h-7 text-white" />
+              </div>
+              <h1 className="text-xl md:text-2xl font-bold text-foreground">How do you want to practice?</h1>
+              <p className="text-[11px] md:text-sm text-muted-foreground max-w-[300px] md:max-w-none mx-auto">
+                Choose a path — you can always switch later
+              </p>
+            </div>
+
             {renderPracticeInsights()}
-            {/* Navigation Toggle - More compact for mobile */}
-            <div className="grid grid-cols-3 gap-1 p-1 bg-muted/40 rounded-xl border border-border/50">
-              <Button
-                variant={!useQuickStart && phase === 'welcome' ? 'default' : 'ghost'}
-                className="text-[9px] xs:text-[10px] md:text-xs h-8 px-0.5 transition-all duration-300 rounded-lg shadow-sm"
-                onClick={() => setUseQuickStart(false)}
+
+            {/* Three intent cards */}
+            <div className="space-y-3">
+              {/* Quick Practice */}
+              <button
+                onClick={() => { setUseQuickStart(false); setWelcomeStep('configure'); }}
+                className="w-full group relative flex items-center gap-4 p-4 md:p-5 rounded-2xl border-2 border-border/50 bg-background/60 backdrop-blur-xl shadow-lg hover:border-primary/50 hover:shadow-xl hover:shadow-primary/10 transition-all duration-300 text-left"
               >
-                <Zap className="w-2.5 h-2.5 mr-1 shrink-0 hidden xs:block" />
-                Instant
-              </Button>
-              <Button
-                variant="ghost"
-                className="text-[9px] xs:text-[10px] md:text-xs h-8 px-0.5 transition-all duration-300 rounded-lg"
+                <div className="shrink-0 w-12 h-12 md:w-14 md:h-14 rounded-2xl bg-gradient-to-br from-blue-500/20 to-primary/20 border border-primary/20 flex items-center justify-center shadow-md">
+                  <Zap className="w-6 h-6 md:w-7 md:h-7 text-primary" />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <h3 className="font-bold text-[15px] md:text-base text-foreground">Quick Practice</h3>
+                  <p className="text-[11px] md:text-sm text-muted-foreground leading-snug mt-0.5">
+                    Tell me the role — I'll pick questions, difficulty, and adapt as you go
+                  </p>
+                </div>
+                <ArrowRight className="w-4 h-4 md:w-5 md:h-5 text-muted-foreground/50 group-hover:text-primary group-hover:translate-x-0.5 transition-all shrink-0" />
+              </button>
+
+              {/* Full Interview Simulation */}
+              <button
                 onClick={() => setPhase('round-selection')}
+                className="w-full group relative flex items-center gap-4 p-4 md:p-5 rounded-2xl border-2 border-border/50 bg-background/60 backdrop-blur-xl shadow-lg hover:border-purple-500/50 hover:shadow-xl hover:shadow-purple-500/10 transition-all duration-300 text-left"
               >
-                <Target className="w-2.5 h-2.5 mr-1 shrink-0 hidden xs:block" />
-                Rounds
-              </Button>
-              <Button
-                variant={useQuickStart ? 'default' : 'ghost'}
-                className="text-[9px] xs:text-[10px] md:text-xs h-8 px-0.5 transition-all duration-300 rounded-lg"
-                onClick={() => setUseQuickStart(true)}
+                <div className="shrink-0 w-12 h-12 md:w-14 md:h-14 rounded-2xl bg-gradient-to-br from-purple-500/20 to-violet-500/20 border border-purple-500/20 flex items-center justify-center shadow-md">
+                  <Target className="w-6 h-6 md:w-7 md:h-7 text-purple-500" />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <h3 className="font-bold text-[15px] md:text-base text-foreground">Full Interview Simulation</h3>
+                  <p className="text-[11px] md:text-sm text-muted-foreground leading-snug mt-0.5">
+                    Step through real interview rounds — HR, Technical, System Design
+                  </p>
+                </div>
+                <ArrowRight className="w-4 h-4 md:w-5 md:h-5 text-muted-foreground/50 group-hover:text-purple-500 group-hover:translate-x-0.5 transition-all shrink-0" />
+              </button>
+
+              {/* Custom Setup */}
+              <button
+                onClick={() => { setUseQuickStart(true); setWelcomeStep('configure'); }}
+                className="w-full group relative flex items-center gap-4 p-4 md:p-5 rounded-2xl border-2 border-border/50 bg-background/60 backdrop-blur-xl shadow-lg hover:border-amber-500/50 hover:shadow-xl hover:shadow-amber-500/10 transition-all duration-300 text-left"
               >
-                <Sparkles className="w-2.5 h-2.5 mr-1 shrink-0 hidden xs:block" />
-                Manual
-              </Button>
+                <div className="shrink-0 w-12 h-12 md:w-14 md:h-14 rounded-2xl bg-gradient-to-br from-amber-500/20 to-orange-500/20 border border-amber-500/20 flex items-center justify-center shadow-md">
+                  <Settings className="w-6 h-6 md:w-7 md:h-7 text-amber-500" />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <h3 className="font-bold text-[15px] md:text-base text-foreground">Custom Setup</h3>
+                  <p className="text-[11px] md:text-sm text-muted-foreground leading-snug mt-0.5">
+                    Pick your role, difficulty, number of questions, and more
+                  </p>
+                </div>
+                <ArrowRight className="w-4 h-4 md:w-5 md:h-5 text-muted-foreground/50 group-hover:text-amber-500 group-hover:translate-x-0.5 transition-all shrink-0" />
+              </button>
             </div>
+          </div>
+        )}
 
-            {!useQuickStart ? (
-              // Quick Start Mode - ONE FIELD ONLY, AI decides everything
-              <div className="space-y-3 animate-in fade-in slide-in-from-bottom-2 duration-500">
-                <div className="space-y-3">
-                  <div className="flex items-start gap-3 p-3 bg-muted/30 rounded-2xl border border-border/50 shadow-inner">
-                    <div className="p-1.5 rounded-xl bg-primary/15 text-primary">
-                      <Sparkles className="w-4 h-4 flex-shrink-0" />
-                    </div>
-                    <div className="flex-1">
-                      <h3 className="font-bold text-[13px] text-foreground">AI Prep</h3>
-                      <p className="text-[10px] text-muted-foreground leading-snug mt-0.5">
-                        Role & company - I'll handle difficulty, questions and settings.
-                      </p>
-                    </div>
-                  </div>
+        {/* ── CONFIGURE: Mode-specific setup ── */}
+        {welcomeStep === 'configure' && (
+          <Card className="w-full border border-border/50 bg-background/60 backdrop-blur-xl shadow-2xl shadow-black/40 animate-in fade-in slide-in-from-right-4 duration-400">
+            <CardHeader className="pb-3 pt-5 px-4">
+              <div className="flex items-center gap-3">
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="h-8 w-8 p-0 rounded-full hover:bg-muted/50 shrink-0"
+                  onClick={() => setWelcomeStep('gateway')}
+                >
+                  <ChevronLeft className="w-4 h-4" />
+                </Button>
+                <div className="flex-1">
+                  <CardTitle className="text-lg md:text-xl font-bold text-foreground">
+                    {useQuickStart ? 'Custom Setup' : 'AI Interviewer'}
+                  </CardTitle>
+                  <CardDescription className="text-[10px] md:text-xs mt-0.5">
+                    {useQuickStart
+                      ? 'Configure your practice session exactly how you want it'
+                      : "Tell me the role — I'll adapt questions and difficulty as you go"}
+                  </CardDescription>
+                </div>
+              </div>
+            </CardHeader>
 
+            <CardContent className="space-y-4 pb-6">
+              {!useQuickStart ? (
+                /* ── Instant / AI Interviewer mode ── */
+                <div className="space-y-3 animate-in fade-in slide-in-from-bottom-2 duration-500">
                   <div className="space-y-2">
                     <div className="flex items-center justify-between px-1">
                       <Label className="text-[9px] font-black uppercase tracking-wider text-muted-foreground/70">What are you preparing for?</Label>
@@ -2353,6 +2756,7 @@ export const PracticeMode = () => {
                         }}
                         maxLength={512}
                         className="text-xs h-10 bg-background/50 border-muted-foreground/20 rounded-xl pl-3 pr-9 focus:ring-primary/20 transition-all"
+                        autoFocus
                       />
                       <div className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground/30 group-focus-within:text-primary/50 transition-colors">
                         <MessageSquare className="w-3.5 h-3.5" />
@@ -2368,249 +2772,292 @@ export const PracticeMode = () => {
                       </p>
                     </div>
                   )}
-                </div>
 
-                <div className="flex items-center justify-between p-2.5 bg-muted/40 rounded-xl border border-border/50">
-                  <div className="flex items-center gap-2.5">
-                    <div className="p-1.5 rounded-lg bg-muted text-muted-foreground">
-                      <Volume2 className="w-3.5 h-3.5" />
-                    </div>
-                    <div>
-                      <p className="font-bold text-[11px] text-foreground">Voice Assistant</p>
-                      <p className="text-[9px] text-muted-foreground">Hear questions read aloud</p>
-                    </div>
-                  </div>
-                  <Switch
-                    checked={enableTTS}
-                    onCheckedChange={setEnableTTS}
-                    className="scale-[0.6] md:scale-75 origin-right data-[state=checked]:bg-primary"
+                  {/* Resume Upload (optional) */}
+                  <ResumeUpload
+                    mode="practice"
+                    onParsed={(ctx) => setResumeContext(ctx)}
+                    onClear={() => setResumeContext(null)}
+                    existing={resumeContext}
                   />
-                </div>
 
-                <div className="flex items-center justify-between p-2.5 bg-muted/40 rounded-xl border border-border/50">
-                  <div className="flex items-center gap-2.5">
-                    <div className="p-1.5 rounded-lg bg-muted text-muted-foreground">
-                      <Camera className="w-3.5 h-3.5" />
-                    </div>
-                    <div>
-                      <p className="font-bold text-[11px] text-foreground">Camera-proctored mode</p>
-                      <p className="text-[9px] text-muted-foreground">Opt-in. No video uploads, events only.</p>
-                    </div>
-                  </div>
-                  <Switch
-                    checked={enableCameraProctoring}
-                    onCheckedChange={setEnableCameraProctoring}
-                    className="scale-[0.6] md:scale-75 origin-right data-[state=checked]:bg-primary"
-                  />
-                </div>
-
-                <Button
-                  size="lg"
-                  className="w-full h-12 text-sm font-bold shadow-xl shadow-black/30 transition-all hover:scale-[1.01] active:scale-[0.98] rounded-2xl"
-                  onClick={handleQuickStart}
-                  disabled={quickStartLoading || !quickStartInput.trim()}
-                >
-                  {quickStartLoading ? (
-                    <>
-                      <Loader2 className="mr-2 w-4 h-4 animate-spin" />
-                      Setting Up Interview...
-                    </>
-                  ) : (
-                    <>
-                      <Sparkles className="mr-2 w-4 h-4" />
-                      Start Interview Now
-                    </>
-                  )}
-                </Button>
-              </div>
-            ) : (
-              // Traditional Setup Mode
-              <>
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-2">
-                  <div className="flex flex-col items-center p-2 bg-muted/50 rounded-lg">
-                    <Brain className="w-6 h-6 text-primary mb-1" />
-                    <h3 className="font-semibold text-xs">Smart Questions</h3>
-                    <p className="text-[10px] text-muted-foreground text-center">
-                      AI-generated questions
-                    </p>
-                  </div>
-                  <div className="flex flex-col items-center p-2 bg-muted/50 rounded-lg">
-                    <BarChart3 className="w-6 h-6 text-blue-500 mb-1" />
-                    <h3 className="font-semibold text-xs">Speech Analysis</h3>
-                    <p className="text-[10px] text-muted-foreground text-center">
-                      Real-time metrics
-                    </p>
-                  </div>
-                  <div className="flex flex-col items-center p-2 bg-muted/50 rounded-lg">
-                    <Trophy className="w-6 h-6 text-yellow-500 mb-1" />
-                    <h3 className="font-semibold text-xs">Instant Feedback</h3>
-                    <p className="text-[10px] text-muted-foreground text-center">
-                      Performance review
-                    </p>
-                  </div>
-                </div>
-
-                <Separator className="my-2" />
-
-                <div className="space-y-2">
-                  <div>
-                    <label className="text-xs font-semibold mb-1 block text-muted-foreground">Interview Role</label>
-                    <Input
-                      placeholder="e.g., Software Engineer, Data Scientist, Product Manager, DevOps..."
-                      value={selectedRole}
-                      onChange={(e) => setSelectedRole(e.target.value)}
-                      maxLength={512}
-                      className="text-sm bg-background/50 border-border/40"
-                      list="role-suggestions"
-                    />
-                    <datalist id="role-suggestions">
-                      <option value="Software Engineer" />
-                      <option value="Data Scientist" />
-                      <option value="Product Manager" />
-                      <option value="DevOps Engineer" />
-                      <option value="Frontend Developer" />
-                      <option value="Backend Developer" />
-                      <option value="Full Stack Developer" />
-                      <option value="AI/ML Specialist" />
-                      <option value="UX/UI Designer" />
-                      <option value="AI Engineer" />
-                      <option value="ML Engineer" />
-                      <option value="QA Engineer" />
-                      <option value="Security Engineer" />
-                      <option value="Data Engineer" />
-                    </datalist>
-                    <p className="text-[10px] text-muted-foreground mt-1">
-                      Type any role - not limited to the suggestions above
-                    </p>
-                  </div>
-
-                  <div>
-                    <label className="text-xs font-medium mb-1 block">Difficulty Level</label>
-                    <div className="grid grid-cols-3 gap-2">
-                      {[
-                        { value: 'easy', label: 'Easy', color: 'bg-green-500' },
-                        { value: 'medium', label: 'Medium', color: 'bg-yellow-500' },
-                        { value: 'hard', label: 'Hard', color: 'bg-red-500' },
-                      ].map((diff) => (
-                        <Button
-                          key={diff.value}
-                          variant={selectedDifficulty === diff.value ? 'default' : 'outline'}
-                          className="relative text-xs h-8"
-                          onClick={() => setSelectedDifficulty(diff.value as InterviewDifficulty)}
-                        >
-                          {selectedDifficulty === diff.value && (
-                            <div className={`absolute top-1 right-1 w-1.5 h-1.5 rounded-full ${diff.color}`} />
-                          )}
-                          {diff.label}
-                        </Button>
+                  {/* Progress promise */}
+                  <div className="p-3 bg-primary/5 border border-primary/15 rounded-xl">
+                    <p className="text-[10px] font-semibold uppercase tracking-wider text-primary/70 mb-1.5">This session helps you improve</p>
+                    <div className="flex flex-wrap gap-2">
+                      {['Answer clarity', 'Confidence', 'Interview structure'].map((item) => (
+                        <span key={item} className="inline-flex items-center gap-1 text-[11px] text-foreground/80 font-medium">
+                          <CheckCircle2 className="w-3 h-3 text-primary/60" />
+                          {item}
+                        </span>
                       ))}
                     </div>
                   </div>
 
-                  <div className="flex items-center justify-between p-2 bg-muted/30 rounded-lg">
-                    <div className="flex items-center gap-2">
-                      <Clock className="w-4 h-4 text-muted-foreground" />
-                      <div>
-                        <p className="font-medium text-xs">Number of Questions</p>
-                        <p className="text-[10px] text-muted-foreground">Choose 1-10 questions</p>
+                  {/* CTA */}
+                  <Button
+                    size="lg"
+                    className="w-full h-12 text-sm font-bold shadow-xl shadow-black/30 transition-all hover:scale-[1.01] active:scale-[0.98] rounded-2xl"
+                    onClick={handleQuickStart}
+                    disabled={quickStartLoading || !quickStartInput.trim()}
+                  >
+                    {quickStartLoading ? (
+                      <>
+                        <Loader2 className="mr-2 w-4 h-4 animate-spin" />
+                        Setting Up Interview...
+                      </>
+                    ) : (
+                      <>
+                        <Sparkles className="mr-2 w-4 h-4" />
+                        Start Interview
+                      </>
+                    )}
+                  </Button>
+
+                  {/* Deferred session settings */}
+                  <Collapsible open={sessionSettingsOpen} onOpenChange={setSessionSettingsOpen}>
+                    <CollapsibleTrigger asChild>
+                      <button className="w-full flex items-center justify-center gap-1.5 py-2 text-[11px] text-muted-foreground hover:text-foreground transition-colors">
+                        <Settings className="w-3 h-3" />
+                        <span>Session Settings</span>
+                        <ChevronDown className={`w-3 h-3 transition-transform duration-200 ${sessionSettingsOpen ? 'rotate-180' : ''}`} />
+                      </button>
+                    </CollapsibleTrigger>
+                    <CollapsibleContent className="space-y-2 animate-in fade-in slide-in-from-top-1 duration-300">
+                      <div className="flex items-center justify-between p-2.5 bg-muted/40 rounded-xl border border-border/50">
+                        <div className="flex items-center gap-2.5">
+                          <div className="p-1.5 rounded-lg bg-muted text-muted-foreground">
+                            <Volume2 className="w-3.5 h-3.5" />
+                          </div>
+                          <div>
+                            <p className="font-bold text-[11px] text-foreground">Voice Assistant</p>
+                            <p className="text-[9px] text-muted-foreground">Hear questions read aloud</p>
+                          </div>
+                        </div>
+                        <Switch
+                          checked={enableTTS}
+                          onCheckedChange={setEnableTTS}
+                          className="scale-[0.6] md:scale-75 origin-right data-[state=checked]:bg-primary"
+                        />
+                      </div>
+
+                      <div className="flex items-center justify-between p-2.5 bg-muted/40 rounded-xl border border-border/50">
+                        <div className="flex items-center gap-2.5">
+                          <div className="p-1.5 rounded-lg bg-muted text-muted-foreground">
+                            <Camera className="w-3.5 h-3.5" />
+                          </div>
+                          <div>
+                            <p className="font-bold text-[11px] text-foreground">Camera-proctored mode</p>
+                            <p className="text-[9px] text-muted-foreground">Opt-in · No recordings · Local-only</p>
+                          </div>
+                        </div>
+                        <Switch
+                          checked={enableCameraProctoring}
+                          onCheckedChange={setEnableCameraProctoring}
+                          className="scale-[0.6] md:scale-75 origin-right data-[state=checked]:bg-primary"
+                        />
+                      </div>
+                    </CollapsibleContent>
+                  </Collapsible>
+                </div>
+              ) : (
+                /* ── Custom / Manual setup mode ── */
+                <div className="space-y-3 animate-in fade-in slide-in-from-bottom-2 duration-500">
+                  <div className="space-y-2">
+                    <div>
+                      <label className="text-xs font-semibold mb-1 block text-muted-foreground">Interview Role</label>
+                      <Input
+                        placeholder="e.g., Software Engineer, Data Scientist, Product Manager, DevOps..."
+                        value={selectedRole}
+                        onChange={(e) => setSelectedRole(e.target.value)}
+                        maxLength={512}
+                        className="text-sm bg-background/50 border-border/40"
+                        list="role-suggestions"
+                        autoFocus
+                      />
+                      <datalist id="role-suggestions">
+                        <option value="Software Engineer" />
+                        <option value="Data Scientist" />
+                        <option value="Product Manager" />
+                        <option value="DevOps Engineer" />
+                        <option value="Frontend Developer" />
+                        <option value="Backend Developer" />
+                        <option value="Full Stack Developer" />
+                        <option value="AI/ML Specialist" />
+                        <option value="UX/UI Designer" />
+                        <option value="AI Engineer" />
+                        <option value="ML Engineer" />
+                        <option value="QA Engineer" />
+                        <option value="Security Engineer" />
+                        <option value="Data Engineer" />
+                      </datalist>
+                      <p className="text-[10px] text-muted-foreground mt-1">
+                        Type any role - not limited to the suggestions above
+                      </p>
+                    </div>
+
+                    <div>
+                      <label className="text-xs font-medium mb-1 block">Difficulty Level</label>
+                      <div className="grid grid-cols-3 gap-2">
+                        {[
+                          { value: 'easy', label: 'Easy', color: 'bg-green-500' },
+                          { value: 'medium', label: 'Medium', color: 'bg-yellow-500' },
+                          { value: 'hard', label: 'Hard', color: 'bg-red-500' },
+                        ].map((diff) => (
+                          <Button
+                            key={diff.value}
+                            variant={selectedDifficulty === diff.value ? 'default' : 'outline'}
+                            className="relative text-xs h-8"
+                            onClick={() => setSelectedDifficulty(diff.value as InterviewDifficulty)}
+                          >
+                            {selectedDifficulty === diff.value && (
+                              <div className={`absolute top-1 right-1 w-1.5 h-1.5 rounded-full ${diff.color}`} />
+                            )}
+                            {diff.label}
+                          </Button>
+                        ))}
                       </div>
                     </div>
-                    <Input
-                      type="number"
-                      min="1"
-                      max="10"
-                      value={questionCount}
-                      onChange={(e) => {
-                        const val = parseInt(e.target.value);
-                        if (val >= 1 && val <= 10) {
-                          setQuestionCount(val);
-                        }
-                      }}
-                      maxLength={3}
-                      className="w-16 h-7 text-xs text-center bg-background/50 border-border/40"
-                    />
+
+                    <div className="flex items-center justify-between p-2 bg-muted/30 rounded-lg">
+                      <div className="flex items-center gap-2">
+                        <Clock className="w-4 h-4 text-muted-foreground" />
+                        <div>
+                          <p className="font-medium text-xs">Number of Questions</p>
+                          <p className="text-[10px] text-muted-foreground">Choose 1-10 questions</p>
+                        </div>
+                      </div>
+                      <Input
+                        type="number"
+                        min="1"
+                        max="10"
+                        value={questionCount}
+                        onChange={(e) => {
+                          const val = parseInt(e.target.value);
+                          if (val >= 1 && val <= 10) {
+                            setQuestionCount(val);
+                          }
+                        }}
+                        maxLength={3}
+                        className="w-16 h-7 text-xs text-center bg-background/50 border-border/40"
+                      />
+                    </div>
                   </div>
 
-                  <div className="flex items-center justify-between p-2 bg-muted/30 rounded-lg">
-                    <div className="flex items-center gap-2">
-                      <Volume2 className="w-4 h-4 text-muted-foreground" />
-                      <div>
-                        <p className="font-medium text-xs">Text-to-Speech</p>
-                        <p className="text-[10px] text-muted-foreground">Hear questions read aloud</p>
-                      </div>
+                  {/* Resume Upload (optional) */}
+                  <ResumeUpload
+                    mode="practice"
+                    onParsed={(ctx) => setResumeContext(ctx)}
+                    onClear={() => setResumeContext(null)}
+                    existing={resumeContext}
+                  />
+
+                  {/* Progress promise */}
+                  <div className="p-3 bg-primary/5 border border-primary/15 rounded-xl">
+                    <p className="text-[10px] font-semibold uppercase tracking-wider text-primary/70 mb-1.5">This session helps you improve</p>
+                    <div className="flex flex-wrap gap-2">
+                      {['Answer clarity', 'Confidence', 'Interview structure'].map((item) => (
+                        <span key={item} className="inline-flex items-center gap-1 text-[11px] text-foreground/80 font-medium">
+                          <CheckCircle2 className="w-3 h-3 text-primary/60" />
+                          {item}
+                        </span>
+                      ))}
                     </div>
+                  </div>
+
+                  {/* CTAs */}
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                     <Button
-                      variant={enableTTS ? 'default' : 'outline'}
-                      size="sm"
-                      className="h-7 text-xs"
-                      onClick={() => setEnableTTS(!enableTTS)}
+                      size="lg"
+                      className="h-12"
+                      onClick={() => setPhase('setup')}
                     >
-                      {enableTTS ? 'Enabled' : 'Disabled'}
+                      <Sparkles className="mr-2 w-5 h-5" />
+                      <div className="text-left">
+                        <div className="font-semibold">Quick Practice</div>
+                        <div className="text-xs opacity-90">AI-generated questions</div>
+                      </div>
+                    </Button>
+
+                    <Button
+                      size="lg"
+                      variant="outline"
+                      className="h-12 border-2 hover:bg-primary/5"
+                      onClick={() => setPhase('round-selection')}
+                    >
+                      <Target className="mr-2 w-5 h-5" />
+                      <div className="text-left">
+                        <div className="font-semibold">Round-Based</div>
+                        <div className="text-xs opacity-70">Specific interview rounds</div>
+                      </div>
                     </Button>
                   </div>
 
-                  <div className="flex items-center justify-between p-2 bg-muted/30 rounded-lg">
-                    <div className="flex items-center gap-2">
-                      <Camera className="w-4 h-4 text-muted-foreground" />
-                      <div>
-                        <p className="font-medium text-xs">Camera-proctored mode</p>
-                        <p className="text-[10px] text-muted-foreground">Opt-in. No video uploads, events only.</p>
-                      </div>
-                    </div>
-                    <Switch
-                      checked={enableCameraProctoring}
-                      onCheckedChange={setEnableCameraProctoring}
-                    />
-                  </div>
-
-                  <div className="flex items-center justify-between p-2 bg-muted/30 rounded-lg border border-border/50">
-                    <div className="flex items-center gap-2">
-                      <Sparkles className="w-4 h-4 text-primary" />
-                      <div>
-                        <div className="font-medium text-xs flex items-center gap-1">
-                          Adaptive Intelligence
-                          <Badge variant="secondary" className="text-[9px] px-1 py-0 h-4">NEW</Badge>
+                  {/* Deferred session settings */}
+                  <Collapsible open={sessionSettingsOpen} onOpenChange={setSessionSettingsOpen}>
+                    <CollapsibleTrigger asChild>
+                      <button className="w-full flex items-center justify-center gap-1.5 py-2 text-[11px] text-muted-foreground hover:text-foreground transition-colors">
+                        <Settings className="w-3 h-3" />
+                        <span>Session Settings</span>
+                        <ChevronDown className={`w-3 h-3 transition-transform duration-200 ${sessionSettingsOpen ? 'rotate-180' : ''}`} />
+                      </button>
+                    </CollapsibleTrigger>
+                    <CollapsibleContent className="space-y-2 animate-in fade-in slide-in-from-top-1 duration-300">
+                      <div className="flex items-center justify-between p-2 bg-muted/30 rounded-lg">
+                        <div className="flex items-center gap-2">
+                          <Volume2 className="w-4 h-4 text-muted-foreground" />
+                          <div>
+                            <p className="font-medium text-xs">Text-to-Speech</p>
+                            <p className="text-[10px] text-muted-foreground">Hear questions read aloud</p>
+                          </div>
                         </div>
-                        <p className="text-[10px] text-muted-foreground">AI-personalized questions</p>
+                        <Button
+                          variant={enableTTS ? 'default' : 'outline'}
+                          size="sm"
+                          className="h-7 text-xs"
+                          onClick={() => setEnableTTS(!enableTTS)}
+                        >
+                          {enableTTS ? 'Enabled' : 'Disabled'}
+                        </Button>
                       </div>
-                    </div>
-                    <Switch
-                      checked={enableAdaptive}
-                      onCheckedChange={setEnableAdaptive}
-                    />
-                  </div>
-                </div>
 
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                  <Button
-                    size="lg"
-                    className="h-12"
-                    onClick={() => setPhase('setup')}
-                  >
-                    <Sparkles className="mr-2 w-5 h-5" />
-                    <div className="text-left">
-                      <div className="font-semibold">Quick Practice</div>
-                      <div className="text-xs opacity-90">AI-generated questions</div>
-                    </div>
-                  </Button>
+                      <div className="flex items-center justify-between p-2 bg-muted/30 rounded-lg">
+                        <div className="flex items-center gap-2">
+                          <Camera className="w-4 h-4 text-muted-foreground" />
+                          <div>
+                            <p className="font-medium text-xs">Camera-proctored mode</p>
+                            <p className="text-[10px] text-muted-foreground">Opt-in · No recordings · Local-only</p>
+                          </div>
+                        </div>
+                        <Switch
+                          checked={enableCameraProctoring}
+                          onCheckedChange={setEnableCameraProctoring}
+                        />
+                      </div>
 
-                  <Button
-                    size="lg"
-                    variant="outline"
-                    className="h-12 border-2 hover:bg-primary/5"
-                    onClick={() => setPhase('round-selection')}
-                  >
-                    <Target className="mr-2 w-5 h-5" />
-                    <div className="text-left">
-                      <div className="font-semibold">Round-Based</div>
-                      <div className="text-xs opacity-70">Specific interview rounds</div>
-                    </div>
-                  </Button>
+                      <div className="flex items-center justify-between p-2 bg-muted/30 rounded-lg border border-border/50">
+                        <div className="flex items-center gap-2">
+                          <Sparkles className="w-4 h-4 text-primary" />
+                          <div>
+                            <div className="font-medium text-xs flex items-center gap-1">
+                              Adaptive Intelligence
+                              <Badge variant="secondary" className="text-[9px] px-1 py-0 h-4">NEW</Badge>
+                            </div>
+                            <p className="text-[10px] text-muted-foreground">AI-personalized questions</p>
+                          </div>
+                        </div>
+                        <Switch
+                          checked={enableAdaptive}
+                          onCheckedChange={setEnableAdaptive}
+                        />
+                      </div>
+                    </CollapsibleContent>
+                  </Collapsible>
                 </div>
-              </>
-            )}
-          </CardContent>
-        </Card>
+              )}
+            </CardContent>
+          </Card>
+        )}
       </div>
     );
   }
@@ -2629,7 +3076,7 @@ export const PracticeMode = () => {
       <div className="w-full h-full flex flex-col relative overflow-hidden">
         {/* Scrollable Content Container */}
         <div ref={roundSelectionScrollRef} className="flex-1 overflow-y-auto scrollbar-hide">
-          {/* Sticky header: back + proctor toggle + progress */}
+          {/* Sticky header: back + interview settings */}
           <div
             className={`sticky top-0 z-[60] bg-background/70 backdrop-blur-md border-b border-border/30 transition-all duration-300 ${
               showRoundSelectionHeader ? 'translate-y-0 opacity-100' : '-translate-y-full opacity-0 pointer-events-none'
@@ -2638,8 +3085,8 @@ export const PracticeMode = () => {
             <div className="max-w-7xl mx-auto w-full px-4 py-3 flex items-center justify-between gap-2">
               <Button
                 variant="ghost"
-                onClick={() => setPhase('welcome')}
-                className="group h-9 px-3 rounded-full hover:bg-muted/50 text-muted-foreground hover:text-foreground"
+                onClick={() => { setWelcomeStep('gateway'); setPhase('welcome'); }}
+                className="group h-9 px-3 rounded-full hover:bg-muted/50 text-muted-foreground/70 hover:text-foreground"
               >
                 <ChevronLeft className="w-4 h-4 mr-1.5 group-hover:-translate-x-0.5 transition-transform" />
                 <span className="text-[13px] font-medium tracking-tight">Back</span>
@@ -2647,12 +3094,15 @@ export const PracticeMode = () => {
 
               <div className="flex items-center gap-2">
                 <div className="flex items-center gap-2 px-3 py-2 rounded-full bg-card/50 border border-border/40 shadow-sm">
+                  <div className="hidden sm:block">
+                    <div className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground/60 mb-0.5">Interview Settings</div>
+                  </div>
                   <div className="p-1.5 rounded-full bg-muted/40 text-muted-foreground">
                     <Camera className="w-4 h-4" />
                   </div>
                   <div className="hidden sm:block leading-tight">
                     <div className="text-xs font-semibold text-foreground/90">Camera-proctored</div>
-                    <div className="text-[11px] text-muted-foreground">Opt-in • No uploads</div>
+                    <div className="text-[11px] text-muted-foreground">Opt-in · No recordings · Local-only</div>
                   </div>
                   <Switch
                     checked={enableCameraProctoring}
@@ -2669,7 +3119,7 @@ export const PracticeMode = () => {
           </div>
 
           <div className="max-w-7xl mx-auto w-full px-4 pt-4">
-            <RoundSelection onRoundStart={handleRoundStart} userProfile={userProfile} ensureLiveMediaReady={ensureLiveMediaReady} />
+            <RoundSelection onRoundStart={handleRoundStart} userProfile={userProfile} ensureLiveMediaReady={ensureLiveMediaReady} ensureCameraForProctoring={ensureCameraForProctoring} resumeContext={resumeContext} onResumeChange={setResumeContext} />
           </div>
         </div>
       </div>
@@ -2701,7 +3151,7 @@ export const PracticeMode = () => {
                 <Camera className="w-4 h-4 text-muted-foreground" />
                 <div>
                   <p className="font-medium text-xs">Camera-proctored mode</p>
-                  <p className="text-[10px] text-muted-foreground">Opt-in. No video uploads, events only.</p>
+                  <p className="text-[10px] text-muted-foreground">Opt-in · No recordings · Local-only</p>
                 </div>
               </div>
               <Switch
@@ -2849,6 +3299,7 @@ export const PracticeMode = () => {
       <div className="max-w-4xl mx-auto w-full px-3 sm:px-4 flex flex-col space-y-4 pb-[env(safe-area-inset-bottom)]">
         {renderGuestGateBanner()}
         {renderFacePreview()}
+        {renderFaceWarningOverlay()}
 
         {/* Header */}
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
@@ -2921,7 +3372,17 @@ export const PracticeMode = () => {
               </Badge>
             )}
           </div>
-          <Progress value={(currentQuestionNumber / totalQuestions) * 100} className="w-full sm:w-32" />
+          <div className="flex items-center gap-2">
+            <Progress value={(currentQuestionNumber / totalQuestions) * 100} className="w-full sm:w-32" />
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={handleEndPractice}
+              className="h-7 px-2 sm:px-3 text-[10px] sm:text-xs font-bold uppercase tracking-tight text-red-400/70 hover:text-white hover:bg-destructive transition-all duration-200 shrink-0"
+            >
+              End
+            </Button>
+          </div>
         </div>
 
         {/* Question Card */}
@@ -2944,9 +3405,9 @@ export const PracticeMode = () => {
                 onTimeUp={() => {
                   if (phase === 'question') {
                     toast({
-                      title: '⏰ Time\'s Up!',
+                      title: 'Time\'s up',
                       description: 'Submitting your current code...',
-                      variant: 'destructive',
+                      variant: 'warning',
                     });
                     // Auto-submit current code
                     // handleSubmitCode will be called by the editor component
@@ -3120,6 +3581,7 @@ export const PracticeMode = () => {
     return (
       <div className="max-w-4xl mx-auto w-full px-4 flex items-center justify-center">
         {renderFacePreview()}
+        {renderFaceWarningOverlay()}
         <div className="text-sm text-muted-foreground flex items-center gap-2">
           <Loader2 className="w-4 h-4 animate-spin" />
           Working…
@@ -3401,56 +3863,111 @@ export const PracticeMode = () => {
                       </ul>
                     </div>
                   )}
+
+                  {/* Model Answer */}
+                  {microFeedback?.model_answer && (
+                    <div className="mt-4 p-3 bg-green-500/5 rounded-lg">
+                      <h4 className="font-semibold text-sm mb-1 text-green-600 dark:text-green-400">📖 Model Answer</h4>
+                      <p className="text-sm text-muted-foreground whitespace-pre-wrap leading-relaxed">
+                        {microFeedback.model_answer}
+                      </p>
+                    </div>
+                  )}
                 </div>
                 <Separator />
               </>
             )}
 
             {/* Why this score */}
-            {evaluationTrace && Array.isArray(evaluationTrace.why) && evaluationTrace.why.length > 0 && (
-              <>
-                <div className="space-y-2 p-3 sm:p-4 bg-muted/50 rounded-lg border">
-                  <div className="text-sm sm:text-base font-semibold">Why this score</div>
-                  <ul className="text-xs sm:text-sm space-y-1.5">
-                    {evaluationTrace.why.map((line, idx) => (
-                      <li key={idx} className="flex items-start gap-2">
-                        <span className="text-primary mt-0.5 shrink-0">•</span>
-                        <span className="text-muted-foreground leading-relaxed">{String(line)}</span>
-                      </li>
-                    ))}
-                  </ul>
-                </div>
-                <Separator />
-              </>
-            )}
+            {evaluationTrace && (() => {
+              // Normalize `why` to string[] — handle string, array, or object shapes
+              let whyLines: string[] = [];
+              // eslint-disable-next-line @typescript-eslint/no-explicit-any
+              const raw: any = (evaluationTrace as any).why;
+              if (Array.isArray(raw)) {
+                whyLines = raw.map(String).filter(Boolean);
+              } else if (typeof raw === 'string' && raw.trim()) {
+                whyLines = raw.split(/\n|(?<=\.)\s+/).map((s: string) => s.trim()).filter(Boolean);
+              }
+              // Also check for alternative keys the backend might use
+              if (whyLines.length === 0) {
+                const alt = (evaluationTrace as any).reasons ?? (evaluationTrace as any).explanation ?? (evaluationTrace as any).reasoning;
+                if (Array.isArray(alt)) {
+                  whyLines = alt.map(String).filter(Boolean);
+                } else if (typeof alt === 'string' && alt.trim()) {
+                  whyLines = alt.split(/\n|(?<=\.)\s+/).map((s: string) => s.trim()).filter(Boolean);
+                }
+              }
+              if (whyLines.length === 0) return null;
+              return (
+                <>
+                  <div className="space-y-2 p-3 sm:p-4 bg-muted/50 rounded-lg border">
+                    <div className="text-sm sm:text-base font-semibold flex items-center gap-2">
+                      <span>🧠</span> Why this score
+                    </div>
+                    <ul className="text-xs sm:text-sm space-y-1.5">
+                      {whyLines.map((line, idx) => (
+                        <li key={idx} className="flex items-start gap-2">
+                          <span className="text-primary mt-0.5 shrink-0">•</span>
+                          <span className="text-muted-foreground leading-relaxed">{line}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                  <Separator />
+                </>
+              );
+            })()}
 
             {/* Session trajectory */}
             {trajectory && (trajectory.points || trajectory.overall || trajectory.dimensions || trajectory.note) && (
               <>
-                <div className="space-y-2 p-3 sm:p-4 bg-muted/50 rounded-lg border">
+                <div className="space-y-3 p-3 sm:p-4 bg-muted/50 rounded-lg border">
                   <div className="flex items-center justify-between gap-2">
-                    <div className="text-sm sm:text-base font-semibold">Session trajectory</div>
+                    <div className="text-sm sm:text-base font-semibold flex items-center gap-2">
+                      <span>📈</span> Session Trajectory
+                    </div>
                     {typeof trajectory?.overall?.delta === 'number' && (
-                      <Badge variant="outline">
-                        Overall Δ {trajectory.overall.delta > 0 ? '+' : ''}{trajectory.overall.delta}
+                      <Badge
+                        variant="outline"
+                        className={`font-mono text-xs ${
+                          trajectory.overall.delta > 0
+                            ? 'border-green-500/40 text-green-600 dark:text-green-400'
+                            : trajectory.overall.delta < 0
+                              ? 'border-red-500/40 text-red-600 dark:text-red-400'
+                              : ''
+                        }`}
+                      >
+                        Overall Δ {trajectory.overall.delta > 0 ? '+' : ''}{Math.round(trajectory.overall.delta * 100) / 100}
                       </Badge>
                     )}
                   </div>
 
                   {typeof trajectory.note === 'string' && trajectory.note.trim() && (
-                    <div className="text-xs sm:text-sm text-muted-foreground leading-relaxed">
+                    <div className="text-xs sm:text-sm text-muted-foreground leading-relaxed italic">
                       {trajectory.note}
                     </div>
                   )}
 
                   {trajectory.dimensions && typeof trajectory.dimensions === 'object' && (
-                    <div className="flex flex-wrap gap-2 pt-1">
+                    <div className="flex flex-wrap gap-1.5 pt-1">
                       {Object.entries(trajectory.dimensions as Record<string, any>).map(([dim, info]) => {
                         const delta = (info as any)?.delta;
                         if (typeof delta !== 'number') return null;
+                        const rounded = Math.round(delta * 100) / 100;
                         return (
-                          <Badge key={dim} variant="secondary" className="capitalize">
-                            {dim} Δ {delta > 0 ? '+' : ''}{delta}
+                          <Badge
+                            key={dim}
+                            variant="secondary"
+                            className={`capitalize font-mono text-xs ${
+                              rounded > 0
+                                ? 'text-green-600 dark:text-green-400'
+                                : rounded < 0
+                                  ? 'text-red-600 dark:text-red-400'
+                                  : 'text-muted-foreground'
+                            }`}
+                          >
+                            {dim} {rounded > 0 ? '+' : ''}{rounded}
                           </Badge>
                         );
                       })}
@@ -3458,26 +3975,27 @@ export const PracticeMode = () => {
                   )}
 
                   {Array.isArray(trajectory.points) && trajectory.points.length > 0 && (
-                    <div className="pt-2 space-y-1.5">
+                    <div className="pt-1 space-y-1">
                       {trajectory.points.map((p: any, idx: number) => {
                         const qn = p?.question_number ?? p?.question ?? idx + 1;
                         const overall = p?.overall ?? p?.overall_score;
                         const dims = p?.dimensions ?? p?.dimension_scores;
+                        const roundedOverall = typeof overall === 'number' ? Math.round(overall * 100) / 100 : null;
                         return (
-                          <div key={idx} className="text-xs sm:text-sm text-muted-foreground flex flex-wrap items-center gap-2">
-                            <Badge variant="outline">Q{qn}</Badge>
-                            {typeof overall === 'number' && (
+                          <div key={idx} className="text-xs sm:text-sm text-muted-foreground flex flex-wrap items-center gap-2 py-1 border-b border-border/40 last:border-0">
+                            <Badge variant="outline" className="text-xs font-mono">Q{qn}</Badge>
+                            {roundedOverall !== null && (
                               <span>
-                                Overall: <span className="font-medium text-foreground">{overall}</span>
+                                Overall: <span className="font-semibold text-foreground">{roundedOverall}</span>
                               </span>
                             )}
                             {dims && typeof dims === 'object' && (
-                              <span className="truncate">
+                              <span className="text-muted-foreground/80">
                                 {Object.entries(dims as Record<string, any>)
                                   .filter(([, v]) => typeof v === 'number')
                                   .slice(0, 4)
-                                  .map(([k, v]) => `${k}: ${v}`)
-                                  .join(' • ')}
+                                  .map(([k, v]) => `${k}: ${Math.round((v as number) * 100) / 100}`)
+                                  .join(' · ')}
                               </span>
                             )}
                           </div>
@@ -3664,7 +4182,12 @@ export const PracticeMode = () => {
                     <Trophy className="w-12 h-12 text-white" />
                   </div>
                   <div>
-                    <h1 className="text-4xl font-bold mb-2">Interview Complete! 🎉</h1>
+                    <h1 className="text-2xl sm:text-4xl font-bold mb-2">Interview Complete!</h1>
+                    {endedEarlyData?.ended_early && (
+                      <div className="inline-flex items-center px-3 py-1 mb-2 rounded-full bg-yellow-500/10 text-yellow-600 dark:text-yellow-400 text-sm font-medium">
+                        ⚠️ Ended early — {endedEarlyData.questions_answered ?? currentQuestionNumber}/{endedEarlyData.total_questions ?? totalQuestions} answered
+                      </div>
+                    )}
                     {currentRoundConfig ? (
                       <p className="text-muted-foreground text-lg">
                         Completed <span className="font-semibold text-primary">{currentRoundConfig.name}</span> • {totalQuestions} questions
@@ -3691,7 +4214,7 @@ export const PracticeMode = () => {
             {questionEvaluations.length > 0 && (
               <Card>
                 <CardHeader>
-                  <CardTitle className="text-2xl">All Questions Evaluation</CardTitle>
+                  <CardTitle className="text-xl sm:text-2xl">All Questions Evaluation</CardTitle>
                   <CardDescription>
                     Review feedback for each question in one place.
                   </CardDescription>
@@ -3831,21 +4354,21 @@ export const PracticeMode = () => {
                   <CardTitle className="text-2xl">Overall Performance</CardTitle>
                 </CardHeader>
                 <CardContent>
-                  <div className="flex items-center justify-between">
-                    <div className="flex-1">
-                      <div className="flex items-baseline gap-3 mb-2">
-                        <span className={`text-6xl font-bold ${getScoreColor(score)}`}>
+                  <div className="flex flex-col sm:flex-row items-center sm:justify-between gap-4">
+                    <div className="flex-1 w-full">
+                      <div className="flex flex-wrap items-baseline gap-2 sm:gap-3 mb-2 justify-center sm:justify-start">
+                        <span className={`text-4xl sm:text-6xl font-bold ${getScoreColor(score)}`}>
                           {score}
                         </span>
-                        <span className="text-3xl text-muted-foreground">/100</span>
-                        <Badge className="text-xl px-4 py-2 ml-4">{grade}</Badge>
+                        <span className="text-xl sm:text-3xl text-muted-foreground">/100</span>
+                        <Badge className="text-base sm:text-xl px-3 sm:px-4 py-1 sm:py-2">{grade}</Badge>
                       </div>
                       <Progress value={score} className="h-3 mt-4" />
-                      <p className="text-xs text-muted-foreground mt-2">
+                      <p className="text-xs text-muted-foreground mt-2 text-center sm:text-left">
                         Based on average confidence score: {avgConfidence.toFixed(2)}{avgConfidence <= 1 ? ' (0-1 scale)' : '/10'}
                       </p>
                     </div>
-                    <div className="flex flex-col items-center gap-2 ml-8">
+                    <div className="flex flex-col items-center gap-2 sm:ml-8">
                       <div className="relative w-16 h-16">
                         <Star className="w-16 h-16 text-gray-300 absolute" />
                         <div
@@ -4057,6 +4580,33 @@ export const PracticeMode = () => {
                       </p>
                     </div>
                   )}
+                </CardContent>
+              </Card>
+            )}
+
+            {/* Skipped Questions */}
+            {endedEarlyData?.skipped_questions && endedEarlyData.skipped_questions.length > 0 && (
+              <Card>
+                <CardHeader>
+                  <CardTitle className="text-lg flex items-center gap-2">
+                    <AlertCircle className="h-5 w-5 text-yellow-500" />
+                    Skipped Questions
+                  </CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-2">
+                  {endedEarlyData.skipped_questions.map((q) => (
+                    <div key={q.question_number} className="p-3 bg-muted/30 rounded-lg border border-dashed border-border/40">
+                      <div className="flex items-center gap-2 mb-1">
+                        <span className="text-xs text-muted-foreground font-medium">Q{q.question_number}</span>
+                        {q.category && (
+                          <Badge variant="outline" className="text-[10px] px-1.5 py-0 capitalize">
+                            {q.category.replace('_', ' ')}
+                          </Badge>
+                        )}
+                      </div>
+                      <p className="text-sm">{q.question}</p>
+                    </div>
+                  ))}
                 </CardContent>
               </Card>
             )}

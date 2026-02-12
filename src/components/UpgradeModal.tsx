@@ -104,9 +104,9 @@ export function UpgradeModal() {
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
-      <DialogContent className="max-w-5xl max-h-[90vh] overflow-y-auto">
+      <DialogContent className="w-[calc(100vw-2rem)] sm:max-w-3xl lg:max-w-5xl max-h-[90vh] overflow-y-auto p-4 sm:p-6">
         <DialogHeader>
-          <DialogTitle className="text-2xl">⚠️ Rate Limit Reached</DialogTitle>
+          <DialogTitle className="text-xl sm:text-2xl">Rate Limit Reached</DialogTitle>
           <DialogDescription>
             {rateLimitInfo && (
               <div className="mt-2 text-base">

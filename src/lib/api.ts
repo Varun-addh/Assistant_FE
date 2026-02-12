@@ -241,6 +241,8 @@ export interface HistoryItem {
   style: AnswerStyle;
   created_at: string;
   mode?: "answer" | "mirror";
+  /** Client-side only: file attached when asking this question */
+  attachment?: { name: string; type: string } | null;
 }
 export interface GetHistoryResponse {
   session_id: string;

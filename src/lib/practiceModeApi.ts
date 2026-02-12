@@ -9,6 +9,7 @@ import {
   strataxFetch,
   strataxFetchJson,
 } from './strataxClient';
+import type { ResumeContext, ResumeUploadResponse } from '../types/resume';
 
 export const API_BASE_URL = STRATAX_API_BASE_URL;
 
@@ -209,6 +210,7 @@ export interface StartRoundRequest {
   company_specific?: string;         // Optional
   enable_tts?: boolean;              // Optional
   question_count?: number;           // Optional - Number of questions (1-15, backend default varies by round)
+  resume_context?: ResumeContext;    // Optional — parsed resume for claim-based probing
 
   // Live Practice / Proctoring gate (required by backend)
   screen_shared: boolean;
@@ -298,6 +300,7 @@ export interface MicroFeedback {
   strengths?: string[];                    // Positive aspects
   improvement_areas?: string[];            // Areas to improve
   actionable_suggestions?: string[];       // Specific next steps
+  model_answer?: string | null;            // Model/ideal answer
 }
 
 export interface Evaluation {
@@ -889,11 +892,13 @@ export async function acknowledgeFeedback(
     console.error('❌ [API] Acknowledge feedback error:', err);
 
     if (err instanceof StrataxApiError && Array.isArray(err.detail)) {
+      // Log the raw validation breakdown for debugging
       const validationErrors = err.detail
         .map((e: any) => `${e.loc?.join('.')}: ${e.msg} (input: ${JSON.stringify(e.input)})`)
         .join('; ');
       console.error('📋 [API] Validation errors:', validationErrors);
-      throw new Error(`Validation error: ${validationErrors}`);
+      // Throw a clean, user-safe message — never expose field paths or pydantic internals
+      throw new Error('Could not process the request. Please try again.');
     }
 
     throw err;
@@ -1013,7 +1018,8 @@ export async function quickStartInterview(
   questionCount?: number,
   targetCompany?: string,
   targetRound?: InterviewRound,
-  proctoringGate?: { screen_shared: boolean; camera_enabled: boolean }
+  proctoringGate?: { screen_shared: boolean; camera_enabled: boolean },
+  resumeContext?: ResumeContext | null
 ): Promise<QuickStartResponse> {
   const requestBody: any = {
     voice_input: voiceInput,
@@ -1034,6 +1040,10 @@ export async function quickStartInterview(
 
   if (targetRound) {
     requestBody.target_round = targetRound;
+  }
+
+  if (resumeContext) {
+    requestBody.resume_context = resumeContext;
   }
 
   return await strataxFetchJson(`${API_BASE_URL}/api/practice/interview/quick-start`, {
@@ -1081,4 +1091,90 @@ export async function startRoundInterview(
   });
   console.log('✅ [API] Start round response:', data);
   return data;
+}
+
+/**
+ * End a practice interview session early.
+ * Returns evaluations for answered questions and skipped questions list.
+ */
+export interface EndPracticeSessionResponse {
+  status: string;
+  ended_early?: boolean;
+  questions_answered?: number;
+  questions_skipped?: number;
+  total_questions?: number;
+  evaluations?: Array<{
+    question_number: number;
+    question: string;
+    user_answer?: string;
+    model_answer?: string;
+    correctness_score?: number;
+    technical_accuracy?: string;
+    strengths?: string[];
+    improvement_areas?: string[];
+    speech_metrics?: {
+      wpm?: number;
+      filler_count?: number;
+      confidence_score?: number;
+      duration?: number;
+    };
+  }>;
+  skipped_questions?: Array<{
+    question_number: number;
+    question: string;
+    category?: string;
+  }>;
+  evaluation_report?: {
+    strengths?: { items: string[] };
+    improvements?: { items: string[] };
+    metrics_summary?: {
+      total_fillers?: number;
+      avg_wpm?: number;
+      longest_pause?: number;
+      avg_confidence?: number;
+      total_duration?: number;
+    };
+    action_plan?: { steps: string[] };
+    practice_recommendation?: string;
+  };
+}
+
+export async function endPracticeSession(sessionId: string): Promise<EndPracticeSessionResponse> {
+  const formData = new FormData();
+  formData.append('session_id', sessionId);
+
+  const res = await strataxFetch(`${API_BASE_URL}/api/practice/interview/end-session`, {
+    method: 'POST',
+    body: formData,
+  });
+  if (!res.ok) throw new Error(`End practice session failed: ${res.status}`);
+  return res.json();
+}
+
+// ============================================================================
+// Resume Upload
+// ============================================================================
+
+/**
+ * Upload and parse a resume file for Practice Mode.
+ * Accepts .txt, .md, .pdf, .docx (max 5 MB).
+ * Returns structured resume context for claim-based probing.
+ */
+export async function uploadResumeForPractice(
+  file: File
+): Promise<ResumeUploadResponse> {
+  const formData = new FormData();
+  formData.append('file', file);
+
+  const res = await strataxFetch(`${API_BASE_URL}/api/practice/upload-resume`, {
+    method: 'POST',
+    body: formData,
+  });
+
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ detail: res.statusText }));
+    throw new Error(err.detail || `Upload failed: ${res.status}`);
+  }
+
+  return res.json();
 }

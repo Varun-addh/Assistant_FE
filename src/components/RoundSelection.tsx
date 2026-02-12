@@ -42,12 +42,17 @@ import {
   startRoundInterview,
   type UserProfile,
 } from '@/lib/practiceModeApi';
+import type { ResumeContext } from '../types/resume';
+import ResumeUpload from './ResumeUpload';
 import { useToast } from '@/hooks/use-toast';
 
 interface RoundSelectionProps {
   onRoundStart: (sessionId: string, roundConfig: RoundConfig, firstQuestion: any, ttsAudioUrl?: string, totalQuestionsFromApi?: number) => void;
   userProfile?: UserProfile;
   ensureLiveMediaReady: () => Promise<{ screen_shared: boolean; camera_enabled: boolean }>;
+  ensureCameraForProctoring?: () => Promise<void>;
+  resumeContext?: ResumeContext | null;
+  onResumeChange?: (ctx: ResumeContext | null) => void;
 }
 
 // Icon mapping for each round type
@@ -217,7 +222,7 @@ const filterRoundsByDomain = (rounds: RoundConfig[], domain: string): RoundConfi
   return filtered;
 };
 
-export default function RoundSelection({ onRoundStart, userProfile, ensureLiveMediaReady }: RoundSelectionProps) {
+export default function RoundSelection({ onRoundStart, userProfile, ensureLiveMediaReady, ensureCameraForProctoring, resumeContext, onResumeChange }: RoundSelectionProps) {
   const { toast } = useToast();
 
   // If the user clicks "Start next targeted session" from Progress, we store a plan in localStorage.
@@ -358,8 +363,8 @@ export default function RoundSelection({ onRoundStart, userProfile, ensureLiveMe
         stack: error.stack,
       });
       toast({
-        title: '❌ Failed to Load Rounds',
-        description: error.message || 'Could not load interview rounds',
+        title: 'Failed to load rounds',
+        description: 'Could not load interview rounds. Please try again.',
         variant: 'destructive',
       });
     } finally {
@@ -373,15 +378,19 @@ export default function RoundSelection({ onRoundStart, userProfile, ensureLiveMe
     // Validate domain is selected (CRITICAL)
     if (!domain && !userProfile?.domain) {
       toast({
-        title: '⚠️ Domain Required',
+        title: 'Domain required',
         description: 'Please select your domain/specialization to get relevant questions',
-        variant: 'destructive',
+        variant: 'warning',
       });
       return;
     }
 
     setStarting(true);
     try {
+      // Gate: camera must be live if proctored mode is ON
+      if (ensureCameraForProctoring) {
+        await ensureCameraForProctoring();
+      }
       const gate = await ensureLiveMediaReady();
 
       const requestData: any = {
@@ -392,6 +401,7 @@ export default function RoundSelection({ onRoundStart, userProfile, ensureLiveMe
         enable_tts: true,
         screen_shared: !!gate.screen_shared,
         camera_enabled: !!gate.camera_enabled,
+        ...(resumeContext && { resume_context: resumeContext }),
       };
 
       // Add question_count if user customized it (not using default)
@@ -412,8 +422,9 @@ export default function RoundSelection({ onRoundStart, userProfile, ensureLiveMe
       console.log('🔊 [Round Selection] TTS Audio URL:', response.tts_audio_url);
 
       toast({
-        title: '🎯 Round Started!',
+        title: 'Round started',
         description: `${selectedRound.name} interview has begun`,
+        variant: 'success',
       });
 
       // Clear the prefill so we don't auto-apply it on future visits.
@@ -435,30 +446,12 @@ export default function RoundSelection({ onRoundStart, userProfile, ensureLiveMe
     } catch (error: any) {
       console.error('❌ [Round Selection] Failed to start round:', error);
 
-      // Try to parse detailed error information
-      let errorMessage = 'Could not start the interview round';
-
-      if (error.message) {
-        try {
-          // Check if it's a validation error with details
-          const errorObj = JSON.parse(error.message);
-          if (Array.isArray(errorObj.detail)) {
-            errorMessage = errorObj.detail.map((e: any) =>
-              `${e.loc?.join('.')}: ${e.msg}`
-            ).join('; ');
-          } else if (errorObj.detail) {
-            errorMessage = errorObj.detail;
-          }
-        } catch {
-          errorMessage = error.message;
-        }
-      }
-
-      console.error('📋 [Round Selection] Error details:', errorMessage);
+      // Log full error for debugging; never expose raw validation details to user
+      console.error('📋 [Round Selection] Error details:', error?.message);
 
       toast({
-        title: '❌ Failed to Start Round',
-        description: errorMessage,
+        title: 'Could not start round',
+        description: 'Something went wrong while setting up the interview round. Please check your selections and try again.',
         variant: 'destructive',
       });
     } finally {
@@ -482,44 +475,81 @@ export default function RoundSelection({ onRoundStart, userProfile, ensureLiveMe
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [nextSessionPrefill, prefillApplied, selectedRound, domain]);
 
+  // Build contextual recommendation label for a round
+  const getRecommendationLabel = (round: RoundConfig): string | null => {
+    // Only label rounds that are actually in the recommended set
+    const isInRecommended = recommendedRounds.some(r => r.round_type === round.round_type);
+    if (!isInRecommended) return null;
+
+    // HR Screening is always "Start here"
+    if (round.round_type === InterviewRound.HR_SCREENING) return null; // handled separately
+
+    const effectiveDomain = domain || userProfile?.domain || '';
+    const effectiveExp = experienceYears || userProfile?.experience_years || 0;
+
+    // Contextual labels
+    if (effectiveDomain && effectiveExp > 0) {
+      const domainShort = effectiveDomain.length > 20 ? effectiveDomain.slice(0, 18) + '…' : effectiveDomain;
+      return `For ${domainShort}, ${effectiveExp}yr+`;
+    }
+    if (effectiveExp > 0) return `For ${effectiveExp}+ yrs experience`;
+    if (effectiveDomain) {
+      const domainShort = effectiveDomain.length > 25 ? effectiveDomain.slice(0, 23) + '…' : effectiveDomain;
+      return `Based on ${domainShort}`;
+    }
+    return 'Recommended';
+  };
+
   const RoundCard = ({ round, isRecommended = false }: { round: RoundConfig; isRecommended?: boolean }) => {
     const Icon = ROUND_ICONS[round.round_type] || Target;
     const colorGradient = round.color || ROUND_COLORS[round.round_type] || 'from-gray-500 to-gray-600';
     const isSelected = selectedRound?.round_type === round.round_type;
     const isDomainMissing = !domain && !userProfile?.domain;
+    const isStartHere = round.round_type === InterviewRound.HR_SCREENING;
+    const contextualLabel = isRecommended ? getRecommendationLabel(round) : null;
 
     return (
       <Card
-        className={`group cursor-pointer transition-all duration-300 hover:shadow-2xl hover:scale-[1.03] ${isSelected
-          ? 'ring-2 ring-primary shadow-2xl scale-[1.02] border-primary/50'
-          : 'hover:border-primary/30'
-          } ${isDomainMissing ? 'opacity-50 cursor-not-allowed' : ''}`}
+        className={`group cursor-pointer transition-all duration-300 hover:shadow-2xl hover:scale-[1.03] ${
+          isSelected
+            ? 'ring-2 ring-primary shadow-2xl scale-[1.02] border-primary/50'
+            : isStartHere
+              ? 'border-primary/40 shadow-lg shadow-primary/5 hover:border-primary/60'
+              : 'hover:border-primary/30'
+        } ${isDomainMissing ? 'opacity-50 cursor-not-allowed' : ''}`}
         onClick={() => {
           if (isDomainMissing) {
             toast({
-              title: '⚠️ Domain Required',
+              title: 'Domain required',
               description: 'Please select your domain first to choose a round',
-              variant: 'destructive',
+              variant: 'warning',
             });
             return;
           }
           setSelectedRound(round);
         }}
       >
-        <CardHeader className="pb-3 sm:pb-4 px-4 sm:px-6">
+        <CardHeader className="pb-2 sm:pb-3 px-4 sm:px-6">
+          {/* Start-here micro-label */}
+          {isStartHere && (
+            <div className="flex items-center gap-1.5 mb-2">
+              <div className="h-1.5 w-1.5 rounded-full bg-primary animate-pulse" />
+              <span className="text-[10px] sm:text-[11px] font-bold uppercase tracking-wider text-primary">
+                Start here · Recommended first round
+              </span>
+            </div>
+          )}
+
           <div className="flex items-start justify-between gap-2 sm:gap-3">
             <div className="flex items-start gap-2 sm:gap-3 flex-1">
               <div className={`p-2 sm:p-3 rounded-xl bg-gradient-to-br ${colorGradient} shadow-lg group-hover:shadow-xl transition-shadow`}>
                 <Icon className="w-5 h-5 sm:w-6 sm:h-6 text-white" />
               </div>
               <div className="flex-1 min-w-0">
-                <CardTitle className="text-base sm:text-lg mb-0.5 sm:mb-1 line-clamp-2">{round.name}</CardTitle>
-                {isRecommended && (
-                  <Badge variant="outline" className="text-[10px] sm:text-xs border-primary/30 bg-primary/5 px-1.5 py-0 sm:px-2 sm:py-0.5">
-                    <Sparkles className="w-2.5 h-2.5 sm:w-3 sm:h-3 mr-1" />
-                    Recommended
-                  </Badge>
-                )}
+                <CardTitle className="text-base sm:text-lg leading-tight line-clamp-2">{round.name}</CardTitle>
+                <p className="text-[11px] sm:text-xs text-muted-foreground mt-1 leading-snug line-clamp-2">
+                  {round.description}
+                </p>
               </div>
             </div>
             {isSelected && (
@@ -528,46 +558,51 @@ export default function RoundSelection({ onRoundStart, userProfile, ensureLiveMe
               </div>
             )}
           </div>
-          <CardDescription className="mt-2 sm:mt-3 text-xs sm:text-sm leading-relaxed line-clamp-2 sm:line-clamp-3">
-            {round.description}
-          </CardDescription>
         </CardHeader>
-        <CardContent className="space-y-4">
-          {/* Metrics */}
-          <div className="flex flex-wrap gap-2">
-            <Badge variant="secondary" className="text-xs gap-1 px-2.5 py-1">
+
+        <CardContent className="pt-0 space-y-3">
+          {/* Compact meta row */}
+          <div className="flex items-center gap-1.5 flex-wrap">
+            <span className="inline-flex items-center gap-1 text-[11px] text-muted-foreground">
               <Clock className="w-3 h-3" />
-              {round.duration_minutes} min
-            </Badge>
-            <Badge variant="secondary" className="text-xs gap-1 px-2.5 py-1">
+              {round.duration_minutes}m
+            </span>
+            <span className="text-muted-foreground/30">·</span>
+            <span className="inline-flex items-center gap-1 text-[11px] text-muted-foreground">
               <Target className="w-3 h-3" />
               {round.question_count} Qs
-            </Badge>
-            <Badge className={`text-xs px-2.5 py-1 ${DIFFICULTY_COLORS[round.difficulty]}`}>
+            </span>
+            <span className="text-muted-foreground/30">·</span>
+            <Badge className={`text-[10px] px-1.5 py-0 h-5 ${DIFFICULTY_COLORS[round.difficulty]}`}>
               {round.difficulty.charAt(0).toUpperCase() + round.difficulty.slice(1)}
             </Badge>
           </div>
 
-          <Separator className="my-3" />
+          {/* Contextual recommendation badge (not on HR — that has "Start here") */}
+          {contextualLabel && !isStartHere && (
+            <div className="flex items-center gap-1.5">
+              <Badge variant="outline" className="text-[10px] sm:text-[11px] border-primary/30 bg-primary/5 px-2 py-0.5 font-medium">
+                <Sparkles className="w-2.5 h-2.5 mr-1 text-primary" />
+                {contextualLabel}
+              </Badge>
+            </div>
+          )}
 
-          {/* Focus Areas */}
-          <div className="space-y-2">
-            <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">
-              Focus Areas
-            </p>
-            <div className="flex flex-wrap gap-1.5">
-              {round.focus_areas?.slice(0, 3).map((area, idx) => (
-                <Badge key={idx} variant="outline" className="text-xs px-2 py-0.5 font-normal">
+          {/* Focus Areas — subtle, no separator */}
+          {round.focus_areas && round.focus_areas.length > 0 && (
+            <div className="flex flex-wrap gap-1">
+              {round.focus_areas.slice(0, 3).map((area, idx) => (
+                <span key={idx} className="text-[10px] text-muted-foreground/70 bg-muted/40 rounded px-1.5 py-0.5">
                   {area}
-                </Badge>
+                </span>
               ))}
-              {round.focus_areas && round.focus_areas.length > 3 && (
-                <Badge variant="outline" className="text-xs px-2 py-0.5 font-medium bg-muted">
+              {round.focus_areas.length > 3 && (
+                <span className="text-[10px] text-muted-foreground/50 bg-muted/30 rounded px-1.5 py-0.5">
                   +{round.focus_areas.length - 3}
-                </Badge>
+                </span>
               )}
             </div>
-          </div>
+          )}
         </CardContent>
       </Card>
     );
@@ -590,11 +625,14 @@ export default function RoundSelection({ onRoundStart, userProfile, ensureLiveMe
         <div className="container max-w-7xl mx-auto px-2 sm:px-4 pb-8 pt-10 sm:pt-4 space-y-4 sm:space-y-8">
           {!selectedRound ? (
             <>
-              {/* Header - Only Main Title, No Icon, No Subtitle, No Black BG */}
-              <div className="text-center py-2 sm:py-4">
+              {/* Header */}
+              <div className="text-center py-2 sm:py-4 space-y-2">
                 <h1 className="text-2xl sm:text-3xl md:text-5xl font-extrabold tracking-tight text-foreground/90 px-4">
                   Choose Your Interview Round
                 </h1>
+                <p className="text-xs sm:text-sm text-muted-foreground max-w-md mx-auto px-4">
+                  Recommended path based on real interviews — start with HR Screening and progress through each stage
+                </p>
               </div>
 
               {/* Profile Setup Card - Redesigned */}
@@ -794,15 +832,24 @@ export default function RoundSelection({ onRoundStart, userProfile, ensureLiveMe
                 </Card>
               )}
 
-              {/* Rounds Grid - Enhanced Cards */}
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 pb-8">
-                {(view === 'recommended' ? recommendedRounds : allRounds)?.map((round) => (
-                  <RoundCard
-                    key={round.round_type}
-                    round={round}
-                    isRecommended={view === 'recommended'}
-                  />
-                ))}
+              {/* Rounds Grid */}
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-6 pb-8">
+                {(() => {
+                  const rounds = view === 'recommended' ? recommendedRounds : allRounds;
+                  // Sort: HR_SCREENING first ("Start here") to anchor the grid
+                  const sorted = [...(rounds || [])].sort((a, b) => {
+                    if (a.round_type === InterviewRound.HR_SCREENING) return -1;
+                    if (b.round_type === InterviewRound.HR_SCREENING) return 1;
+                    return 0;
+                  });
+                  return sorted.map((round) => (
+                    <RoundCard
+                      key={round.round_type}
+                      round={round}
+                      isRecommended={view === 'recommended'}
+                    />
+                  ));
+                })()}
               </div>
 
               {/* No Rounds Message */}
@@ -857,10 +904,10 @@ export default function RoundSelection({ onRoundStart, userProfile, ensureLiveMe
                 </CardHeader>
                 <CardContent className="pt-6 space-y-6">
                   {/* Round Metrics - Dynamic based on question count */}
-                  <div className="grid grid-cols-3 gap-4">
-                    <div className="flex flex-col items-center justify-center p-4 rounded-xl bg-muted/50 border">
-                      <Clock className="w-5 h-5 text-primary mb-2" />
-                      <span className="text-2xl font-bold">
+                  <div className="grid grid-cols-3 gap-2 sm:gap-4">
+                    <div className="flex flex-col items-center justify-center p-3 sm:p-4 rounded-xl bg-muted/50 border">
+                      <Clock className="w-4 h-4 sm:w-5 sm:h-5 text-primary mb-1.5 sm:mb-2" />
+                      <span className="text-xl sm:text-2xl font-bold">
                         {questionCount > 0
                           ? Math.round((questionCount / selectedRound.question_count) * selectedRound.duration_minutes)
                           : selectedRound.duration_minutes
@@ -868,16 +915,16 @@ export default function RoundSelection({ onRoundStart, userProfile, ensureLiveMe
                       </span>
                       <span className="text-xs text-muted-foreground mt-1">Minutes</span>
                     </div>
-                    <div className="flex flex-col items-center justify-center p-4 rounded-xl bg-muted/50 border">
-                      <Target className="w-5 h-5 text-primary mb-2" />
-                      <span className="text-2xl font-bold">
+                    <div className="flex flex-col items-center justify-center p-3 sm:p-4 rounded-xl bg-muted/50 border">
+                      <Target className="w-4 h-4 sm:w-5 sm:h-5 text-primary mb-1.5 sm:mb-2" />
+                      <span className="text-xl sm:text-2xl font-bold">
                         {questionCount > 0 ? questionCount : selectedRound.question_count}
                       </span>
                       <span className="text-xs text-muted-foreground mt-1">Questions</span>
                     </div>
-                    <div className="flex flex-col items-center justify-center p-4 rounded-xl bg-muted/50 border">
-                      <TrendingUp className="w-5 h-5 text-primary mb-2" />
-                      <span className="text-lg font-bold capitalize">{selectedRound.difficulty}</span>
+                    <div className="flex flex-col items-center justify-center p-3 sm:p-4 rounded-xl bg-muted/50 border">
+                      <TrendingUp className="w-4 h-4 sm:w-5 sm:h-5 text-primary mb-1.5 sm:mb-2" />
+                      <span className="text-base sm:text-lg font-bold capitalize">{selectedRound.difficulty}</span>
                       <span className="text-xs text-muted-foreground mt-1">Difficulty</span>
                     </div>
                   </div>
@@ -964,6 +1011,14 @@ export default function RoundSelection({ onRoundStart, userProfile, ensureLiveMe
                       </p>
                     </div>
                   </div>
+
+                  {/* Resume Upload (optional) */}
+                  <ResumeUpload
+                    mode="practice"
+                    onParsed={(ctx) => onResumeChange?.(ctx)}
+                    onClear={() => onResumeChange?.(null)}
+                    existing={resumeContext}
+                  />
 
                   {/* Action Buttons */}
                   <div className="flex flex-col-reverse sm:flex-row gap-3 pt-4">

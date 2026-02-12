@@ -2205,3 +2205,131 @@ All colors MUST be HSL.
     pointer-events: none;
   }
 }
+
+/* ===== PREMIUM SEARCH INTELLIGENCE POLISH ===== */
+
+/* Shimmer loading skeleton animation */
+@keyframes shimmer {
+  0% { background-position: -200% 0; }
+  100% { background-position: 200% 0; }
+}
+
+.intelligence-shimmer {
+  background: linear-gradient(
+    90deg,
+    hsl(var(--muted) / 0.1) 25%,
+    hsl(var(--muted) / 0.2) 50%,
+    hsl(var(--muted) / 0.1) 75%
+  );
+  background-size: 200% 100%;
+  animation: shimmer 1.5s ease-in-out infinite;
+  border-radius: 0.75rem;
+}
+
+/* Smooth filter drawer transition */
+@keyframes filterSlideDown {
+  from {
+    opacity: 0;
+    transform: translateY(-8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* Premium card hover glow */
+@keyframes subtleGlow {
+  0%, 100% { box-shadow: 0 0 0 0 transparent; }
+  50% { box-shadow: 0 0 20px -8px hsl(var(--primary) / 0.15); }
+}
+
+/* Trust score bar fill animation */
+@keyframes trustBarFill {
+  from { width: 0%; }
+}
+
+/* Smooth card entrance stagger */
+@keyframes cardEntrance {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* Apply staggered entrance to search result cards */
+.space-y-2\.5 > * {
+  animation: cardEntrance 0.3s ease-out backwards;
+}
+
+.space-y-2\.5 > *:nth-child(1) { animation-delay: 0ms; }
+.space-y-2\.5 > *:nth-child(2) { animation-delay: 40ms; }
+.space-y-2\.5 > *:nth-child(3) { animation-delay: 80ms; }
+.space-y-2\.5 > *:nth-child(4) { animation-delay: 120ms; }
+.space-y-2\.5 > *:nth-child(5) { animation-delay: 160ms; }
+.space-y-2\.5 > *:nth-child(6) { animation-delay: 200ms; }
+.space-y-2\.5 > *:nth-child(7) { animation-delay: 240ms; }
+.space-y-2\.5 > *:nth-child(8) { animation-delay: 280ms; }
+.space-y-2\.5 > *:nth-child(9) { animation-delay: 320ms; }
+.space-y-2\.5 > *:nth-child(10) { animation-delay: 360ms; }
+
+/* Premium input focus glow ring */
+input:focus-visible,
+textarea:focus-visible {
+  transition: box-shadow 0.3s ease, border-color 0.3s ease;
+}
+
+/* Smooth transitions for all interactive elements in intelligence panel */
+.backdrop-blur-sm,
+.backdrop-blur-md,
+.backdrop-blur-xl,
+.backdrop-blur-2xl {
+  transition: backdrop-filter 0.3s ease;
+}
+
+/* === Mock Interview Premium Animations === */
+
+/* Feedback/Summary card entrance */
+@keyframes mockFadeUp {
+  from { opacity: 0; transform: translateY(12px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+/* Criteria score tile pop-in */
+@keyframes scorePop {
+  0% { opacity: 0; transform: scale(0.9); }
+  60% { transform: scale(1.02); }
+  100% { opacity: 1; transform: scale(1); }
+}
+
+/* Evaluation criteria tiles stagger */
+.grid-cols-2 > div,
+.grid-cols-3 > div,
+.lg\:grid-cols-5 > div {
+  animation: scorePop 0.35s ease-out both;
+}
+.grid-cols-2 > div:nth-child(1),
+.lg\:grid-cols-5 > div:nth-child(1) { animation-delay: 0ms; }
+.grid-cols-2 > div:nth-child(2),
+.lg\:grid-cols-5 > div:nth-child(2) { animation-delay: 60ms; }
+.lg\:grid-cols-5 > div:nth-child(3) { animation-delay: 120ms; }
+.lg\:grid-cols-5 > div:nth-child(4) { animation-delay: 180ms; }
+.lg\:grid-cols-5 > div:nth-child(5) { animation-delay: 240ms; }
+
+/* Stats grid tiles in summary */
+.grid-cols-2.md\:grid-cols-4 > div {
+  animation: scorePop 0.35s ease-out both;
+}
+.grid-cols-2.md\:grid-cols-4 > div:nth-child(1) { animation-delay: 0ms; }
+.grid-cols-2.md\:grid-cols-4 > div:nth-child(2) { animation-delay: 60ms; }
+.grid-cols-2.md\:grid-cols-4 > div:nth-child(3) { animation-delay: 120ms; }
+.grid-cols-2.md\:grid-cols-4 > div:nth-child(4) { animation-delay: 180ms; }
+
+/* Smooth card transitions */
+.rounded-xl {
+  transition: box-shadow 0.25s ease, transform 0.2s ease, background-color 0.2s ease;
+}

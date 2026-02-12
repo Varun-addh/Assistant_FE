@@ -2,6 +2,7 @@
 // Follows the same patterns as api.ts for consistency
 
 import { STRATAX_API_BASE_URL, StrataxApiError, buildStrataxHeaders, strataxFetch } from "./strataxClient";
+import type { ResumeContext, ResumeUploadResponse } from "../types/resume";
 
 const BASE_URL = STRATAX_API_BASE_URL;
 
@@ -61,6 +62,7 @@ export interface StartSessionRequest {
   difficulty: Difficulty;
   num_questions: number;
   topic?: string;
+  resume_context?: ResumeContext;
 }
 
 export interface StartSessionResponse {
@@ -161,6 +163,17 @@ export interface SessionSummaryResponse {
     score: number;
     rating: string;
     summary: string;
+    model_answer?: string;
+    user_answer?: string;
+    strengths?: string[];
+    weaknesses?: string[];
+    criteria_scores?: {
+      correctness: number;
+      completeness: number;
+      clarity: number;
+      confidence: number;
+      technical_depth: number;
+    };
   }>;
 
   // Optional runtime extensions
@@ -172,6 +185,13 @@ export type EndSessionResponse = Partial<SessionSummaryResponse> & {
   message?: string;
   total_time_seconds?: number;
   score_range?: unknown;
+  ended_early?: boolean;
+  questions_skipped?: number;
+  skipped_questions?: Array<{
+    question_number: number;
+    question: string;
+    question_type?: string;
+  }>;
   summary?: (Partial<SessionSummaryResponse> & { total_time_seconds?: number; score_range?: unknown }) | null;
 };
 
@@ -394,7 +414,7 @@ export async function apiGetMockInterviewHistory(
       console.log("[MockInterviewAPI] 404 - returning empty sessions");
       return { sessions: [] };
     }
-    throw new Error(`Failed to get mock interview history: ${res.status} ${text}`);
+    throw new Error('Could not load interview history. Please try again.');
   }
 
   const data = await res.json();
@@ -428,7 +448,7 @@ export async function apiDeleteMockInterviewSession(
     if (res.status === 403) {
       throw new Error("You don't have permission to delete this session");
     }
-    throw new Error(`Failed to delete session: ${res.status} ${text}`);
+    throw new Error('Could not delete the session. Please try again.');
   }
 
   const data = await res.json();
@@ -458,10 +478,38 @@ export async function apiDeleteAllMockInterviewSessions(
     }
     const text = await safeReadText(res);
     console.error("[MockInterviewAPI] Delete all error response:", text);
-    throw new Error(`Failed to delete all sessions: ${res.status} ${text}`);
+    throw new Error('Could not delete sessions. Please try again.');
   }
 
   const data = await res.json();
   console.log("[MockInterviewAPI] Delete all response data:", data);
   return data;
+}
+
+// ============================================================================
+// Resume Upload
+// ============================================================================
+
+/**
+ * Upload and parse a resume file for Mock Interview.
+ * Accepts .txt, .md, .pdf, .docx (max 5 MB).
+ * Returns structured resume context for claim-based probing.
+ */
+export async function uploadResumeForMockInterview(
+  file: File
+): Promise<ResumeUploadResponse> {
+  const formData = new FormData();
+  formData.append('file', file);
+
+  const res = await strataxFetch(`${BASE_URL}/api/mock-interview/upload-resume`, {
+    method: 'POST',
+    body: formData,
+  });
+
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ detail: res.statusText }));
+    throw new Error(err.detail || `Upload failed: ${res.status}`);
+  }
+
+  return res.json();
 }

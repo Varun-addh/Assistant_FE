@@ -12,6 +12,7 @@ export type PracticeProctoringController = {
 export type StartPracticeProctoringOptions = {
   sessionId: string;
   onStatus?: (status: "starting" | "active" | "inactive" | "error", info?: string) => void;
+  onMultipleFaces?: (faceCount: number) => void;
   cameraStream?: MediaStream | null;
 };
 
@@ -195,6 +196,12 @@ export async function startPracticeProctoring(
     window.removeEventListener("blur", onBlur);
     track?.removeEventListener("ended", onTrackEnded);
 
+    // Stop face detection loop
+    if (faceDetectionTimerId !== null) {
+      clearInterval(faceDetectionTimerId);
+      faceDetectionTimerId = null;
+    }
+
     try {
       stream?.getTracks().forEach((t) => t.stop());
     } catch {
@@ -206,6 +213,70 @@ export async function startPracticeProctoring(
     });
     onStatus?.("inactive");
   };
+
+  // ── Face Detection Loop ──────────────────────────────────────────────
+  // Uses the browser's FaceDetector API (Chrome/Edge) to count faces.
+  // Falls back gracefully: if FaceDetector is unavailable, no warnings fire.
+  let faceDetectionTimerId: ReturnType<typeof setInterval> | null = null;
+
+  const startFaceDetection = () => {
+    const FD = (globalThis as any).FaceDetector;
+    if (!FD) {
+      console.log('[Proctoring] FaceDetector API not available — face detection skipped');
+      return;
+    }
+
+    let detector: any = null;
+    try {
+      detector = new FD({ maxDetectedFaces: 5, fastMode: true });
+    } catch (e) {
+      console.warn('[Proctoring] Failed to create FaceDetector:', e);
+      return;
+    }
+
+    // We need a <video> element playing the camera stream to grab frames.
+    const video = document.createElement('video');
+    video.muted = true;
+    video.playsInline = true;
+    video.autoplay = true;
+    try {
+      video.srcObject = stream;
+      void video.play().catch(() => {});
+    } catch {
+      return;
+    }
+
+    const INTERVAL_MS = 2500; // Check every 2.5 seconds
+    let detecting = false;
+
+    faceDetectionTimerId = setInterval(async () => {
+      if (!active || detecting) return;
+      if (video.readyState < 2) return; // Not enough data yet
+
+      detecting = true;
+      try {
+        const faces = await detector.detect(video);
+        const count = Array.isArray(faces) ? faces.length : 0;
+
+        if (count > 1) {
+          console.warn(`[Proctoring] Multiple faces detected: ${count}`);
+          options.onMultipleFaces?.(count);
+
+          // Also report to backend
+          void safePost('MULTIPLE_FACES_DETECTED' as PracticeSessionProctoringEventType, {
+            face_count: count,
+          });
+        }
+      } catch (err) {
+        // Detection can fail if video is not ready or tab is backgrounded
+        console.debug('[Proctoring] Face detection frame error:', err);
+      } finally {
+        detecting = false;
+      }
+    }, INTERVAL_MS);
+  };
+
+  startFaceDetection();
 
   return {
     stop,

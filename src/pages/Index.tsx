@@ -127,14 +127,14 @@ const Index = () => {
       <div className="relative z-10">
         {/* Hero Section */}
         <div className="relative min-h-screen flex items-center">
-          <div className="container mx-auto px-6 pt-24 pb-16">
-            <div className="max-w-5xl mx-auto text-center space-y-8">
+          <div className="container mx-auto px-4 sm:px-6 pt-20 sm:pt-24 pb-12 sm:pb-16">
+            <div className="max-w-5xl mx-auto text-center space-y-6 sm:space-y-8">
               <Badge variant="outline" className="bg-purple-500/10 text-purple-600 dark:bg-purple-500/20 dark:text-purple-300 border-purple-500/30 dark:border-purple-500/50 backdrop-blur-sm px-4 py-1">
                 <Network className="w-3 h-3 mr-2" />
                 Powered by Advanced AI
               </Badge>
 
-              <h1 className="text-6xl md:text-8xl font-black leading-tight">
+              <h1 className="text-4xl sm:text-6xl md:text-8xl font-black leading-tight">
                 <span className="bg-gradient-to-r from-foreground via-purple-600 to-blue-600 dark:from-white dark:via-purple-200 dark:to-blue-200 bg-clip-text text-transparent">
                   Master Your
                 </span>
@@ -144,7 +144,7 @@ const Index = () => {
                 </span>
               </h1>
 
-              <p className="text-xl md:text-2xl text-muted-foreground max-w-3xl mx-auto leading-relaxed">
+              <p className="text-lg sm:text-xl md:text-2xl text-muted-foreground max-w-3xl mx-auto leading-relaxed">
                 AI-powered interview preparation platform designed for the next generation of tech professionals
               </p>
 
@@ -183,10 +183,10 @@ const Index = () => {
         </div>
 
         {/* Features Bento Grid */}
-        <div className="container mx-auto px-6 py-16">
+        <div className="container mx-auto px-4 sm:px-6 py-12 sm:py-16">
           <div className="max-w-6xl mx-auto">
-            <div className="text-center mb-12">
-              <h2 className="text-4xl md:text-5xl font-bold mb-4">
+            <div className="text-center mb-8 sm:mb-12">
+              <h2 className="text-3xl sm:text-4xl md:text-5xl font-bold mb-4">
                 Everything You Need
               </h2>
               <p className="text-muted-foreground text-lg">
@@ -208,15 +208,15 @@ const Index = () => {
                 >
                   <div className="absolute inset-0 bg-gradient-to-br from-white/0 to-white/5 dark:to-white/10 opacity-0 group-hover:opacity-100 transition-opacity" />
 
-                  <div className="relative p-8 space-y-4">
+                  <div className="relative p-5 sm:p-8 space-y-4">
                     <div className="flex items-start justify-between">
-                      <div className={`w-14 h-14 rounded-2xl bg-white/50 dark:bg-black/40 backdrop-blur-sm flex items-center justify-center group-hover:scale-110 transition-transform shadow-sm`}>
-                        <feature.icon className={`w-7 h-7 ${feature.iconColor}`} />
+                      <div className={`w-12 h-12 sm:w-14 sm:h-14 rounded-2xl bg-white/50 dark:bg-black/40 backdrop-blur-sm flex items-center justify-center group-hover:scale-110 transition-transform shadow-sm`}>
+                        <feature.icon className={`w-6 h-6 sm:w-7 sm:h-7 ${feature.iconColor}`} />
                       </div>
                     </div>
 
                     <div>
-                      <h3 className="text-2xl font-bold mb-3">
+                      <h3 className="text-xl sm:text-2xl font-bold mb-2 sm:mb-3">
                         {feature.title}
                       </h3>
                       <p className="text-muted-foreground leading-relaxed text-sm dark:text-gray-300">

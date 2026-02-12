@@ -80,6 +80,13 @@ export default function Progress() {
 
       if (!aliveRef.current) return;
 
+      console.log('📊 [Progress] Loaded data:', {
+        summary: summaryData,
+        heatmap: heatmapData,
+        plan: planData,
+        hasProgress: (summaryData.attempts ?? 0) > 0 || Boolean(summaryData.last_completed_at),
+      });
+
       setSummary(summaryData);
       setHeatmap(heatmapData);
       setNextPlan(planData);
@@ -182,13 +189,23 @@ export default function Progress() {
       const v = plan?.[k];
       return typeof v === 'number' && Number.isFinite(v) ? v : null;
     };
+    const getStrArray = (k: string): string[] | null => {
+      const v = plan?.[k];
+      if (Array.isArray(v)) {
+        const items = v.filter((x: unknown) => typeof x === 'string' && (x as string).trim()).map((x: unknown) => String(x).trim());
+        return items.length > 0 ? items : null;
+      }
+      return null;
+    };
 
     return {
-      focus_dimension: getStr('focus_dimension') ?? getStr('focus') ?? null,
+      focus_dimension: getStr('focus_dimension') ?? null,
+      focus: getStrArray('focus') ?? null,
       recommended_round: getStr('recommended_round') ?? getStr('round') ?? null,
       difficulty: getStr('difficulty') ?? null,
       reason: getStr('reason') ?? null,
       question_count: getNum('question_count') ?? getNum('questions') ?? null,
+      generated_at: getStr('generated_at') ?? null,
     };
   }, [nextPlan]);
 
@@ -266,8 +283,8 @@ export default function Progress() {
     return grouped;
   };
 
-
-  const groupedHeatmap = groupHeatmapByDimension();
+  // Used by line chart tooltip
+  void groupHeatmapByDimension;
 
   const header = (
     <div className="border-b bg-background/70 backdrop-blur supports-[backdrop-filter]:bg-background/60">
@@ -450,7 +467,7 @@ export default function Progress() {
                     <div className="text-sm text-muted-foreground">Average Overall Score</div>
                     <div className="flex items-end gap-2">
                       <div
-                        className={`text-5xl font-bold tracking-tight ${getScoreColor(summary.average_overall_score ?? 0)}`}
+                        className={`text-4xl sm:text-5xl font-bold tracking-tight ${getScoreColor(summary.average_overall_score ?? 0)}`}
                       >
                         {typeof summary.average_overall_score === 'number'
                           ? summary.average_overall_score.toFixed(0)
@@ -516,7 +533,9 @@ export default function Progress() {
               <>
                 <div className="flex flex-wrap gap-2">
                   {nextPlanFields.focus_dimension ? (
-                    <Badge variant="outline" className="capitalize">Focus: {nextPlanFields.focus_dimension}</Badge>
+                    <Badge variant="outline" className="capitalize border-primary/30 text-primary">
+                      🎯 Focus: {nextPlanFields.focus_dimension}
+                    </Badge>
                   ) : null}
                   {typeof nextPlanFields.question_count === 'number' ? (
                     <Badge variant="outline">{nextPlanFields.question_count} questions</Badge>
@@ -525,9 +544,23 @@ export default function Progress() {
                     <Badge variant="outline" className="capitalize">{nextPlanFields.difficulty}</Badge>
                   ) : null}
                   {nextPlanFields.recommended_round ? (
-                    <Badge variant="outline">{nextPlanFields.recommended_round}</Badge>
+                    <Badge variant="secondary" className="capitalize">
+                      {nextPlanFields.recommended_round.replace(/_/g, ' ')}
+                    </Badge>
                   ) : null}
                 </div>
+                {nextPlanFields.focus && nextPlanFields.focus.length > 0 && (
+                  <div className="space-y-1.5">
+                    <div className="text-xs text-muted-foreground font-medium">Focus areas:</div>
+                    <div className="flex flex-wrap gap-1.5">
+                      {nextPlanFields.focus.map((area, idx) => (
+                        <Badge key={idx} variant="secondary" className="text-xs capitalize">
+                          {area.replace(/_/g, ' ')}
+                        </Badge>
+                      ))}
+                    </div>
+                  </div>
+                )}
                 {nextPlanFields.reason ? (
                   <p className="text-sm text-muted-foreground leading-relaxed">{nextPlanFields.reason}</p>
                 ) : null}
@@ -535,6 +568,11 @@ export default function Progress() {
                   <Sparkles className="mr-2" />
                   Start Targeted Session
                 </Button>
+                {nextPlanFields.generated_at && (
+                  <p className="text-xs text-muted-foreground/60 text-center">
+                    Generated {formatDate(nextPlanFields.generated_at)}
+                  </p>
+                )}
               </>
             ) : (
               <div className="text-center py-6">
@@ -605,43 +643,54 @@ export default function Progress() {
         </Card>
       ) : null}
 
-      {/* Detailed breakdown (compact) */}
-      {heatmap.length > 0 && (
+      {/* Weekly Heatmap Table */}
+      {heatmap.length > 0 && timeSeries.length > 0 && (
         <Card>
           <CardHeader>
-            <CardTitle className="text-lg">Weekly Breakdown</CardTitle>
-            <CardDescription>Quick per-week score bars per dimension</CardDescription>
+            <CardTitle className="text-lg flex items-center gap-2">
+              <Calendar className="w-5 h-5 text-primary" />
+              Weekly Heatmap
+            </CardTitle>
+            <CardDescription>Scores by dimension per week — darker = higher score</CardDescription>
           </CardHeader>
-          <CardContent>
-            <div className="space-y-6">
-              {Object.entries(groupedHeatmap).map(([dimension, data]) => (
-                <div key={dimension}>
-                  <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
-                    <div className="font-medium capitalize">{dimension}</div>
-                    <div className="text-xs text-muted-foreground">
-                      {data.reduce((sum, d) => sum + d.attempts, 0)} attempts
-                    </div>
-                  </div>
-                  <div className="space-y-2">
-                    {data.map((point, idx) => (
-                      <div key={`${dimension}-${idx}`} className="flex items-center gap-3">
-                        <span className="text-xs text-muted-foreground w-14 shrink-0">
-                          {formatWeekShort(point.week)}
-                        </span>
-                        <div className="flex-1 flex items-center gap-2">
-                          <ProgressBar value={point.score} className="h-2.5" />
-                          <span className={`text-sm font-semibold w-10 ${getScoreColor(point.score)}`}>
-                            {point.score.toFixed(0)}
-                          </span>
-                        </div>
-                        <span className="text-xs text-muted-foreground w-14 text-right">
-                          {point.attempts}x
-                        </span>
-                      </div>
+          <CardContent className="-mx-2 sm:mx-0">
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b">
+                    <th className="text-left text-xs text-muted-foreground font-medium py-2 px-2 sm:px-3 w-20">Week</th>
+                    {['correctness', 'delivery', 'clarity', 'structure'].map((dim) => (
+                      <th key={dim} className="text-center text-xs text-muted-foreground font-medium py-2 px-1 sm:px-3 capitalize">{dim}</th>
                     ))}
-                  </div>
-                </div>
-              ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {timeSeries.map((row, idx) => (
+                    <tr key={idx} className="border-b border-border/40 last:border-0">
+                      <td className="text-xs text-muted-foreground py-2 px-2 sm:px-3 font-mono whitespace-nowrap">
+                        {formatWeekShort(String(row.week_start))}
+                      </td>
+                      {['correctness', 'delivery', 'clarity', 'structure'].map((dim) => {
+                        const key = normalizeKey(dim);
+                        const score = typeof row[key] === 'number' ? (row[key] as number) : null;
+                        return (
+                          <td key={dim} className="text-center py-2 px-1 sm:px-3">
+                            {score !== null ? (
+                              <span
+                                className={`inline-block min-w-[2.5rem] px-2 py-1 rounded-md text-xs font-semibold ${getScoreBgColor(score)} ${getScoreColor(score)}`}
+                              >
+                                {score.toFixed(0)}
+                              </span>
+                            ) : (
+                              <span className="text-muted-foreground/40">—</span>
+                            )}
+                          </td>
+                        );
+                      })}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
             </div>
           </CardContent>
         </Card>

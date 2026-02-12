@@ -1,10 +1,10 @@
 import { useState, useEffect, useCallback, useRef } from "react";
-import { Button } from "@/components/ui/button";
+import { Button, buttonVariants } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { Search, RefreshCw, BookOpen, Loader2, AlertCircle, History as HistoryIcon, Trash2, X, Maximize2 } from "lucide-react";
+import { Search, RefreshCw, BookOpen, Loader2, AlertCircle, History as HistoryIcon, Trash2, X, Maximize2, SlidersHorizontal, ChevronDown, ShieldCheck, Copy, Check } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import {
   apiGetTopics,
@@ -29,6 +29,18 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Switch } from "@/components/ui/switch";
 import { Slider } from "@/components/ui/slider";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Label } from "@/components/ui/label";
 import {
   intelligenceFeatureDefaults,
   intelligenceFeatureGates,
@@ -492,6 +504,12 @@ export const InterviewIntelligence = ({
   const activeWsRef = useRef<WebSocket | null>(null);
   // Advanced controls hidden by default to reduce UI clutter
   const [showAdvancedControls, setShowAdvancedControls] = useState<boolean>(false);
+  // Collapsible filters drawer
+  const [showFilters, setShowFilters] = useState<boolean>(false);
+  // Copy button state for answer panel
+  const [answerCopied, setAnswerCopied] = useState<boolean>(false);
+  // Enhanced mode confirmation (avoid native browser confirm)
+  const [enhancedConfirmOpen, setEnhancedConfirmOpen] = useState<boolean>(false);
   const [companies, setCompanies] = useState<CompanyInfo[]>([]);
   const [historyLoading, setHistoryLoading] = useState<boolean>(false);
   const [historyRefreshing, setHistoryRefreshing] = useState<boolean>(false);
@@ -535,6 +553,46 @@ export const InterviewIntelligence = ({
   const [historyDeletingTabId, setHistoryDeletingTabId] = useState<string | null>(null);
   const [historyClearingAll, setHistoryClearingAll] = useState<boolean>(false);
 
+  type DestructiveConfirmConfig = {
+    title: string;
+    description: React.ReactNode;
+    confirmLabel?: string;
+    requireAckLabel?: string;
+    onConfirm: () => Promise<void>;
+  };
+
+  const [destructiveConfirmOpen, setDestructiveConfirmOpen] = useState(false);
+  const [destructiveConfirmConfig, setDestructiveConfirmConfig] = useState<DestructiveConfirmConfig | null>(null);
+  const [destructiveConfirmBusy, setDestructiveConfirmBusy] = useState(false);
+  const [destructiveConfirmAck, setDestructiveConfirmAck] = useState(false);
+
+  const openDestructiveConfirm = (config: DestructiveConfirmConfig) => {
+    setDestructiveConfirmConfig(config);
+    setDestructiveConfirmAck(false);
+    setDestructiveConfirmOpen(true);
+  };
+
+  const closeDestructiveConfirm = () => {
+    if (destructiveConfirmBusy) return;
+    setDestructiveConfirmOpen(false);
+    setDestructiveConfirmConfig(null);
+    setDestructiveConfirmAck(false);
+  };
+
+  const runDestructiveConfirm = async () => {
+    if (!destructiveConfirmConfig) return;
+    if (destructiveConfirmConfig.requireAckLabel && !destructiveConfirmAck) return;
+    setDestructiveConfirmBusy(true);
+    try {
+      await destructiveConfirmConfig.onConfirm();
+    } finally {
+      setDestructiveConfirmBusy(false);
+      setDestructiveConfirmOpen(false);
+      setDestructiveConfirmConfig(null);
+      setDestructiveConfirmAck(false);
+    }
+  };
+
   const handleLoadHistoryTab = useCallback((tab: HistoryTabSummary) => {
     // CRITICAL: Close any active WebSocket to prevent results from mixing
     if (activeWsRef.current) {
@@ -556,56 +614,65 @@ export const InterviewIntelligence = ({
   }, []);
 
   const handleDeleteHistoryTab = useCallback(async (tabId: string) => {
-    const confirmed = window.confirm("Delete this search history entry?");
-    if (!confirmed) return;
-    setHistoryDeletingTabId(tabId);
-    try {
-      await apiDeleteHistoryTab(tabId);
-      // Parent should handle state update
-      onHistoryRefresh?.();
-      if (selectedHistoryTabId === tabId) {
-        setSelectedHistoryTabId(null);
-      }
-      toast({
-        title: "History entry deleted",
-        description: "The saved search has been removed.",
-      });
-    } catch (err: any) {
-      toast({
-        title: "Failed to delete history",
-        description: err?.message || "Could not remove saved search.",
-        variant: "destructive",
-      });
-    } finally {
-      setHistoryDeletingTabId(null);
-    }
-  }, [selectedHistoryTabId, toast]);
+    openDestructiveConfirm({
+      title: "Delete saved search?",
+      description: "This will permanently delete this saved search. This action cannot be undone.",
+      confirmLabel: "Delete",
+      onConfirm: async () => {
+        setHistoryDeletingTabId(tabId);
+        try {
+          await apiDeleteHistoryTab(tabId);
+          onHistoryRefresh?.();
+          if (selectedHistoryTabId === tabId) {
+            setSelectedHistoryTabId(null);
+          }
+          toast({
+            title: "History entry deleted",
+            description: "The saved search has been removed.",
+          });
+        } catch (err: any) {
+          toast({
+            title: "Failed to delete history",
+            description: err?.message || "Could not remove saved search.",
+            variant: "destructive",
+          });
+          throw err;
+        } finally {
+          setHistoryDeletingTabId(null);
+        }
+      },
+    });
+  }, [selectedHistoryTabId, toast, onHistoryRefresh]);
 
   const handleDeleteAllHistory = useCallback(async () => {
-    const confirmed = window.confirm("Delete ALL saved searches? This cannot be undone.");
-    if (!confirmed) return;
-    const doubleConfirmed = window.confirm("Are you absolutely sure? This action is permanent.");
-    if (!doubleConfirmed) return;
-    setHistoryClearingAll(true);
-    try {
-      const result = await apiDeleteAllHistory();
-      // Parent should handle state update
-      onHistoryRefresh?.();
-      setSelectedHistoryTabId(null);
-      toast({
-        title: "History cleared",
-        description: result?.message || "All saved searches were deleted.",
-      });
-    } catch (err: any) {
-      toast({
-        title: "Failed to clear history",
-        description: err?.message || "Could not delete saved searches.",
-        variant: "destructive",
-      });
-    } finally {
-      setHistoryClearingAll(false);
-    }
-  }, [toast]);
+    openDestructiveConfirm({
+      title: "Delete all saved searches?",
+      description: "This will permanently delete all saved searches. This action cannot be undone.",
+      confirmLabel: "Delete all",
+      requireAckLabel: "I understand this will permanently delete all saved searches",
+      onConfirm: async () => {
+        setHistoryClearingAll(true);
+        try {
+          const result = await apiDeleteAllHistory();
+          onHistoryRefresh?.();
+          setSelectedHistoryTabId(null);
+          toast({
+            title: "History cleared",
+            description: result?.message || "All saved searches were deleted.",
+          });
+        } catch (err: any) {
+          toast({
+            title: "Failed to clear history",
+            description: err?.message || "Could not delete saved searches.",
+            variant: "destructive",
+          });
+          throw err;
+        } finally {
+          setHistoryClearingAll(false);
+        }
+      },
+    });
+  }, [toast, onHistoryRefresh]);
 
   const loadTopics = async () => {
     try {
@@ -981,6 +1048,78 @@ export const InterviewIntelligence = ({
 
   return (
     <div className="flex flex-col h-full gap-4 px-4 md:px-0">
+      <AlertDialog
+        open={destructiveConfirmOpen}
+        onOpenChange={(open) => {
+          if (!open) closeDestructiveConfirm();
+          else setDestructiveConfirmOpen(true);
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>{destructiveConfirmConfig?.title || "Are you sure?"}</AlertDialogTitle>
+            <AlertDialogDescription>{destructiveConfirmConfig?.description}</AlertDialogDescription>
+          </AlertDialogHeader>
+          {destructiveConfirmConfig?.requireAckLabel ? (
+            <div className="flex items-start gap-2">
+              <Checkbox
+                id="intelligence-destructive-confirm-ack"
+                checked={destructiveConfirmAck}
+                onCheckedChange={(v) => setDestructiveConfirmAck(!!v)}
+                disabled={destructiveConfirmBusy}
+              />
+              <Label
+                htmlFor="intelligence-destructive-confirm-ack"
+                className="text-sm text-muted-foreground leading-tight cursor-pointer"
+              >
+                {destructiveConfirmConfig.requireAckLabel}
+              </Label>
+            </div>
+          ) : null}
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={destructiveConfirmBusy}>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              className={buttonVariants({ variant: "destructive" })}
+              disabled={
+                destructiveConfirmBusy ||
+                !destructiveConfirmConfig ||
+                (!!destructiveConfirmConfig?.requireAckLabel && !destructiveConfirmAck)
+              }
+              onClick={(e) => {
+                e.preventDefault();
+                void runDestructiveConfirm();
+              }}
+            >
+              {destructiveConfirmBusy ? "Working..." : destructiveConfirmConfig?.confirmLabel || "Delete"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Enhanced mode confirmation dialog */}
+      <AlertDialog open={enhancedConfirmOpen} onOpenChange={setEnhancedConfirmOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Enable Enhanced Search?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Enhanced Search uses verified sources and advanced filters to improve result quality.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={(e) => {
+                e.preventDefault();
+                setEnhanced(true);
+                setEnhancedConfirmOpen(false);
+              }}
+            >
+              Enable
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
       {/* Header with Search */}
       <div className="flex-shrink-0 space-y-3 py-1">
         {/* Search Bar Row */}
@@ -1047,13 +1186,11 @@ export const InterviewIntelligence = ({
           {/* Enhanced mode toggle */}
           <button
             onClick={() => {
-              if (!enhanced) {
-                const confirmed = window.confirm(
-                  'Enhanced Search uses verified sources and advanced filters to improve result quality. Continue?'
-                );
-                if (!confirmed) return;
+              if (enhanced) {
+                setEnhanced(false);
+                return;
               }
-              setEnhanced(!enhanced);
+              setEnhancedConfirmOpen(true);
             }}
             disabled={searchLoading}
             className={`group flex items-center gap-1.5 h-5 px-1.5 rounded-md border transition-all duration-300 ${enhanced
@@ -1194,13 +1331,13 @@ export const InterviewIntelligence = ({
             <div role="status" aria-live="polite" className="text-xs text-muted-foreground flex items-center gap-2">
               <span className="font-medium">Search:</span>
               <span className="capitalize">{searchStatus}</span>
-              {searchLoading && <Loader2 className="h-3 w-3 animate-spin text-muted-foreground" />}
+              {searchLoading && <Loader2 className="h-3 w-3 animate-spin text-primary/60" />}
             </div>
             <div className="flex items-center gap-2 mt-2">
               {statusSources.map((s) => (
-                <div key={s.name} className="text-xs px-2 py-1 rounded bg-muted/10 border border-muted/20">
-                  <div className="font-medium">{s.name}</div>
-                  <div className="text-muted-foreground">{s.status}{s.count ? ` • ${s.count}` : ''}</div>
+                <div key={s.name} className="text-xs px-2.5 py-1.5 rounded-lg bg-card/40 backdrop-blur-sm border border-border/20 transition-all duration-300">
+                  <div className="font-medium text-foreground/80">{s.name}</div>
+                  <div className="text-muted-foreground/60 text-[10px]">{s.status}{s.count ? ` • ${s.count}` : ''}</div>
                 </div>
               ))}
             </div>
@@ -1214,7 +1351,7 @@ export const InterviewIntelligence = ({
               <Badge
                 key={topic}
                 variant={selectedTopic === topic ? "default" : "outline"}
-                className="cursor-pointer hover:bg-primary/10 transition-colors whitespace-nowrap px-3 py-1 text-[10px] sm:text-xs rounded-full"
+                className={`cursor-pointer transition-all duration-200 whitespace-nowrap px-3 py-1 text-[10px] sm:text-xs rounded-full ${selectedTopic === topic ? 'shadow-md shadow-primary/20' : 'hover:bg-primary/10 hover:border-primary/30'}`}
                 onClick={() => loadQuestionsByTopic(topic)}
               >
                 {topic}
@@ -1228,14 +1365,14 @@ export const InterviewIntelligence = ({
       <div className="flex-1 min-h-0 flex flex-col md:flex-row gap-4 overflow-hidden">
         <div className={`flex-1 min-w-0 flex flex-col gap-4 overflow-hidden ${selectedQuestion ? 'hidden md:flex' : 'flex'}`}>
           {/* Questions List */}
-          <Card className="flex-1 min-w-0 flex flex-col overflow-hidden">
-            <CardHeader className="pb-3 flex-shrink-0">
+          <Card className="flex-1 min-w-0 flex flex-col overflow-hidden bg-card/40 backdrop-blur-sm border-border/30 shadow-lg shadow-black/5">
+            <CardHeader className="pb-3 flex-shrink-0 border-b border-border/10">
               <CardTitle className="text-sm font-semibold flex items-center gap-2">
-                <BookOpen className="h-4 w-4" />
+                <BookOpen className="h-4 w-4 text-primary/60" />
                 {activeView === "search" ? (
-                  <>Search Results {searchLoading && <Loader2 className="h-3 w-3 animate-spin" />}</>
+                  <>Search Results {searchLoading && <Loader2 className="h-3 w-3 animate-spin text-primary" />}</>
                 ) : selectedTopic ? (
-                  <>{selectedTopic} Questions {loading && <Loader2 className="h-3 w-3 animate-spin" />}</>
+                  <>{selectedTopic} Questions {loading && <Loader2 className="h-3 w-3 animate-spin text-primary" />}</>
                 ) : (
                   <>Select a topic to view questions</>
                 )}
@@ -1243,7 +1380,7 @@ export const InterviewIntelligence = ({
             </CardHeader>
             <CardContent className="flex-1 min-h-0 p-0 overflow-hidden">
               <ScrollArea className="h-full">
-                {/* Trust warning for non-enhanced mode when verified ratio is low */}
+                {/* Trust indicator — subtle inline meter instead of yellow warning */}
                 {!enhanced && activeView === "search" && Array.isArray(currentQuestions) && currentQuestions.length > 0 && (
                   (() => {
                     const results = currentQuestions as unknown as EnhancedQuestion[];
@@ -1252,8 +1389,34 @@ export const InterviewIntelligence = ({
                     const ratio = total > 0 ? verifiedCount / total : 0;
                     if (ratio < 0.5) {
                       return (
-                        <div className="mx-3 my-2 p-2 rounded border border-amber-300 bg-amber-50 text-amber-900 text-xs">
-                          Verified results are below 50%. Consider enabling Enhanced mode, Verified only, selecting a company, or raising the credibility threshold.
+                        <div className="mx-3 my-2 flex items-center gap-3 p-2.5 rounded-xl bg-card/40 backdrop-blur-sm border border-border/20">
+                          <div className="flex items-center gap-2 min-w-0">
+                            <ShieldCheck className="h-4 w-4 text-amber-400/80 shrink-0" />
+                            <div className="flex-1 min-w-0">
+                              <div className="flex items-center gap-2 mb-1">
+                                <span className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">Trust Score</span>
+                                <span className="text-[10px] font-bold text-amber-400">{Math.round(ratio * 100)}%</span>
+                              </div>
+                              <div className="w-full h-1 rounded-full bg-border/30 overflow-hidden">
+                                <div
+                                  className="h-full rounded-full transition-all duration-700 ease-out"
+                                  style={{
+                                    width: `${Math.round(ratio * 100)}%`,
+                                    background: ratio < 0.3 ? 'linear-gradient(90deg, #f59e0b, #ef4444)' : 'linear-gradient(90deg, #f59e0b, #eab308)'
+                                  }}
+                                />
+                              </div>
+                            </div>
+                          </div>
+                          <button
+                            onClick={() => {
+                              setShowFilters(true);
+                              setEnhancedConfirmOpen(true);
+                            }}
+                            className="text-[9px] font-semibold text-primary hover:text-primary/80 whitespace-nowrap transition-colors px-2 py-1 rounded-md hover:bg-primary/10"
+                          >
+                            Enable Enhanced
+                          </button>
                         </div>
                       );
                     }
@@ -1265,38 +1428,42 @@ export const InterviewIntelligence = ({
                     <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
                   </div>
                 ) : currentQuestions.length === 0 ? (
-                  <div className="flex flex-col items-center justify-center py-12 px-4 text-center">
-                    <AlertCircle className="h-8 w-8 text-muted-foreground mb-2" />
-                    <p className="text-sm text-muted-foreground">
+                  <div className="flex flex-col items-center justify-center py-16 px-4 text-center">
+                    <div className="w-12 h-12 rounded-2xl bg-muted/10 border border-border/20 flex items-center justify-center mb-3">
+                      <AlertCircle className="h-6 w-6 text-muted-foreground/40" />
+                    </div>
+                    <p className="text-sm text-muted-foreground/60">
                       {activeView === "search"
                         ? "No questions found. Try a different search."
                         : "Select a topic to view interview questions."}
                     </p>
                   </div>
                 ) : (
-                  <div className="space-y-2 p-3 md:p-3">
+                  <div className="space-y-2.5 p-3 md:p-3">
                     {currentQuestions.map((q, idx) => (
                       <Card
                         key={idx}
-                        className={`cursor-pointer transition-all hover:border-primary/50 ${selectedQuestion?.question === q.question ? "border-primary bg-primary/5" : ""
+                        className={`group/card cursor-pointer transition-all duration-300 ease-out border border-border/30 bg-card/40 backdrop-blur-sm hover:bg-card/70 hover:border-primary/40 hover:shadow-lg hover:shadow-primary/5 hover:-translate-y-[1px] ${
+                          selectedQuestion?.question === q.question
+                            ? "border-primary/60 bg-primary/5 shadow-md shadow-primary/10 ring-1 ring-primary/20"
+                            : ""
                           }`}
                         onClick={() => setSelectedQuestion(q)}
                       >
                         <CardContent className="p-4">
-                          <div className="space-y-2">
-                            <p className="text-sm font-medium line-clamp-2">{q.question}</p>
+                          <div className="space-y-2.5">
+                            <p className="text-sm font-medium line-clamp-2 group-hover/card:text-foreground transition-colors">{q.question}</p>
                             <div className="flex items-center gap-2 text-xs text-muted-foreground">
                               {q.topic && (
-                                <Badge variant="secondary" className="text-[10px]">
+                                <Badge variant="secondary" className="text-[10px] bg-primary/8 text-primary/80 border-0">
                                   {q.topic}
                                 </Badge>
                               )}
-                              <span>{formatDate((q as any).updated_at)}</span>
-                              {/* Enhanced badges */}
+                              <span className="text-muted-foreground/60">{formatDate((q as any).updated_at)}</span>
                               {enhanced && (
                                 <>
                                   {(q as any).source && (
-                                    <Badge variant="outline" className="text-[10px]">
+                                    <Badge variant="outline" className="text-[10px] border-border/30 bg-card/50">
                                       {(q as any).source}
                                     </Badge>
                                   )}
@@ -1306,7 +1473,7 @@ export const InterviewIntelligence = ({
                                     </Badge>
                                   )}
                                   {typeof (q as any).credibility_score === "number" && (
-                                    <span className="text-[10px]">cred {(q as any).credibility_score.toFixed(2)}</span>
+                                    <span className="text-[10px] tabular-nums text-muted-foreground/60">cred {(q as any).credibility_score.toFixed(2)}</span>
                                   )}
                                 </>
                               )}
@@ -1383,33 +1550,55 @@ export const InterviewIntelligence = ({
           </div>
         )}
 
-        {/* Selected Question Answer - Desktop view */}
+        {/* Selected Question Answer - Desktop view — Premium elevated panel */}
         {selectedQuestion && (
-          <div className="hidden md:flex w-[50%] min-w-[400px] flex-col overflow-hidden animate-in fade-in duration-500">
-            <Card className="flex-1 flex flex-col overflow-hidden bg-card/30 backdrop-blur-sm border-border/50">
-              <CardHeader className="pb-3 flex-shrink-0">
+          <div className="hidden md:flex w-[50%] min-w-[400px] flex-col overflow-hidden animate-in fade-in slide-in-from-right-4 duration-500">
+            <Card className="flex-1 flex flex-col overflow-hidden bg-card/40 backdrop-blur-xl border-border/30 shadow-xl shadow-black/5 ring-1 ring-white/[0.03]">
+              <CardHeader className="pb-3 flex-shrink-0 border-b border-border/10">
                 <div className="flex items-center justify-between">
-                  <CardTitle className="text-sm font-semibold">Answer</CardTitle>
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    className="h-7 w-7"
-                    onClick={() => setIsAnswerExpanded(true)}
-                    title="Expand answer"
-                  >
-                    <Maximize2 className="h-4 w-4" />
-                  </Button>
+                  <CardTitle className="text-sm font-semibold flex items-center gap-2">
+                    <div className="w-1 h-4 rounded-full bg-primary shadow-[0_0_8px_rgba(var(--primary),0.4)]" />
+                    Answer
+                  </CardTitle>
+                  <div className="flex items-center gap-1">
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-7 w-7 hover:bg-muted/50 rounded-lg transition-all"
+                      onClick={() => {
+                        const text = selectedQuestion.question + '\n\n' + (selectedQuestion.answer || '');
+                        navigator.clipboard.writeText(text);
+                        setAnswerCopied(true);
+                        setTimeout(() => setAnswerCopied(false), 2000);
+                      }}
+                      title="Copy answer"
+                    >
+                      {answerCopied ? <Check className="h-3.5 w-3.5 text-green-400" /> : <Copy className="h-3.5 w-3.5" />}
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-7 w-7 hover:bg-muted/50 rounded-lg transition-all"
+                      onClick={() => setIsAnswerExpanded(true)}
+                      title="Expand answer"
+                    >
+                      <Maximize2 className="h-4 w-4" />
+                    </Button>
+                  </div>
                 </div>
               </CardHeader>
               <CardContent className="flex-1 min-h-0 p-0 overflow-hidden">
                 <ScrollArea className="h-full">
-                  <div className="p-4 space-y-4">
-                    <div>
-                      <h3 className="text-sm font-semibold mb-2">Question</h3>
-                      <p className="text-sm text-foreground">{selectedQuestion.question}</p>
+                  <div className="p-5 space-y-5">
+                    <div className="p-4 rounded-xl bg-muted/5 border border-border/10">
+                      <h3 className="text-[10px] font-bold uppercase tracking-[0.15em] text-primary/60 mb-2">Question</h3>
+                      <p className="text-sm font-medium text-foreground leading-relaxed">{selectedQuestion.question}</p>
+                      {selectedQuestion.topic && (
+                        <Badge variant="secondary" className="mt-2 text-[10px] bg-primary/8 text-primary/70 border-0">{selectedQuestion.topic}</Badge>
+                      )}
                     </div>
-                    <div className="border-t pt-4">
-                      <h3 className="text-sm font-semibold mb-2">Answer</h3>
+                    <div>
+                      <h3 className="text-[10px] font-bold uppercase tracking-[0.15em] text-primary/60 mb-3">Answer</h3>
                       <div
                         className="text-sm text-foreground leading-relaxed prose prose-sm max-w-none dark:prose-invert"
                         dangerouslySetInnerHTML={{
@@ -1417,10 +1606,9 @@ export const InterviewIntelligence = ({
                         }}
                       />
                     </div>
-                    {/* Display code_solution if available */}
                     {(selectedQuestion as any).code_solution && (
-                      <div className="border-t pt-4">
-                        <h3 className="text-sm font-semibold mb-2">Code Solution</h3>
+                      <div className="border-t border-border/10 pt-5">
+                        <h3 className="text-[10px] font-bold uppercase tracking-[0.15em] text-primary/60 mb-3">Code Solution</h3>
                         <div
                           className="text-sm text-foreground leading-relaxed prose prose-sm max-w-none dark:prose-invert"
                           dangerouslySetInnerHTML={{
@@ -1430,9 +1618,9 @@ export const InterviewIntelligence = ({
                       </div>
                     )}
                     {selectedQuestion.source && (
-                      <div className="border-t pt-4">
-                        <p className="text-xs text-muted-foreground">
-                          Source: <span className="font-mono">{selectedQuestion.source}</span>
+                      <div className="border-t border-border/10 pt-4">
+                        <p className="text-xs text-muted-foreground/60">
+                          Source: <span className="font-mono text-muted-foreground/80">{selectedQuestion.source}</span>
                         </p>
                       </div>
                     )}
@@ -1443,24 +1631,27 @@ export const InterviewIntelligence = ({
 
             {/* Expanded Answer Dialog */}
             <Dialog open={isAnswerExpanded} onOpenChange={setIsAnswerExpanded}>
-              <DialogContent className="w-[calc(100vw-2rem)] sm:max-w-4xl max-h-[90vh] flex flex-col p-0 border-none bg-background/95 backdrop-blur-xl">
-                <DialogHeader className="px-6 pt-6 pb-4">
-                  <DialogTitle className="text-lg font-semibold pr-8">Question & Answer</DialogTitle>
+              <DialogContent className="w-[calc(100vw-2rem)] sm:max-w-4xl max-h-[90vh] flex flex-col p-0 border-border/20 bg-background/95 backdrop-blur-2xl shadow-2xl ring-1 ring-white/[0.05]">
+                <DialogHeader className="px-6 pt-6 pb-4 border-b border-border/10">
+                  <DialogTitle className="text-lg font-semibold pr-8 flex items-center gap-2">
+                    <div className="w-1 h-5 rounded-full bg-primary shadow-[0_0_8px_rgba(var(--primary),0.4)]" />
+                    Question & Answer
+                  </DialogTitle>
                 </DialogHeader>
                 <div className="flex-1 overflow-y-auto px-6 pb-6 scrollbar-hide">
                   <div className="space-y-6">
-                    <div>
-                      <h3 className="text-base font-semibold mb-3 text-primary">Question</h3>
+                    <div className="p-5 rounded-xl bg-muted/5 border border-border/10">
+                      <h3 className="text-[11px] font-bold uppercase tracking-[0.15em] text-primary/70 mb-3">Question</h3>
                       <p className="text-base text-foreground leading-relaxed">{selectedQuestion.question}</p>
                       {selectedQuestion.topic && (
-                        <Badge variant="secondary" className="mt-2">
+                        <Badge variant="secondary" className="mt-3 text-[10px] bg-primary/8 text-primary/70 border-0">
                           {selectedQuestion.topic}
                         </Badge>
                       )}
                     </div>
 
-                    <div className="border-t pt-6">
-                      <h3 className="text-base font-semibold mb-3 text-primary">Answer</h3>
+                    <div className="border-t border-border/10 pt-6">
+                      <h3 className="text-[11px] font-bold uppercase tracking-[0.15em] text-primary/70 mb-3">Answer</h3>
                       <div
                         className="text-base text-foreground leading-relaxed prose prose-base max-w-none dark:prose-invert"
                         dangerouslySetInnerHTML={{
@@ -1469,10 +1660,9 @@ export const InterviewIntelligence = ({
                       />
                     </div>
 
-                    {/* Display code_solution if available */}
                     {(selectedQuestion as any).code_solution && (
-                      <div className="border-t pt-6">
-                        <h3 className="text-base font-semibold mb-3 text-primary">Code Solution</h3>
+                      <div className="border-t border-border/10 pt-6">
+                        <h3 className="text-[11px] font-bold uppercase tracking-[0.15em] text-primary/70 mb-3">Code Solution</h3>
                         <div
                           className="text-base text-foreground leading-relaxed prose prose-base max-w-none dark:prose-invert"
                           dangerouslySetInnerHTML={{
@@ -1483,9 +1673,9 @@ export const InterviewIntelligence = ({
                     )}
 
                     {selectedQuestion.source && (
-                      <div className="border-t pt-6">
-                        <p className="text-sm text-muted-foreground">
-                          Source: <span className="font-mono">{selectedQuestion.source}</span>
+                      <div className="border-t border-border/10 pt-6">
+                        <p className="text-sm text-muted-foreground/60">
+                          Source: <span className="font-mono text-muted-foreground/80">{selectedQuestion.source}</span>
                         </p>
                       </div>
                     )}

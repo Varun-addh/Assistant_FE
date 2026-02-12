@@ -193,6 +193,7 @@ export async function getProgressSummary(
     { method: 'GET' }
   )) as unknown;
 
+  console.log('📊 [Progress API] Summary raw response:', raw);
   return coerceProgressSummary(raw, lookbackDays, domain);
 }
 
@@ -215,6 +216,8 @@ export async function getProgressHeatmap(
     `${API_BASE_URL}/api/practice/progress/heatmap?${params.toString()}`,
     { method: 'GET' }
   )) as unknown;
+
+  console.log('📊 [Progress API] Heatmap raw response:', response);
 
   // Backend may return either `{ points: [...] }` or the points array directly.
   const pointsRaw = Array.isArray(response)
@@ -258,6 +261,8 @@ export async function getNextSessionPlan(
     `${API_BASE_URL}/api/practice/progress/next-session?${params.toString()}`,
     { method: 'GET' }
   )) as unknown;
+
+  console.log('📊 [Progress API] Next-session raw response:', response);
 
   // Backend may return either `{ plan: {...} | null }` or the plan object directly.
   if (response === null) return null;
