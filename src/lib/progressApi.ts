@@ -157,9 +157,16 @@ type RawSessionScore = {
   dimensions?: unknown;
   why?: unknown;
   explanation?: unknown;
+  reasoning?: unknown;
+  reasons?: unknown;
+  score_reasoning?: unknown;
+  summary?: unknown;
+  feedback_summary?: unknown;
   improvement_plan?: unknown;
   next_session_plan?: unknown;
   action_plan?: unknown;
+  next_steps?: unknown;
+  recommendations?: unknown;
   evaluation_report?: unknown;
 
   evaluation_trace?: unknown;
@@ -167,6 +174,7 @@ type RawSessionScore = {
 
   media?: unknown;
   proctoring_summary?: unknown;
+  [key: string]: unknown;
 };
 
 // ============================================================================
@@ -187,6 +195,8 @@ export async function getProgressSummary(
   if (domain) {
     params.set('domain', domain);
   }
+  // Cache-bust to ensure fresh data after a new session
+  params.set('_t', String(Date.now()));
 
   const raw = (await strataxFetchJson(
     `${API_BASE_URL}/api/practice/progress/summary?${params.toString()}`,
@@ -211,6 +221,8 @@ export async function getProgressHeatmap(
   if (domain) {
     params.set('domain', domain);
   }
+  // Cache-bust to ensure fresh data
+  params.set('_t', String(Date.now()));
 
   const response = (await strataxFetchJson(
     `${API_BASE_URL}/api/practice/progress/heatmap?${params.toString()}`,
@@ -256,6 +268,8 @@ export async function getNextSessionPlan(
   if (domain) {
     params.set('domain', domain);
   }
+  // Cache-bust to ensure fresh data
+  params.set('_t', String(Date.now()));
 
   const response = (await strataxFetchJson(
     `${API_BASE_URL}/api/practice/progress/next-session?${params.toString()}`,
@@ -280,6 +294,8 @@ export async function getSessionScore(sessionId: string): Promise<SessionScore> 
     `${API_BASE_URL}/api/practice/session/${sessionId}/score`,
     { method: 'GET' }
   )) as unknown;
+
+  console.log('📊 [Session Score] Raw API response:', raw);
 
   const data = (raw ?? {}) as RawSessionScore;
 
@@ -333,13 +349,44 @@ export async function getSessionScore(sessionId: string): Promise<SessionScore> 
     ({ correctness: 0, delivery: 0, clarity: 0, structure: 0 } as SessionScore['dimension_scores']);
 
   const improvement_plan = asStringArray(data.improvement_plan) ?? asStringArray(data.action_plan);
-  const next_session_plan = asStringArray(data.next_session_plan);
+  const next_session_plan = asStringArray(data.next_session_plan) ?? asStringArray(data.next_steps) ?? asStringArray(data.recommendations);
+
+  // Try multiple keys for the "why" explanation
+  let why = asString(data.why)
+    ?? asString(data.explanation)
+    ?? asString(data.reasoning)
+    ?? asString(data.score_reasoning)
+    ?? asString(data.summary)
+    ?? asString(data.feedback_summary);
+
+  // Try array-shaped reasons → join into a single string
+  if (!why) {
+    const reasonsArr = asStringArray(data.reasons) ?? asStringArray(data.why);
+    if (reasonsArr && reasonsArr.length > 0) {
+      why = reasonsArr.join(' ');
+    }
+  }
+
+  // Auto-generate from dimension scores if nothing else was provided
+  if (!why && dimension_scores) {
+    const overall = asNumber(data.overall_score, 0);
+    const sorted = Object.entries(dimension_scores)
+      .filter(([, v]) => typeof v === 'number' && v > 0)
+      .sort((a, b) => b[1] - a[1]);
+    if (sorted.length >= 2) {
+      const best = sorted[0];
+      const worst = sorted[sorted.length - 1];
+      why = `Your overall score is ${overall.toFixed(0)}/100. Your strongest area was ${best[0]} (${best[1].toFixed(0)}%), while ${worst[0]} (${worst[1].toFixed(0)}%) needs the most improvement.`;
+    }
+  }
+
+  console.log('📊 [Session Score] Parsed:', { overall: asNumber(data.overall_score, 0), why, improvement_plan, next_session_plan });
 
   return {
     session_id: asString(data.session_id) ?? sessionId,
     overall_score: asNumber(data.overall_score, 0),
     dimension_scores,
-    why: asString(data.why) ?? asString(data.explanation),
+    why,
     improvement_plan,
     next_session_plan,
     evaluation_report: data.evaluation_report,

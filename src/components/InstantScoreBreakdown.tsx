@@ -152,7 +152,12 @@ export default function InstantScoreBreakdown({ sessionId, onViewProgress }: Ins
       {/* Plans */}
       {(Array.isArray(score.improvement_plan) && score.improvement_plan.length > 0) ||
       (Array.isArray(score.next_session_plan) && score.next_session_plan.length > 0) ? (
-        <div className="grid md:grid-cols-2 gap-4">
+        <div className={`grid gap-4 ${
+          (Array.isArray(score.improvement_plan) && score.improvement_plan.length > 0) &&
+          (Array.isArray(score.next_session_plan) && score.next_session_plan.length > 0)
+            ? 'md:grid-cols-2'
+            : 'grid-cols-1'
+        }`}>
           {Array.isArray(score.improvement_plan) && score.improvement_plan.length > 0 && (
             <Card className="border-primary/30">
               <CardHeader>
@@ -246,11 +251,34 @@ export default function InstantScoreBreakdown({ sessionId, onViewProgress }: Ins
               <p className="text-sm text-muted-foreground">No proctoring events recorded.</p>
             ) : (
               <div className="space-y-2">
-                {proctoringEvents.slice(0, 20).map((evt, idx) => (
-                  <div key={idx} className="text-xs rounded-md border border-border/50 bg-card/50 p-2">
-                    <pre className="whitespace-pre-wrap break-words">{JSON.stringify(evt, null, 2)}</pre>
-                  </div>
-                ))}
+                {proctoringEvents.slice(0, 20).map((evt, idx) => {
+                  const e = evt as Record<string, unknown>;
+                  // Format event type: WINDOW_MINIMIZED → Window Minimized
+                  const rawType = String(e.event_type ?? e.type ?? e.event ?? e.name ?? JSON.stringify(evt));
+                  const label = rawType
+                    .replace(/_/g, ' ')
+                    .replace(/\b\w/g, (c) => c.toUpperCase());
+                  const ts = e.timestamp ?? e.created_at ?? e.time;
+                  const detail = e.detail ?? e.details ?? e.message ?? e.description;
+                  const timeStr = typeof ts === 'string'
+                    ? new Date(ts).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })
+                    : null;
+
+                  return (
+                    <div key={idx} className="flex items-center gap-3 text-sm rounded-md border border-border/50 bg-card/50 px-3 py-2">
+                      <span className="text-amber-500 shrink-0">⚠️</span>
+                      <div className="flex-1 min-w-0">
+                        <span className="font-medium">{label}</span>
+                        {typeof detail === 'string' && detail && (
+                          <span className="text-muted-foreground ml-1.5">— {detail}</span>
+                        )}
+                      </div>
+                      {timeStr && (
+                        <span className="text-xs text-muted-foreground shrink-0">{timeStr}</span>
+                      )}
+                    </div>
+                  );
+                })}
                 {proctoringEvents.length > 20 && (
                   <p className="text-xs text-muted-foreground">Showing first 20 events.</p>
                 )}

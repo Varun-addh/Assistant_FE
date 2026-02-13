@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -6,7 +6,11 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Progress } from '@/components/ui/progress';
+import { Label } from '@/components/ui/label';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { MonacoEditor } from './MonacoEditor';
+import { apiExecuteCode } from '@/lib/api';
+import { useToast } from '@/hooks/use-toast';
 import {
   Code2,
   Play,
@@ -17,6 +21,8 @@ import {
   Lightbulb,
   AlertTriangle,
   TrendingUp,
+  Terminal,
+  Send,
 } from 'lucide-react';
 import type {
   Question,
@@ -44,23 +50,20 @@ export const InterviewCodeEditor = ({
   timeRemaining,
   onTimeUp,
 }: InterviewCodeEditorProps) => {
-  // Debug: Log question structure
-  console.log('📝 [CodeEditor] Question data:', {
-    question_text: question.question_text,
-    text: question.text,
-    programming_language: question.programming_language,
-    time_limit: question.time_limit,
-    has_code_template: !!question.code_template,
-    has_test_cases: !!question.test_cases?.length,
-  });
+  const { toast } = useToast();
   
-  const [code, setCode] = useState(question.code_template || getDefaultTemplate(question.programming_language || 'python'));
+  const defaultLang = question.programming_language || 'python';
+  const [language, setLanguage] = useState(defaultLang);
+  const [code, setCode] = useState(question.code_template || getDefaultTemplate(defaultLang));
   const [startTime] = useState(Date.now());
   const [activeTab, setActiveTab] = useState('editor');
   const [showHint, setShowHint] = useState(false);
   const [currentHintIndex, setCurrentHintIndex] = useState(0);
 
-  const language = question.programming_language || 'python';
+  // Run code state
+  const [isRunningCode, setIsRunningCode] = useState(false);
+  const [codeOutput, setCodeOutput] = useState('');
+  const [showOutput, setShowOutput] = useState(false);
   const testCases = question.test_cases || [];
   const hints = question.hints || [];
   const constraints = question.constraints || [];
@@ -78,6 +81,45 @@ export const InterviewCodeEditor = ({
       onTimeUp();
     }
   }, [timeRemaining, onTimeUp]);
+
+  // When language changes, update the template if user hasn't typed custom code
+  const handleLanguageChange = useCallback((newLang: string) => {
+    const prevTemplate = getDefaultTemplate(language);
+    // If code is still the default template, swap to the new language template
+    if (code.trim() === prevTemplate.trim() || !code.trim()) {
+      setCode(getDefaultTemplate(newLang));
+    }
+    setLanguage(newLang);
+  }, [code, language]);
+
+  const handleRunCode = useCallback(async () => {
+    if (!code.trim()) {
+      toast({ title: 'No code to run', description: 'Please write some code first.', variant: 'destructive' });
+      return;
+    }
+    setIsRunningCode(true);
+    setCodeOutput('');
+    setShowOutput(true);
+
+    try {
+      const execLanguage = language === 'typescript' ? 'javascript' : language;
+      const exec = await apiExecuteCode({ language: execLanguage, code, stdin: '' });
+
+      const stdout = (exec.stdout ?? '').trim();
+      const stderr = (exec.stderr ?? '').trim();
+
+      if (exec.success) {
+        const output = stdout || '(no output)';
+        setCodeOutput(stderr ? `${output}\n\n[stderr]\n${stderr}` : output);
+      } else {
+        setCodeOutput(stderr || stdout || exec.status || 'Execution failed');
+      }
+    } catch (error: any) {
+      setCodeOutput(`Error: ${error.message || 'Failed to execute code'}`);
+    } finally {
+      setIsRunningCode(false);
+    }
+  }, [code, language, toast]);
 
   const handleSubmit = async () => {
     const timeTaken = Math.floor((Date.now() - startTime) / 1000);
@@ -107,24 +149,43 @@ export const InterviewCodeEditor = ({
       {/* Question Header */}
       <Card>
         <CardHeader>
-          <div className="flex items-center justify-between">
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
             <div className="flex items-center gap-3">
               <Code2 className="h-6 w-6 text-primary" />
               <div>
                 <CardTitle className="text-xl">Coding Challenge</CardTitle>
                 <CardDescription className="flex items-center gap-2 mt-1">
-                  <Badge variant="outline" className="capitalize">{language}</Badge>
                   <Badge variant={question.difficulty === 'easy' ? 'secondary' : question.difficulty === 'medium' ? 'default' : 'destructive'}>
                     {question.difficulty?.toUpperCase()}
                   </Badge>
                 </CardDescription>
               </div>
             </div>
-            <div className="flex items-center gap-2">
-              <Clock className={`h-5 w-5 ${getTimeColor()}`} />
-              <span className={`text-2xl font-mono font-bold ${getTimeColor()}`}>
-                {formatTime(timeRemaining)}
-              </span>
+            <div className="flex items-center gap-3">
+              {/* Language Selector */}
+              <div className="flex items-center gap-2">
+                <Label className="text-xs text-muted-foreground whitespace-nowrap">Language:</Label>
+                <Select value={language} onValueChange={handleLanguageChange}>
+                  <SelectTrigger className="w-32 h-8">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="python">Python</SelectItem>
+                    <SelectItem value="javascript">JavaScript</SelectItem>
+                    <SelectItem value="typescript">TypeScript</SelectItem>
+                    <SelectItem value="java">Java</SelectItem>
+                    <SelectItem value="cpp">C++</SelectItem>
+                    <SelectItem value="c">C</SelectItem>
+                    <SelectItem value="go">Go</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="flex items-center gap-2">
+                <Clock className={`h-5 w-5 ${getTimeColor()}`} />
+                <span className={`text-2xl font-mono font-bold ${getTimeColor()}`}>
+                  {formatTime(timeRemaining)}
+                </span>
+              </div>
             </div>
           </div>
         </CardHeader>
@@ -168,34 +229,81 @@ export const InterviewCodeEditor = ({
         {/* Editor Tab */}
         <TabsContent value="editor" className="mt-4">
           <Card>
-            <CardContent className="p-4">
+            <CardContent className="p-4 space-y-3">
+              {/* File badge */}
+              <div className="flex items-center justify-between">
+                <Badge variant="outline" className="text-xs font-mono">
+                  solution.{language === 'python' ? 'py' : language === 'cpp' || language === 'c' ? language : language === 'java' ? 'java' : language === 'go' ? 'go' : 'js'}
+                </Badge>
+              </div>
+
               <MonacoEditor
                 value={code}
                 language={language}
                 onChange={setCode}
-                height={500}
+                height={400}
               />
-              <div className="flex items-center justify-between mt-4">
+
+              {/* Output Panel */}
+              {showOutput && (
+                <div className="border rounded-lg overflow-hidden">
+                  <div className="flex items-center justify-between bg-muted/50 px-3 py-2 border-b">
+                    <div className="flex items-center gap-2">
+                      <Terminal className="h-4 w-4 text-muted-foreground" />
+                      <span className="text-xs font-semibold text-muted-foreground">Output</span>
+                    </div>
+                    <button onClick={() => setShowOutput(false)} className="text-xs text-muted-foreground hover:text-foreground">
+                      Clear
+                    </button>
+                  </div>
+                  <pre className="p-3 text-sm font-mono bg-black/90 text-green-400 overflow-x-auto max-h-[200px] overflow-y-auto whitespace-pre-wrap">
+                    {isRunningCode ? 'Running...' : (codeOutput || '(no output)')}
+                  </pre>
+                </div>
+              )}
+
+              {/* Action Buttons */}
+              <div className="flex items-center justify-between">
                 <div className="text-sm text-muted-foreground">
                   Write your solution above and click Submit when ready
                 </div>
-                <Button
-                  onClick={handleSubmit}
-                  disabled={isSubmitting || !code.trim()}
-                  className="min-w-32"
-                >
-                  {isSubmitting ? (
-                    <>
-                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                      Running Tests...
-                    </>
-                  ) : (
-                    <>
-                      <Play className="mr-2 h-4 w-4" />
-                      Submit Code
-                    </>
-                  )}
-                </Button>
+                <div className="flex items-center gap-2">
+                  <Button
+                    variant="outline"
+                    onClick={handleRunCode}
+                    disabled={isRunningCode || !code.trim()}
+                    className="gap-2"
+                  >
+                    {isRunningCode ? (
+                      <>
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                        Running...
+                      </>
+                    ) : (
+                      <>
+                        <Play className="h-4 w-4" />
+                        Run Code
+                      </>
+                    )}
+                  </Button>
+                  <Button
+                    onClick={handleSubmit}
+                    disabled={isSubmitting || !code.trim()}
+                    className="min-w-32 gap-2"
+                  >
+                    {isSubmitting ? (
+                      <>
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                        Submitting...
+                      </>
+                    ) : (
+                      <>
+                        <Send className="h-4 w-4" />
+                        Submit Code
+                      </>
+                    )}
+                  </Button>
+                </div>
               </div>
             </CardContent>
           </Card>

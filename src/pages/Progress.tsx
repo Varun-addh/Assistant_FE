@@ -43,8 +43,10 @@ export default function Progress() {
   const navigate = useNavigate();
 
   const aliveRef = useRef(true);
-  const retriedOnceRef = useRef(false);
+  const retryCountRef = useRef(0);
   const retryTimerRef = useRef<number | null>(null);
+  /** Track the latest attempt count so we can detect stale reads */
+  const lastKnownAttemptsRef = useRef<number | null>(null);
 
   const [loading, setLoading] = useState(true);
   const [summary, setSummary] = useState<ProgressSummary | null>(null);
@@ -62,9 +64,23 @@ export default function Progress() {
     };
   }, []);
 
+  // Auto-refresh when page becomes visible (e.g. user switches tabs back)
   useEffect(() => {
-    // Switching lookback should reset the one-time retry.
-    retriedOnceRef.current = false;
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible') {
+        retryCountRef.current = 0;
+        lastKnownAttemptsRef.current = null;
+        loadProgressData();
+      }
+    };
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    return () => document.removeEventListener('visibilitychange', handleVisibilityChange);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [lookbackDays]);
+
+  useEffect(() => {
+    // Switching lookback should reset retry.
+    retryCountRef.current = 0;
     loadProgressData();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [lookbackDays]);
@@ -80,7 +96,7 @@ export default function Progress() {
 
       if (!aliveRef.current) return;
 
-      console.log('📊 [Progress] Loaded data:', {
+      console.log('[Progress] Loaded data:', {
         summary: summaryData,
         heatmap: heatmapData,
         plan: planData,
@@ -91,20 +107,33 @@ export default function Progress() {
       setHeatmap(heatmapData);
       setNextPlan(planData);
 
-      // If we just completed a session and the DB write is async, retry ONCE after a short delay.
-      // Use refs (not state) to avoid stale-closure infinite loops.
+      // Smart retry: if backend DB write is still async, retry up to 3 times.
+      // Trigger retry if:
+      //  a) Zero progress detected at all (first visit after a session), OR
+      //  b) We previously saw N attempts and still see N (stale read — backend hasn't committed yet)
+      const currentAttempts = summaryData.attempts ?? 0;
       const hasAnyProgressSignal =
-        (summaryData.attempts ?? 0) > 0 ||
+        currentAttempts > 0 ||
         Boolean(summaryData.last_completed_at) ||
         (summaryData.average_overall_score ?? 0) > 0 ||
         heatmapData.some((p) => (p.attempts ?? 0) > 0);
 
-      if (!hasAnyProgressSignal && !retriedOnceRef.current) {
-        retriedOnceRef.current = true;
+      const lastKnown = lastKnownAttemptsRef.current;
+      const looksSameAsLast = lastKnown !== null && currentAttempts === lastKnown && currentAttempts > 0;
+
+      const shouldRetry =
+        retryCountRef.current < 3 &&
+        (!hasAnyProgressSignal || looksSameAsLast);
+
+      if (shouldRetry) {
+        retryCountRef.current += 1;
+        const delay = retryCountRef.current * 1500; // 1.5s, 3s, 4.5s
         if (retryTimerRef.current) window.clearTimeout(retryTimerRef.current);
         retryTimerRef.current = window.setTimeout(() => {
           loadProgressData();
-        }, 1500);
+        }, delay);
+      } else {
+        lastKnownAttemptsRef.current = currentAttempts;
       }
     } catch (error) {
       console.error('Failed to load progress data:', error);
@@ -333,7 +362,8 @@ export default function Progress() {
               size="sm"
               className="h-9"
               onClick={() => {
-                retriedOnceRef.current = false;
+                retryCountRef.current = 0;
+                lastKnownAttemptsRef.current = null;
                 loadProgressData();
               }}
               aria-label="Refresh progress"
@@ -427,7 +457,8 @@ export default function Progress() {
               size="lg"
               variant="outline"
               onClick={() => {
-                retriedOnceRef.current = false;
+                retryCountRef.current = 0;
+                lastKnownAttemptsRef.current = null;
                 loadProgressData();
               }}
             >

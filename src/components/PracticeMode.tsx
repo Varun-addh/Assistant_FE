@@ -2038,8 +2038,10 @@ export const PracticeMode = () => {
       );
 
       console.log('✅ [Practice Mode] Code submission response:', response);
+      console.log('🔍 [Practice Mode] Code evaluation:', JSON.stringify(response.evaluation, null, 2));
+      console.log('🔍 [Practice Mode] Test results:', JSON.stringify(response.test_results, null, 2));
 
-      // Store per-question evaluation for the final report (do not render per-question feedback).
+      // Store per-question evaluation for the final report.
       setQuestionEvaluations((prev) => ([
         ...prev,
         {
@@ -2053,58 +2055,23 @@ export const PracticeMode = () => {
         },
       ]));
 
+      // Store code evaluation in component state so the feedback phase can display it.
+      setCodeTestResults(response.test_results ?? null);
+      setCodeEvaluation(response.evaluation ?? null);
+
       setCompletionPending(!!response.complete);
 
       if (response.complete) {
-        // Session is complete, but always show the final code feedback first.
+        // Session is complete — show per-question code feedback first, then user clicks Finish → complete.
         console.log('🎉 [Practice Mode] Session complete; loading final report.');
         if (response.evaluation_report) {
           setEvaluation(response.evaluation_report);
         }
-        setPhase('complete');
-        setCompletionPending(false);
+        // Show feedback phase so user can review code results before final summary.
+        setPhase('feedback');
       } else {
-        // Auto-advance to next question.
-        const qid = currentQuestion.id || currentQuestionNumber;
-        const ack = await acknowledgeFeedback(sessionId, qid);
-
-        if (ack.complete) {
-          if (ack.evaluation_report) {
-            setEvaluation(ack.evaluation_report);
-          }
-          setPhase('complete');
-          setCompletionPending(false);
-          toast({
-            title: 'Interview complete',
-            description: `Completed all ${totalQuestions} questions successfully!`,
-            variant: 'success',
-          });
-          return;
-        }
-
-        if (!ack.next_question) {
-          throw new Error('No next question in response but complete=false');
-        }
-
-        setCurrentQuestion(ack.next_question);
-        setCurrentQuestionNumber((prev) => prev + 1);
-        setTimeRemaining(ack.next_question.time_limit);
-        setCompletionPending(false);
-        setPhase('question');
-
-        // ✅ IMPORTANT: Play Q2/Q3... audio on auto-advance too (not only on manual Next Question).
-        if (ack.tts_audio_url && enableTTS) {
-          void playTtsBestEffort(ack.tts_audio_url);
-        }
-        setTranscription('');
-        setSpeechMetrics(null);
-        setMicroFeedback(null);
-        setCodeTestResults(null);
-        setCodeEvaluation(null);
-        if (countdownTimerRef.current) {
-          clearInterval(countdownTimerRef.current);
-          countdownTimerRef.current = null;
-        }
+        // Show code feedback before advancing to next question.
+        setPhase('feedback');
       }
     } catch (error: any) {
       console.error('❌ [Practice Mode] Code submission error:', error);
@@ -3600,12 +3567,14 @@ export const PracticeMode = () => {
     const ratingSubmitted = !!(questionId && ratedByQuestion[questionId]);
     const ratingSubmitting = !!(questionId && ratingSubmittingByQuestion[questionId]);
 
+    const isCodeQ = currentQuestion ? isCodingQuestion(currentQuestion) : false;
+
     return (
       <div className="max-w-4xl mx-auto w-full px-3 sm:px-4 flex flex-col space-y-3 sm:space-y-4 pb-6">
         {/* Header */}
         <div className="flex items-center justify-between pt-2">
           <div className="flex items-center gap-2">
-            <h2 className="text-lg sm:text-2xl font-bold">Answer Feedback</h2>
+            <h2 className="text-lg sm:text-2xl font-bold">{isCodeQ ? 'Code Feedback' : 'Answer Feedback'}</h2>
             {completionPending && (
               <Badge className="bg-primary/10 text-primary border-primary/20" variant="outline">
                 Final
@@ -3617,6 +3586,176 @@ export const PracticeMode = () => {
           </Badge>
         </div>
 
+        {/* ── CODE question feedback ── */}
+        {isCodeQ && (
+          <>
+            {/* Code Evaluation Scores */}
+            {codeEvaluation && (
+              <Card className="border-2 bg-gradient-to-br from-blue-500/5 to-blue-500/10">
+                <CardHeader className="pb-3">
+                  <CardTitle className="text-base sm:text-lg flex items-center gap-2">
+                    <Target className="w-5 h-5 text-blue-500" />
+                    Code Evaluation
+                  </CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  {/* Overall + Pass/Fail */}
+                  <div className="flex flex-wrap items-center gap-2">
+                    <Badge variant="secondary" className="text-base px-3 py-1">
+                      Overall: {codeEvaluation.overall_score}%
+                    </Badge>
+                    <Badge variant={codeEvaluation.is_correct ? 'default' : 'destructive'}>
+                      {codeEvaluation.is_correct ? '✅ Accepted' : '❌ Not Accepted'}
+                    </Badge>
+                    {codeEvaluation.test_cases_total !== undefined && (
+                      <Badge variant="outline">
+                        Tests: {codeEvaluation.test_cases_passed ?? 0}/{codeEvaluation.test_cases_total}
+                      </Badge>
+                    )}
+                  </div>
+
+                  {/* Score breakdown bars */}
+                  <div className="space-y-2">
+                    {[
+                      { label: 'Correctness', value: codeEvaluation.correctness_score },
+                      { label: 'Code Quality', value: codeEvaluation.code_quality_score },
+                      { label: 'Efficiency', value: codeEvaluation.efficiency_score },
+                    ].map(({ label, value }) => (
+                      <div key={label} className="space-y-1">
+                        <div className="flex items-center justify-between text-sm">
+                          <span className="font-medium">{label}</span>
+                          <span className="font-bold">{value}%</span>
+                        </div>
+                        <Progress value={value} className="h-2" />
+                      </div>
+                    ))}
+                  </div>
+
+                  {/* Complexity */}
+                  {(codeEvaluation.time_complexity || codeEvaluation.space_complexity) && (
+                    <div className="flex flex-wrap gap-3 text-sm">
+                      {codeEvaluation.time_complexity && (
+                        <div className="flex items-center gap-1.5">
+                          <span className="text-muted-foreground">Time:</span>
+                          <code className="bg-muted px-2 py-0.5 rounded text-xs font-mono">{codeEvaluation.time_complexity}</code>
+                        </div>
+                      )}
+                      {codeEvaluation.space_complexity && (
+                        <div className="flex items-center gap-1.5">
+                          <span className="text-muted-foreground">Space:</span>
+                          <code className="bg-muted px-2 py-0.5 rounded text-xs font-mono">{codeEvaluation.space_complexity}</code>
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+            )}
+
+            {/* Test Results Detail */}
+            {codeTestResults && codeTestResults.length > 0 && (
+              <Card>
+                <CardHeader className="pb-3">
+                  <CardTitle className="text-base sm:text-lg">Test Results</CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-2">
+                  {codeTestResults.map((test, idx) => (
+                    <div key={idx} className={`rounded-md border p-3 text-sm ${test.passed ? 'border-green-500/30 bg-green-500/5' : 'border-red-500/30 bg-red-500/5'}`}>
+                      <div className="flex items-center justify-between mb-1">
+                        <span className="font-medium">Test Case {test.test_case_number}</span>
+                        <Badge variant={test.passed ? 'default' : 'destructive'} className="text-xs">
+                          {test.passed ? 'Passed' : 'Failed'}
+                        </Badge>
+                      </div>
+                      {!test.passed && (
+                        <div className="text-xs text-muted-foreground space-y-1 mt-2">
+                          {test.expected_output && <div><span className="font-medium">Expected:</span> {test.expected_output}</div>}
+                          {test.actual_output && <div><span className="font-medium">Got:</span> {test.actual_output}</div>}
+                          {test.error_message && <div className="text-red-500"><span className="font-medium">Error:</span> {test.error_message}</div>}
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </CardContent>
+              </Card>
+            )}
+
+            {/* Approach Feedback */}
+            {codeEvaluation?.approach_feedback && (
+              <Card>
+                <CardHeader className="pb-3">
+                  <CardTitle className="text-base sm:text-lg">Approach Feedback</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <p className="text-sm text-muted-foreground whitespace-pre-wrap leading-relaxed">{codeEvaluation.approach_feedback}</p>
+                </CardContent>
+              </Card>
+            )}
+
+            {/* Edge cases & Suggestions */}
+            {codeEvaluation && (
+              <div className="grid md:grid-cols-2 gap-3">
+                {codeEvaluation.edge_cases_handled && codeEvaluation.edge_cases_handled.length > 0 && (
+                  <Card className="border-green-500/30">
+                    <CardHeader className="pb-2">
+                      <CardTitle className="text-sm text-green-600 dark:text-green-400">✅ Edge Cases Handled</CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                      <ul className="text-xs space-y-1">
+                        {codeEvaluation.edge_cases_handled.map((ec, i) => (
+                          <li key={i} className="flex items-start gap-1.5"><span className="text-green-500 shrink-0">✓</span> {ec}</li>
+                        ))}
+                      </ul>
+                    </CardContent>
+                  </Card>
+                )}
+                {codeEvaluation.edge_cases_missed && codeEvaluation.edge_cases_missed.length > 0 && (
+                  <Card className="border-red-500/30">
+                    <CardHeader className="pb-2">
+                      <CardTitle className="text-sm text-red-600 dark:text-red-400">❌ Edge Cases Missed</CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                      <ul className="text-xs space-y-1">
+                        {codeEvaluation.edge_cases_missed.map((ec, i) => (
+                          <li key={i} className="flex items-start gap-1.5"><span className="text-red-500 shrink-0">✗</span> {ec}</li>
+                        ))}
+                      </ul>
+                    </CardContent>
+                  </Card>
+                )}
+              </div>
+            )}
+
+            {/* Optimization Suggestions */}
+            {codeEvaluation?.optimization_suggestions && codeEvaluation.optimization_suggestions.length > 0 && (
+              <Card>
+                <CardHeader className="pb-2">
+                  <CardTitle className="text-sm">💡 Optimization Suggestions</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <ul className="text-xs space-y-1.5">
+                    {codeEvaluation.optimization_suggestions.map((s, i) => (
+                      <li key={i} className="flex items-start gap-2"><span className="text-primary shrink-0">→</span> <span className="leading-relaxed">{s}</span></li>
+                    ))}
+                  </ul>
+                </CardContent>
+              </Card>
+            )}
+
+            {/* No evaluation fallback */}
+            {!codeEvaluation && (!codeTestResults || codeTestResults.length === 0) && (
+              <Card className="border-amber-500/30">
+                <CardContent className="py-8 text-center">
+                  <p className="text-muted-foreground">Code evaluation is being processed. The results will appear in the final summary.</p>
+                </CardContent>
+              </Card>
+            )}
+          </>
+        )}
+
+        {/* ── VOICE question feedback ── */}
+        {!isCodeQ && (
+          <>
         {/* Pressure / Mode indicator */}
         {pressure && (pressure.mode || pressure.reason) && (
           <Card className="border-muted">
@@ -4051,6 +4190,8 @@ export const PracticeMode = () => {
             </div>
           </CardContent>
         </Card>
+          </>
+        )}
 
         {/* Phase 3: Feedback usefulness rating (optional) */}
         {questionId && (
@@ -4330,12 +4471,26 @@ export const PracticeMode = () => {
                                 {item.testResults && item.testResults.length > 0 && (
                                   <div className="space-y-2">
                                     <div className="text-sm font-medium">Test Results</div>
-                                    <div className="rounded-md border bg-muted/30 p-3">
-                                      <div className="text-sm text-muted-foreground">
+                                    <div className="rounded-md border bg-muted/30 p-3 space-y-1.5">
+                                      <div className="text-sm font-medium text-muted-foreground">
                                         {item.testResults.filter((t) => t.passed).length}/{item.testResults.length} passed
                                       </div>
+                                      {item.testResults.map((tr, trIdx) => (
+                                        <div key={trIdx} className={`text-xs flex items-center gap-2 ${tr.passed ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}`}>
+                                          <span>{tr.passed ? '✅' : '❌'}</span>
+                                          <span>Test {tr.test_case_number}</span>
+                                          {!tr.passed && tr.error_message && (
+                                            <span className="text-muted-foreground">— {tr.error_message}</span>
+                                          )}
+                                        </div>
+                                      ))}
                                     </div>
                                   </div>
+                                )}
+
+                                {/* Fallback if no codeEvaluation */}
+                                {!item.codeEvaluation && (!item.testResults || item.testResults.length === 0) && (
+                                  <p className="text-sm text-muted-foreground italic">Code evaluation data not available from server. Check the Score Breakdown above for overall results.</p>
                                 )}
                               </>
                             )}
