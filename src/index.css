@@ -55,22 +55,21 @@ html {
   backface-visibility: hidden;
 }
 
+
 @media (max-width: 768px) {
   .ia-main-scroll.ia-main-scroll-footer {
     padding-bottom: calc(10rem + var(--keyboard-offset)) !important;
   }
-}
-
-/* Prevent horizontal scroll on mobile */
-@media (max-width: 768px) {
 
   html,
   body {
     overflow-x: hidden !important;
+    overflow-y: auto !important;
     overscroll-behavior-x: none !important;
     position: relative;
     width: 100%;
     max-width: 100vw;
+    /* This ensures vertical scroll is always possible on mobile, even if overlays misbehave */
   }
 }
 
@@ -210,7 +209,7 @@ html {
 .expanded-content-wrapper .expanded-svg svg {
   width: 100% !important;
   height: auto !important;
-  min-width: 450px !important;
+  min-width: min(450px, 90vw) !important;
   /* Ensure it scales up to a meaningful size */
   max-width: 1100px !important;
   /* Cap at a generous medium-large width */
@@ -1374,9 +1373,9 @@ All colors MUST be HSL.
 
     /* ===== MOBILE CARDS & CONTENT ===== */
 
-    /* Card optimization for mobile */
-    .card,
-    [class*="Card"] {
+    /* Card optimization for mobile — target only top-level .card elements */
+    .card:not(.card .card),
+    [data-slot="card"]:not([data-slot="card"] [data-slot="card"]) {
       border-radius: 16px;
       padding: 1rem;
       margin-bottom: 1rem;
@@ -1493,9 +1492,8 @@ All colors MUST be HSL.
 
     /* ===== MOBILE BUTTONS & INTERACTIONS ===== */
 
-    /* Primary buttons */
-    .btn,
-    button:not(.search-bar button) {
+    /* Primary buttons — only target explicit .btn classes, not all buttons */
+    .btn {
       min-height: 48px;
       padding: 12px 20px;
       font-size: 15px;
@@ -1505,8 +1503,7 @@ All colors MUST be HSL.
       box-shadow: 0 2px 6px rgba(0, 0, 0, 0.08);
     }
 
-    .btn:active,
-    button:active {
+    .btn:active {
       transform: scale(0.97);
       box-shadow: 0 1px 3px rgba(0, 0, 0, 0.12);
     }
@@ -1738,8 +1735,8 @@ All colors MUST be HSL.
     }
 
     /* Smaller cards */
-    .card,
-    [class*="Card"] {
+    .card:not(.card .card),
+    [data-slot="card"]:not([data-slot="card"] [data-slot="card"]) {
       padding: 0.875rem;
       margin-bottom: 0.875rem;
     }
@@ -1761,8 +1758,7 @@ All colors MUST be HSL.
     }
 
     /* Smaller buttons */
-    .btn,
-    button:not(.search-bar button) {
+    .btn {
       min-height: 44px;
       padding: 10px 16px;
       font-size: 14px;
@@ -1842,8 +1838,8 @@ All colors MUST be HSL.
     }
 
     /* Medium cards */
-    .card,
-    [class*="Card"] {
+    .card:not(.card .card),
+    [data-slot="card"]:not([data-slot="card"] [data-slot="card"]) {
       padding: 1.125rem;
     }
 
@@ -1863,8 +1859,7 @@ All colors MUST be HSL.
     }
 
     /* Medium buttons */
-    .btn,
-    button:not(.search-bar button) {
+    .btn {
       min-height: 50px;
       padding: 14px 24px;
       font-size: 16px;

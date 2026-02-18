@@ -1136,7 +1136,7 @@ export const SearchBar = ({ value, onChange, placeholder = "Type your question..
                   onClick={handleProMicToggle}
                   variant="ghost"
                   size="icon"
-                  className={`rounded-full h-8 w-8 sm:h-9 sm:w-9 touch-manipulation ${isCapturingProMic
+                  className={`rounded-full h-9 w-9 sm:h-9 sm:w-9 touch-manipulation ${isCapturingProMic
                     ? "text-destructive hover:bg-destructive/10"
                     : "text-muted-foreground hover:text-foreground hover:bg-muted/50"
                     }`}
@@ -1150,7 +1150,7 @@ export const SearchBar = ({ value, onChange, placeholder = "Type your question..
               <Button
                 onClick={() => canGenerate && value.trim() && onGenerate && !isGenerating ? onGenerate() : null}
                 disabled={!canGenerate || !value.trim() || isGenerating}
-                className="rounded-full h-7 w-7 sm:h-8 sm:w-8 p-0 bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed touch-manipulation"
+                className="rounded-full h-8 w-8 sm:h-8 sm:w-8 p-0 bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed touch-manipulation"
                 title="Send message"
               >
                 {isGenerating ? (

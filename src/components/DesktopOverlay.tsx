@@ -313,9 +313,9 @@ export const DesktopOverlay: React.FC<DesktopOverlayProps> = ({
                 e.stopPropagation();
                 setIsPlaying(!isPlaying);
               }}
-              className="h-6 w-6 p-0 text-white hover:bg-white/20 teleprompter-control"
+              className="h-8 w-8 p-0 text-white hover:bg-white/20 teleprompter-control"
             >
-              {isPlaying ? <Pause className="h-3 w-3" /> : <Play className="h-3 w-3" />}
+              {isPlaying ? <Pause className="h-3.5 w-3.5" /> : <Play className="h-3.5 w-3.5" />}
             </Button>
             
             {isStreaming && (
@@ -326,7 +326,7 @@ export const DesktopOverlay: React.FC<DesktopOverlayProps> = ({
                   e.stopPropagation();
                   skipToEnd();
                 }}
-                className="h-6 w-6 p-0 text-white hover:bg-white/20 text-xs teleprompter-control"
+                className="h-8 w-8 p-0 text-white hover:bg-white/20 text-xs teleprompter-control"
                 title="Skip to end"
               >
                 »
@@ -345,10 +345,10 @@ export const DesktopOverlay: React.FC<DesktopOverlayProps> = ({
                   scrollContainerRef.current.scrollTop = 0;
                 }
               }}
-              className="h-6 w-6 p-0 text-white hover:bg-white/20"
+              className="h-8 w-8 p-0 text-white hover:bg-white/20"
               title="Reset to Top"
             >
-              <RotateCcw className="h-3 w-3" />
+              <RotateCcw className="h-3.5 w-3.5" />
             </Button>
           </div>
 
@@ -361,9 +361,9 @@ export const DesktopOverlay: React.FC<DesktopOverlayProps> = ({
                 e.stopPropagation();
                 onClose();
               }}
-              className="h-6 w-6 p-0 text-white hover:bg-white/20"
+              className="h-8 w-8 p-0 text-white hover:bg-white/20"
             >
-              <X className="h-3 w-3" />
+              <X className="h-3.5 w-3.5" />
             </Button>
           </div>
         </div>
@@ -394,7 +394,7 @@ export const DesktopOverlay: React.FC<DesktopOverlayProps> = ({
       {/* Resize Handle */}
       {showControls && (
         <div
-          className="absolute bottom-0 right-0 w-4 h-4 cursor-se-resize bg-white/20 hover:bg-white/30"
+          className="absolute bottom-0 right-0 w-6 h-6 cursor-se-resize bg-white/20 hover:bg-white/30"
           style={{
             clipPath: 'polygon(100% 0, 100% 100%, 0 100%)',
           }}

@@ -1930,7 +1930,7 @@ export const MockInterviewMode = ({ selectedHistorySession, onHistoryUpdate }: M
               {/* Criteria Scores */}
               <div>
                 <h3 className="text-base font-semibold mb-4">Evaluation Criteria</h3>
-                <div className="grid grid-cols-3 sm:grid-cols-3 lg:grid-cols-5 gap-2 sm:gap-3">
+                <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-2 sm:gap-3">
                   <div className="bg-muted/30 rounded-xl p-3 sm:p-4 text-center">
                     <div className="text-[10px] sm:text-xs uppercase tracking-wide text-muted-foreground mb-1 sm:mb-2">Correctness</div>
                     <div className="text-xl sm:text-2xl font-bold">{currentFeedback.criteria_scores.correctness}</div>
@@ -2291,7 +2291,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;c
                 {/* Criteria Scores */}
                 <div>
                   <h4 className="text-sm font-semibold mb-3">Evaluation Criteria</h4>
-                  <div className="grid grid-cols-3 sm:grid-cols-5 gap-2 sm:gap-3">
+                  <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-2 sm:gap-3">
                     <div className="bg-muted/50 rounded-lg p-2 sm:p-3 text-center border">
                       <div className="text-[10px] sm:text-xs uppercase tracking-wide text-muted-foreground mb-1">Correctness</div>
                       <div className="text-lg sm:text-xl font-bold">{selected.feedback.criteria_scores.correctness}</div>

@@ -915,7 +915,7 @@ export const CodeRunner = () => {
       {/* Main split with resizable panels - Desktop */}
       <div className="hidden md:flex relative" style={{ height: 'calc(100% - 44px)' }}>
         {/* Left: Code Editor */}
-        <div className="bg-background border-r p-2 lg:p-3 overflow-hidden" style={{ width: `${panelWidth}%`, minWidth: '300px' }}>
+        <div className="bg-background border-r p-2 lg:p-3 overflow-hidden" style={{ width: `${panelWidth}%`, minWidth: '250px' }}>
           <div className="text-xs mb-2 text-muted-foreground flex items-center justify-between">
             <span className="flex items-center gap-2">
               <span>Source</span>
@@ -942,7 +942,7 @@ export const CodeRunner = () => {
           style={{ flexShrink: 0 }}
         />
         {/* Right: Output Panel */}
-        <div className="bg-background flex-1 p-2 lg:p-3 overflow-hidden flex flex-col" style={{ minWidth: '300px' }}>
+        <div className="bg-background flex-1 p-2 lg:p-3 overflow-hidden flex flex-col" style={{ minWidth: '250px' }}>
           <Tabs value={activeTab} onValueChange={(v: any) => setActiveTab(v)} className="w-full flex-1 flex flex-col overflow-hidden">
             <div className="mb-2 flex-shrink-0 overflow-x-auto scrollbar-professional">
               <TabsList className="inline-flex w-auto min-w-full">

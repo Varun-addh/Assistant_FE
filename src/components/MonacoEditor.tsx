@@ -1,4 +1,4 @@
-import React, { useRef } from 'react';
+import React, { useRef, useEffect, useState } from 'react';
 import Editor, { OnMount } from '@monaco-editor/react';
 import { Loader2 } from 'lucide-react';
 
@@ -20,6 +20,14 @@ export const MonacoEditor: React.FC<MonacoEditorProps> = ({
     onMount
 }) => {
     const editorRef = useRef<any>(null);
+    const [isMobileView, setIsMobileView] = useState(window.innerWidth < 768);
+
+    useEffect(() => {
+        const mql = window.matchMedia('(max-width: 767px)');
+        const handler = () => setIsMobileView(window.innerWidth < 768);
+        mql.addEventListener('change', handler);
+        return () => mql.removeEventListener('change', handler);
+    }, []);
 
     const handleEditorChange = (value: string | undefined) => {
         if (value !== undefined) {
@@ -76,10 +84,10 @@ export const MonacoEditor: React.FC<MonacoEditorProps> = ({
                     </div>
                 }
                 options={{
-                    fontSize: 14,
+                    fontSize: isMobileView ? 12 : 14,
                     fontFamily: "'JetBrains Mono', 'Fira Code', 'Cascadia Code', 'Consolas', monospace",
                     fontLigatures: true,
-                    minimap: { enabled: true, scale: 0.75, side: 'right' },
+                    minimap: { enabled: !isMobileView, scale: 0.75, side: 'right' },
                     scrollBeyondLastLine: false,
                     automaticLayout: true,
                     padding: { top: 16, bottom: 16 },

@@ -33,6 +33,7 @@ import {
   CheckCircle2,
   Zap,
   Award,
+  Settings,
   Loader2,
 } from 'lucide-react';
 import {
@@ -626,42 +627,43 @@ export default function RoundSelection({ onRoundStart, userProfile, ensureLiveMe
           {!selectedRound ? (
             <>
               {/* Header */}
-              <div className="text-center py-2 sm:py-4 space-y-2">
-                <h1 className="text-2xl sm:text-3xl md:text-5xl font-extrabold tracking-tight text-foreground/90 px-4">
-                  Choose Your Interview Round
+              <div className="text-center py-4 sm:py-8 space-y-3">
+                <h1 className="text-2xl sm:text-3xl md:text-4xl font-bold tracking-tight bg-gradient-to-b from-foreground to-foreground/70 bg-clip-text text-transparent px-4">
+                  Choose Your Round
                 </h1>
-                <p className="text-xs sm:text-sm text-muted-foreground max-w-md mx-auto px-4">
-                  Recommended path based on real interviews — start with HR Screening and progress through each stage
+                <p className="text-xs sm:text-sm text-muted-foreground/80 max-w-lg mx-auto px-4 leading-relaxed">
+                  Follow the recommended interview path — start with HR Screening and progress through each stage
                 </p>
               </div>
 
-              {/* Profile Setup Card - Redesigned */}
-              <Card className="max-w-4xl mx-auto border border-border/50 bg-background/60 backdrop-blur-xl shadow-2xl shadow-black/40">
-                <CardHeader className="pb-3 sm:pb-4 border-b border-border/50 px-4 sm:px-6">
-                  <div className="flex items-center gap-2 sm:gap-3">
-                    <div className="p-1.5 sm:p-2 rounded-lg bg-primary/10">
-                      <Sparkles className="w-4 h-4 sm:w-5 sm:h-5 text-primary" />
+              {/* Profile Setup */}
+              <div className="max-w-3xl mx-auto">
+                <Card className="relative overflow-hidden border border-border/40 bg-gradient-to-b from-card to-card/80 shadow-xl">
+                  {/* Subtle top accent */}
+                  <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-primary/40 to-transparent" />
+
+                  <CardContent className="pt-6 pb-6 px-5 sm:px-8">
+                    <div className="flex items-center gap-3 mb-6">
+                      <div className="p-2 rounded-lg bg-primary/10 ring-1 ring-primary/20">
+                        <Settings className="w-4 h-4 text-primary" />
+                      </div>
+                      <div>
+                        <h3 className="text-sm sm:text-base font-semibold text-foreground">Profile Setup</h3>
+                        <p className="text-[11px] sm:text-xs text-muted-foreground">Required to generate relevant questions</p>
+                      </div>
                     </div>
-                    <div>
-                      <CardTitle className="text-lg sm:text-xl">Profile Setup (Required)</CardTitle>
-                      <CardDescription className="mt-0.5 sm:mt-1 text-[10px] sm:text-sm">
-                        Domain is <strong>MANDATORY</strong> for relevant questions.
-                      </CardDescription>
-                    </div>
-                  </div>
-                </CardHeader>
-                <CardContent className="pt-6">
-                  <div className="grid md:grid-cols-2 gap-6">
-                    {/* Domain Selection - MANDATORY */}
-                    <div className="space-y-2 sm:space-y-3">
-                      <Label htmlFor="domain" className="text-xs sm:text-sm font-semibold flex items-center gap-1.5">
-                        <span>Domain / Specialization</span>
-                        <span className="text-red-500 text-base">*</span>
-                      </Label>
+
+                    <div className="grid md:grid-cols-2 gap-5">
+                      {/* Domain Selection */}
+                      <div className="space-y-2">
+                        <Label htmlFor="domain" className="text-xs sm:text-sm font-medium flex items-center gap-1.5 text-foreground/80">
+                          <span>Domain / Specialization</span>
+                          <span className="text-red-400 text-sm leading-none">*</span>
+                        </Label>
                       <Select value={domain} onValueChange={setDomain}>
                         <SelectTrigger
                           id="domain"
-                          className={`h-11 bg-background/40 ${!domain ? 'border-destructive/60 focus:ring-destructive/20' : 'border-border/50 focus:ring-primary/20'}`}
+                          className={`h-10 bg-background/50 transition-colors ${!domain ? 'border-red-400/40 focus:border-red-400/60 focus:ring-1 focus:ring-red-400/20' : 'border-border/40 focus:border-primary/40 focus:ring-1 focus:ring-primary/20'}`}
                         >
                           <SelectValue placeholder="Select your domain..." />
                         </SelectTrigger>
@@ -693,16 +695,16 @@ export default function RoundSelection({ onRoundStart, userProfile, ensureLiveMe
                         </SelectContent>
                       </Select>
                       {!domain && (
-                        <p className="text-xs text-red-500 flex items-center gap-1.5 font-medium">
-                          <Target className="w-3.5 h-3.5" />
-                          Domain is required for relevant questions
+                        <p className="text-[11px] text-red-400/90 flex items-center gap-1.5">
+                          <Target className="w-3 h-3" />
+                          Required for relevant questions
                         </p>
                       )}
                     </div>
 
                     {/* Experience Years */}
-                    <div className="space-y-3">
-                      <Label htmlFor="experience" className="text-xs sm:text-sm font-semibold">
+                    <div className="space-y-2">
+                      <Label htmlFor="experience" className="text-xs sm:text-sm font-medium text-foreground/80">
                         Years of Experience
                       </Label>
                       <Input
@@ -713,79 +715,76 @@ export default function RoundSelection({ onRoundStart, userProfile, ensureLiveMe
                         value={experienceYears || ''}
                         onChange={(e) => setExperienceYears(parseInt(e.target.value) || 0)}
                         placeholder="0-30 years"
-                        className="h-11 bg-background/40 border-border/50 focus:ring-primary/20"
+                        className="h-10 bg-background/50 border-border/40 focus:border-primary/40 focus:ring-1 focus:ring-primary/20 transition-colors"
                         maxLength={3}
                       />
-                      <p className="text-xs text-muted-foreground flex items-center gap-1">
+                      <p className="text-[11px] text-muted-foreground/70 flex items-center gap-1">
                         <TrendingUp className="w-3 h-3" />
-                        Helps personalize question difficulty
+                        Personalizes question difficulty
                       </p>
                     </div>
 
                     {/* Update Button */}
                     {(domain !== (userProfile?.domain || '') || experienceYears !== (userProfile?.experience_years || 0)) && (
-                      <div className="md:col-span-2 pt-2">
+                      <div className="md:col-span-2">
                         <Button
                           onClick={loadRounds}
                           variant="outline"
-                          className="w-full h-10 sm:h-11 border-primary/30 hover:bg-primary/10 text-xs sm:text-sm"
+                          className="w-full h-10 border-primary/25 hover:bg-primary/5 hover:border-primary/40 text-xs sm:text-sm transition-all"
                           disabled={loading || !domain}
                         >
-                          <TrendingUp className="w-3.5 h-3.5 sm:w-4 sm:h-4 mr-2" />
+                          <TrendingUp className="w-3.5 h-3.5 mr-2" />
                           Update Recommendations
                         </Button>
                       </div>
                     )}
-                  </div>
-                </CardContent>
-              </Card>
-
-              {/* Domain Detection Info Banner */}
-              {domain && (
-                <Card className="max-w-4xl mx-auto border border-border/50 bg-muted/20 shadow-md">
-                  <CardContent className="py-4">
-                    <div className="flex flex-col md:flex-row items-center justify-center gap-3 text-center md:text-left">
-                      <div className="flex items-center gap-2">
-                        <div className="p-2 rounded-full bg-primary/20">
-                          <Sparkles className="w-4 h-4 text-primary" />
-                        </div>
-                        <span className="font-semibold text-lg">
-                          {getDomainCategoryName(detectDomainCategory(domain))}
-                        </span>
-                      </div>
-                      <Separator className="hidden md:block h-6" orientation="vertical" />
-                      <div className="flex items-center gap-2 text-muted-foreground">
-                        <Target className="w-4 h-4" />
-                        <span className="text-sm">{allRounds.length} specialized rounds available</span>
-                      </div>
                     </div>
                   </CardContent>
                 </Card>
+              </div>
+
+              {/* Domain Detection Info */}
+              {domain && (
+                <div className="max-w-3xl mx-auto flex items-center justify-center gap-2.5 py-2">
+                  <div className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-primary/8 border border-primary/15">
+                    <span className="text-xs font-semibold text-primary">
+                      {getDomainCategoryName(detectDomainCategory(domain))}
+                    </span>
+                  </div>
+                  <span className="text-[11px] text-muted-foreground">
+                    {allRounds.length} rounds available
+                  </span>
+                </div>
               )}
 
-              <div className="flex flex-col sm:flex-row justify-center gap-2 sm:gap-3 px-4">
-                <Button
-                  variant={view === 'recommended' ? 'default' : 'outline'}
-                  onClick={() => setView('recommended')}
-                  className={`gap-2 px-4 sm:px-6 h-10 sm:h-11 transition-all text-xs sm:text-sm ${view === 'recommended'
-                    ? 'shadow-lg shadow-primary/20'
-                    : 'hover:border-primary/50'
+              <div className="flex justify-center gap-1 px-4">
+                <div className="inline-flex items-center gap-1 p-1 rounded-lg bg-muted/40 border border-border/30">
+                  <Button
+                    variant={view === 'recommended' ? 'default' : 'ghost'}
+                    onClick={() => setView('recommended')}
+                    size="sm"
+                    className={`gap-1.5 px-4 h-9 text-xs sm:text-sm rounded-md transition-all ${
+                      view === 'recommended'
+                        ? 'shadow-md'
+                        : 'text-muted-foreground hover:text-foreground'
                     }`}
-                >
-                  <Sparkles className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
-                  Recommended
-                </Button>
-                <Button
-                  variant={view === 'all' ? 'default' : 'outline'}
-                  onClick={() => setView('all')}
-                  className={`gap-2 px-4 sm:px-6 h-10 sm:h-11 transition-all text-xs sm:text-sm ${view === 'all'
-                    ? 'shadow-lg shadow-primary/20'
-                    : 'hover:border-primary/50'
+                  >
+                    Recommended
+                  </Button>
+                  <Button
+                    variant={view === 'all' ? 'default' : 'ghost'}
+                    onClick={() => setView('all')}
+                    size="sm"
+                    className={`gap-1.5 px-4 h-9 text-xs sm:text-sm rounded-md transition-all ${
+                      view === 'all'
+                        ? 'shadow-md'
+                        : 'text-muted-foreground hover:text-foreground'
                     }`}
-                >
-                  <Layers className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
-                  All Rounds
-                </Button>
+                  >
+                    <Layers className="w-3.5 h-3.5" />
+                    All Rounds
+                  </Button>
+                </div>
               </div>
 
               {/* Recommended Sequence Banner - Enhanced */}

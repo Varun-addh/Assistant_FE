@@ -241,7 +241,7 @@ export const InterviewCodeEditor = ({
                 value={code}
                 language={language}
                 onChange={setCode}
-                height={400}
+                height="min(400px, 50vh)"
               />
 
               {/* Output Panel */}
@@ -420,7 +420,7 @@ export const InterviewCodeEditor = ({
                 </CardHeader>
                 <CardContent className="space-y-4">
                   {/* Score Breakdown */}
-                  <div className="grid grid-cols-3 gap-4">
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                     <div>
                       <div className="text-xs text-muted-foreground mb-1">Correctness</div>
                       <div className="flex items-center gap-2">

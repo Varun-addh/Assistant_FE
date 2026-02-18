@@ -120,6 +120,7 @@ export const InterviewAssistant = () => {
   const [question, setQuestion] = useState("");
   const [answer, setAnswer] = useState("");
   const [isGenerating, setIsGenerating] = useState(false);
+  const isGeneratingRef = useRef(false);
   const [evaluationAllowed, setEvaluationAllowed] = useState<boolean | null>(null);
   const [evaluationReason, setEvaluationReason] = useState<string | null>(null);
   const [showAnswer, setShowAnswer] = useState(false);
@@ -212,6 +213,9 @@ export const InterviewAssistant = () => {
       // ignore
     }
   }, [questionMode]);
+
+  // Keep ref in sync so non-dependency effects can read the latest value
+  useEffect(() => { isGeneratingRef.current = isGenerating; }, [isGenerating]);
 
   const showBottomSearchBar =
     activeMainTab === "answer" &&
@@ -1922,6 +1926,14 @@ export const InterviewAssistant = () => {
   // Load history when sessionId available or reset token changes
   useEffect(() => {
     if (!sessionId) return;
+    // 🛡️ Skip history reload while actively generating a response.
+    // When the user sends their FIRST question, ensureSession() creates a new session
+    // and updates sessionId, which triggers this effect. But for a brand-new session
+    // the server returns empty history, which would OVERWRITE the optimistic insert
+    // (the pending question with empty answer) causing a blank screen on mobile.
+    if (isGeneratingRef.current) return;
+    // Track whether this effect invocation is still "current" (not stale).
+    let cancelled = false;
     (async () => {
       try {
         // 0) Immediately hydrate from durable local archive so the sidebar isn't empty on return
@@ -1940,7 +1952,9 @@ export const InterviewAssistant = () => {
               });
               if (complete.length > 0) {
                 const items = complete.map(it => ({ question: it.question, answer: it.answer, mode: it.mode })) as any;
-                setHistory({ session_id: sessionId, items } as any);
+                if (!cancelled && !isGeneratingRef.current) {
+                  setHistory({ session_id: sessionId, items } as any);
+                }
                 // Update archive to remove incomplete entries
                 if (complete.length !== archived.length) {
                   window.localStorage.setItem(archiveKey, JSON.stringify(complete));
@@ -1955,10 +1969,14 @@ export const InterviewAssistant = () => {
           const rawCached = window.localStorage.getItem('ia_history_cache');
           if (rawCached) {
             const cached = JSON.parse(rawCached);
-            if (cached?.sessionId === sessionId && cached?.data) setHistory(cached.data);
+            if (cached?.sessionId === sessionId && cached?.data && !cancelled && !isGeneratingRef.current) {
+              setHistory(cached.data);
+            }
           }
         } catch { }
         const h = await apiGetHistory(sessionId);
+        // 🛡️ Re-check after async: if generation started while we were fetching, bail out
+        if (cancelled || isGeneratingRef.current) return;
         // Merge with durable local archive to ensure persistence even across outages
         let merged = h;
         try {
@@ -1988,7 +2006,9 @@ export const InterviewAssistant = () => {
             window.localStorage.setItem(archiveKey, JSON.stringify(unique));
           }
         } catch { }
-        setHistory(merged);
+        if (!cancelled && !isGeneratingRef.current) {
+          setHistory(merged);
+        }
         console.log(`[api] GET /api/history/${sessionId} ->`, h);
         // Cache to survive transient reloads or quick route switches
         try { window.localStorage.setItem('ia_history_cache', JSON.stringify({ sessionId, data: h })); } catch {
@@ -2001,11 +2021,14 @@ export const InterviewAssistant = () => {
           const raw = window.localStorage.getItem('ia_history_cache');
           if (raw) {
             const cached = JSON.parse(raw);
-            if (cached?.sessionId) setHistory(cached.data);
+            if (cached?.sessionId && !cancelled && !isGeneratingRef.current) {
+              setHistory(cached.data);
+            }
           }
         } catch { }
       }
     })();
+    return () => { cancelled = true; };
   }, [sessionId, resetToken]);
 
   // Persist the currently displayed card so navigating away and back restores it
@@ -2246,6 +2269,7 @@ export const InterviewAssistant = () => {
       // Ensure streaming is enabled for the new generation
       setStreaming(true);
       setIsGenerating(true);
+      isGeneratingRef.current = true;
 
       console.log('[Generation] Starting, streaming enabled');
 
@@ -2258,10 +2282,11 @@ export const InterviewAssistant = () => {
       if (isSessionMismatch) {
         console.log('[Generation] Session mismatch detected, clearing old history. Current:', immediateSid, 'History:', historySid);
         setHistory(null);
-        setShowAnswer(false);
-      } else if (!history?.items?.length) {
-        setShowAnswer(false);
       }
+      // NOTE: We intentionally do NOT call setShowAnswer(false) here.
+      // For the first question, showAnswer is already false. For subsequent
+      // questions, we don't want to hide the conversation momentarily.
+      // Instead, we set showAnswer=true below in the same synchronous batch.
 
       // Capture the attachment state before clearing
       const sentAttachment = pendingAttachment;
@@ -2293,6 +2318,14 @@ export const InterviewAssistant = () => {
 
         return { session_id: immediateSid || "pending", items: next } as GetHistoryResponse;
       });
+
+      // ⚡ Show answer view + generating placeholder SYNCHRONOUSLY before any await.
+      // This ensures React batches showAnswer=true with the optimistic history insert
+      // above, preventing the blank screen flash on the first question.
+      if (!(isEditingFromAnswer && originalQA)) {
+        setShowAnswer(true);
+        setAnswer(GENERATING_PLACEHOLDER);
+      }
 
       // Clear input immediately on submit so it never "sticks" on early-return flows.
       // If the request fails, we restore the user's prompt in the catch block.
@@ -2382,11 +2415,8 @@ export const InterviewAssistant = () => {
         console.error('[Cache] Error clearing before answer:', e);
       }
 
-      // Show immediate feedback only when not inline-editing existing response
-      if (!(isEditingFromAnswer && originalQA)) {
-        setShowAnswer(true);
-        setAnswer(GENERATING_PLACEHOLDER);
-      }
+      // NOTE: setShowAnswer(true) + setAnswer(GENERATING_PLACEHOLDER) are now called
+      // SYNCHRONOUSLY before the await ensureSession() above to prevent blank screen flash.
 
       try {
         const res = await responsePromise;
@@ -4070,10 +4100,25 @@ export const InterviewAssistant = () => {
                             <div>
                               {/* 🏗️ Architecture Mode Choice UI */}
                               {isLatest && isGenerating && !showArchitectureChoice && (!item.answer || item.answer === GENERATING_PLACEHOLDER) ? (
-                                <div className="pl-2">
-                                  <span className="text-sm text-muted-foreground">
-                                    Generating<LoadingDots />
-                                  </span>
+                                <div className="w-full border-0 bg-transparent shadow-none mx-0 md:mx-0">
+                                  <div className="pl-2 pr-3 md:px-6 py-2">
+                                    <div className="flex items-center gap-2 mb-3">
+                                      <Loader2 className="h-4 w-4 animate-spin text-primary" />
+                                      <span className="text-sm font-medium text-muted-foreground">
+                                        Generating response<LoadingDots />
+                                      </span>
+                                    </div>
+                                    <div className="space-y-3 py-2 animate-in fade-in duration-500">
+                                      <div className="h-4 bg-muted/40 rounded-full w-[90%] animate-pulse" />
+                                      <div className="h-4 bg-muted/40 rounded-full w-3/4 animate-pulse" />
+                                      <div className="h-4 bg-muted/30 rounded-full w-[85%] animate-pulse" />
+                                      <div className="h-4 bg-muted/40 rounded-full w-2/3 animate-pulse" />
+                                      <div className="h-4 bg-muted/30 rounded-full w-[70%] animate-pulse" />
+                                      <div className="h-4 bg-muted/40 rounded-full w-1/2 animate-pulse" />
+                                      <div className="h-4 bg-muted/30 rounded-full w-[60%] animate-pulse" />
+                                      <div className="h-4 bg-muted/40 rounded-full w-3/4 animate-pulse" />
+                                    </div>
+                                  </div>
                                 </div>
                               ) : isLatest && showArchitectureChoice && item.question === pendingArchitectureQuestion ? (
                                 <div className="bg-gradient-to-br from-blue-50 to-indigo-50 dark:from-blue-950/30 dark:to-indigo-950/30 rounded-2xl p-6 shadow-lg border border-blue-200/50 dark:border-blue-800/50">
@@ -4154,7 +4199,7 @@ export const InterviewAssistant = () => {
                       })}
                     </div>
                   ) : (
-                    <div className="flex flex-col items-center justify-center min-h-[60vh] px-4 animate-in fade-in zoom-in duration-700">
+                    <div className="flex flex-col items-center justify-center min-h-[40vh] md:min-h-[60vh] px-4 py-6 animate-in fade-in zoom-in duration-700">
                       <div className="w-full max-w-2xl space-y-6">
                         {/* Welcome Header */}
                         <div className="text-center space-y-4 mb-8">
@@ -4253,7 +4298,7 @@ export const InterviewAssistant = () => {
                         </div>
 
                         {/* Quick suggestions */}
-                        <div className="flex flex-wrap gap-2 justify-center pt-4">
+                        <div className="flex flex-wrap gap-2 justify-center pt-4 pb-6">
                           <span className="px-4 py-2 bg-primary/5 hover:bg-primary/10 text-primary text-sm font-medium rounded-full cursor-pointer transition-colors"
                             onClick={() => setQuestion("Explain the difference between REST and GraphQL")}
                           >
@@ -4297,7 +4342,7 @@ export const InterviewAssistant = () => {
                   </div>
                 </TabsContent>
 
-                <TabsContent value="practice" className="mt-0 h-[calc(100vh-120px)]">
+                <TabsContent value="practice" className="mt-0 h-[calc(var(--app-height,100dvh)-120px)]">
                   <PracticeMode />
                 </TabsContent>
 
@@ -4337,7 +4382,7 @@ export const InterviewAssistant = () => {
               <div className="absolute bottom-0 left-0 right-0 h-28 md:h-36 bg-gradient-to-t from-background from-35% via-background/90 via-60% to-transparent pointer-events-none -z-10" />
 
               {/* Search bar container */}
-              <div className="px-4 pb-4 md:px-6 md:pb-6">
+              <div className="px-4 pb-[calc(1rem+env(safe-area-inset-bottom,0px))] md:px-6 md:pb-6">
                 <div className="max-w-4xl mx-auto space-y-2">
                   {/* Pending file attachment chip */}
                   {pendingAttachment && (

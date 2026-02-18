@@ -196,10 +196,15 @@ export async function startPracticeProctoring(
     window.removeEventListener("blur", onBlur);
     track?.removeEventListener("ended", onTrackEnded);
 
-    // Stop face detection loop
+    // Stop face detection loop & clean up video element
     if (faceDetectionTimerId !== null) {
       clearInterval(faceDetectionTimerId);
       faceDetectionTimerId = null;
+    }
+    if (faceDetectionVideo) {
+      faceDetectionVideo.srcObject = null;
+      faceDetectionVideo.remove();
+      faceDetectionVideo = null;
     }
 
     try {
@@ -215,39 +220,89 @@ export async function startPracticeProctoring(
   };
 
   // ── Face Detection Loop ──────────────────────────────────────────────
-  // Uses the browser's FaceDetector API (Chrome/Edge) to count faces.
-  // Falls back gracefully: if FaceDetector is unavailable, no warnings fire.
+  // Primary: browser's native FaceDetector API (Chrome/Edge with experimental flag).
+  // Fallback: @vladmandic/face-api TinyFaceDetector — works in ALL browsers.
   let faceDetectionTimerId: ReturnType<typeof setInterval> | null = null;
+  let faceDetectionVideo: HTMLVideoElement | null = null;
 
-  const startFaceDetection = () => {
-    const FD = (globalThis as any).FaceDetector;
-    if (!FD) {
-      console.log('[Proctoring] FaceDetector API not available — face detection skipped');
-      return;
-    }
-
-    let detector: any = null;
-    try {
-      detector = new FD({ maxDetectedFaces: 5, fastMode: true });
-    } catch (e) {
-      console.warn('[Proctoring] Failed to create FaceDetector:', e);
-      return;
-    }
-
-    // We need a <video> element playing the camera stream to grab frames.
+  const startFaceDetection = async () => {
+    // Create a hidden video element with real dimensions so the face detector
+    // can actually read pixel data (a 1x1 element yields no usable frames).
     const video = document.createElement('video');
     video.muted = true;
     video.playsInline = true;
     video.autoplay = true;
+    video.width = 320;
+    video.height = 240;
+    video.setAttribute('style', 'position:fixed;top:-9999px;left:-9999px;width:320px;height:240px;opacity:0;pointer-events:none;z-index:-1;');
+    document.body.appendChild(video);
+    faceDetectionVideo = video;
+
     try {
       video.srcObject = stream;
-      void video.play().catch(() => {});
-    } catch {
+      await video.play();
+      console.log('[Proctoring] Face detection video playing:', video.videoWidth, 'x', video.videoHeight);
+    } catch (err) {
+      console.warn('[Proctoring] Could not play video for face detection:', err);
+      video.remove();
+      faceDetectionVideo = null;
       return;
     }
 
-    const INTERVAL_MS = 2500; // Check every 2.5 seconds
+    // ── Try native FaceDetector first ──
+    const NativeFD = (globalThis as any).FaceDetector;
+    let nativeDetector: any = null;
+    if (NativeFD) {
+      try {
+        nativeDetector = new NativeFD({ maxDetectedFaces: 5, fastMode: true });
+        console.log('[Proctoring] ✅ Using native FaceDetector API');
+      } catch (e) {
+        console.warn('[Proctoring] Native FaceDetector create failed, trying fallback:', e);
+      }
+    }
+
+    // ── Fallback: face-api.js TinyFaceDetector ──
+    let faceApiReady = false;
+    let faceapi: any = null;
+    if (!nativeDetector) {
+      console.log('[Proctoring] Native FaceDetector not available — loading face-api.js fallback...');
+      try {
+        faceapi = await import('@vladmandic/face-api');
+
+        // Load TinyFaceDetector model from local public path (bundled with app)
+        const MODEL_URL = '/models';
+        await faceapi.nets.tinyFaceDetector.loadFromUri(MODEL_URL);
+
+        faceApiReady = true;
+        console.log('[Proctoring] ✅ face-api.js TinyFaceDetector loaded successfully');
+      } catch (err) {
+        console.warn('[Proctoring] Failed to load face-api.js fallback:', err);
+      }
+    }
+
+    if (!nativeDetector && !faceApiReady) {
+      console.warn('[Proctoring] ❌ No face detection method available — face detection disabled');
+      video.remove();
+      faceDetectionVideo = null;
+      return;
+    }
+
+    // Wait for the video to have actual frame data before starting detection.
+    // The video.play() promise resolves before frames are decoded in some browsers.
+    await new Promise<void>((resolve) => {
+      if (video.readyState >= 2) { resolve(); return; }
+      const onReady = () => { video.removeEventListener('loadeddata', onReady); resolve(); };
+      video.addEventListener('loadeddata', onReady);
+      // Safety timeout — don't block forever
+      setTimeout(resolve, 3000);
+    });
+
+    console.log('[Proctoring] Face detection loop starting. Video readyState:', video.readyState, 'dimensions:', video.videoWidth, 'x', video.videoHeight);
+
+    // ── Detection loop (every 2s) ──
+    const INTERVAL_MS = 2000;
     let detecting = false;
+    let consecutiveErrors = 0;
 
     faceDetectionTimerId = setInterval(async () => {
       if (!active || detecting) return;
@@ -255,11 +310,25 @@ export async function startPracticeProctoring(
 
       detecting = true;
       try {
-        const faces = await detector.detect(video);
-        const count = Array.isArray(faces) ? faces.length : 0;
+        let count = 0;
+
+        if (nativeDetector) {
+          // Native path
+          const faces = await nativeDetector.detect(video);
+          count = Array.isArray(faces) ? faces.length : 0;
+        } else if (faceApiReady && faceapi) {
+          // face-api.js path — use larger inputSize for better accuracy
+          const detections = await faceapi.detectAllFaces(
+            video,
+            new faceapi.TinyFaceDetectorOptions({ inputSize: 320, scoreThreshold: 0.35 })
+          );
+          count = Array.isArray(detections) ? detections.length : 0;
+        }
+
+        consecutiveErrors = 0; // Reset on success
 
         if (count > 1) {
-          console.warn(`[Proctoring] Multiple faces detected: ${count}`);
+          console.warn(`[Proctoring] ⚠️ Multiple faces detected: ${count}`);
           options.onMultipleFaces?.(count);
 
           // Also report to backend
@@ -268,15 +337,25 @@ export async function startPracticeProctoring(
           });
         }
       } catch (err) {
+        consecutiveErrors++;
         // Detection can fail if video is not ready or tab is backgrounded
-        console.debug('[Proctoring] Face detection frame error:', err);
+        if (consecutiveErrors <= 3) {
+          console.debug('[Proctoring] Face detection frame error:', err);
+        }
+        if (consecutiveErrors === 10) {
+          console.warn('[Proctoring] Too many consecutive face detection errors — stopping loop');
+          if (faceDetectionTimerId !== null) {
+            clearInterval(faceDetectionTimerId);
+            faceDetectionTimerId = null;
+          }
+        }
       } finally {
         detecting = false;
       }
     }, INTERVAL_MS);
   };
 
-  startFaceDetection();
+  void startFaceDetection();
 
   return {
     stop,

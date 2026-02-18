@@ -110,9 +110,9 @@ export const ExecutionVisualizer = ({ editor, code, events, isTracing, onTrace }
   const explanation = useMemo(() => explainLine(lineText, evt?.locals || {}), [lineText, evt?.locals]);
 
   return (
-    <div className="flex h-full gap-3">
+    <div className="flex flex-col lg:flex-row h-full gap-3">
       <div className="flex-1 min-w-0 flex flex-col gap-2">
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-wrap">
           <Button size="sm" onClick={onTrace} disabled={isTracing}>
             {isTracing ? "Tracing…" : "Visualize"}
           </Button>
@@ -135,16 +135,16 @@ export const ExecutionVisualizer = ({ editor, code, events, isTracing, onTrace }
             {evt ? <div className="text-[11px] text-muted-foreground">{evt.event} at line {evt.line} {evt.function ? `in ${evt.function}` : ''}</div> : null}
           </CardHeader>
           <CardContent className="h-full min-h-0">
-            <div className="grid grid-cols-2 gap-3 h-full">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3 h-full">
               <Card className="h-full">
                 <CardHeader className="pb-2"><div className="text-xs font-semibold">Locals</div></CardHeader>
                 <CardContent className="h-[240px] sm:h-full min-h-0">
                   <ScrollArea className="h-full pr-2">
                     <div className="space-y-1">
                       {localsList.length ? localsList.map(([k,v]) => (
-                        <div key={k} className="text-[11px] font-mono flex justify-between gap-3 min-w-max whitespace-pre pr-2">
-                          <span className="text-muted-foreground">{k}:</span>
-                          <span className="text-foreground">{String(v)}</span>
+                        <div key={k} className="text-[11px] font-mono flex justify-between gap-3 pr-2">
+                          <span className="text-muted-foreground shrink-0">{k}:</span>
+                          <span className="text-foreground truncate">{String(v)}</span>
                         </div>
                       )) : <div className="text-[11px] text-muted-foreground">No locals</div>}
                     </div>
@@ -167,7 +167,7 @@ export const ExecutionVisualizer = ({ editor, code, events, isTracing, onTrace }
                   </ScrollArea>
                 </CardContent>
               </Card>
-              <Card className="col-span-2">
+              <Card className="col-span-1 md:col-span-2">
                 <CardHeader className="pb-2"><div className="text-xs font-semibold">Call Stack</div></CardHeader>
                 <CardContent>
                   <div className="space-y-1">

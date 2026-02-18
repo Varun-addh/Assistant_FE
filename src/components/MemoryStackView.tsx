@@ -102,10 +102,10 @@ export const MemoryStackView = ({ frames = [], variables = {}, code = '', output
 
   const SectionRow = ({ label, value, highlight = false }: { label: string; value: any; highlight?: boolean }) => (
     <div 
-      className={`flex justify-between items-center py-1.5 px-2 rounded border-b border-border/50 ${highlight ? 'bg-primary/5' : ''} min-w-max w-max gap-3 whitespace-pre pr-2`}
+      className={`flex justify-between items-center py-1.5 px-2 rounded border-b border-border/50 ${highlight ? 'bg-primary/5' : ''} gap-3`}
     >
       <span className="text-xs font-mono text-muted-foreground flex items-center gap-1 shrink-0">{label}</span>
-      <span className="text-xs font-mono text-foreground max-w-none whitespace-pre shrink-0" title={String(value)}>
+      <span className="text-xs font-mono text-foreground truncate" title={String(value)}>
         {String(value)}
       </span>
     </div>

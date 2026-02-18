@@ -2895,7 +2895,8 @@ export const AnswerCard = ({ answer, question, mode, streaming = true, onEdit, o
       </CardHeader >
 
       <CardContent className="pl-2 pr-3 md:px-6 py-2 overflow-x-hidden">
-        {(!answer || answer.includes("Analyzing your question")) && isGenerating ? (
+        {((!answer || answer.includes("Analyzing your question")) && isGenerating) ||
+         (answer && !answer.includes("Analyzing your question") && displayedBlocks.length === 0 && !typedText && streaming) ? (
           <div className="space-y-3 py-2 animate-in fade-in duration-500">
             <div className="h-4 bg-muted/40 rounded-full w-3/4 animate-pulse" />
             <div className="h-4 bg-muted/40 rounded-full w-1/2 animate-pulse" />

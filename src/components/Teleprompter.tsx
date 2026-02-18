@@ -306,7 +306,7 @@ export const Teleprompter: React.FC<TeleprompterProps> = ({
 
   const SettingsPanel = () => (
     <div className={`p-4 space-y-4 ${mode === 'mobile' ? 'bg-black/90 backdrop-blur-sm' : 'bg-gray-900/95'} border-t border-white/20`}>
-      <div className="grid grid-cols-2 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
         <div>
           <Label className="text-white text-sm">Scroll Speed</Label>
           <Slider

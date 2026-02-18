@@ -92,7 +92,7 @@ export const OnboardingOverlay = ({ open, onComplete }: OnboardingOverlayProps) 
             description: "Your environment is now configured",
             content: (
                 <div className="space-y-6">
-                    <div className="grid grid-cols-2 gap-3">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                         <div className="p-4 rounded-xl bg-white/5 border border-white/5 space-y-2">
                             <Settings className="w-4 h-4 text-purple-400" />
                             <h4 className="text-xs font-bold text-white">Settings</h4>

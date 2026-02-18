@@ -1552,7 +1552,7 @@ export const InterviewIntelligence = ({
 
         {/* Selected Question Answer - Desktop view — Premium elevated panel */}
         {selectedQuestion && (
-          <div className="hidden md:flex w-[50%] min-w-[400px] flex-col overflow-hidden animate-in fade-in slide-in-from-right-4 duration-500">
+          <div className="hidden md:flex w-[50%] min-w-[320px] flex-col overflow-hidden animate-in fade-in slide-in-from-right-4 duration-500">
             <Card className="flex-1 flex flex-col overflow-hidden bg-card/40 backdrop-blur-xl border-border/30 shadow-xl shadow-black/5 ring-1 ring-white/[0.03]">
               <CardHeader className="pb-3 flex-shrink-0 border-b border-border/10">
                 <div className="flex items-center justify-between">

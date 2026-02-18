@@ -193,7 +193,7 @@ export const BYOKOnboarding = ({ onComplete }: BYOKOnboardingProps) => {
                             </div>
                         </div>
 
-                        <div className="grid grid-cols-3 gap-3">
+                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                             <div className="p-4 rounded-xl bg-white/5 border border-white/5 text-center">
                                 <ShieldCheck className="w-5 h-5 text-green-400 mx-auto mb-2" />
                                 <p className="text-xs font-semibold text-white">100% Private</p>

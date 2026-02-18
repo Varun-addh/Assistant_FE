@@ -25,6 +25,25 @@ const Index = () => {
   const [selectedFeature, setSelectedFeature] = useState<typeof features[0] | null>(null);
   const [showFeatureModal, setShowFeatureModal] = useState(false);
 
+  // Safety: clear any stale scroll-lock styles left by overlays/modals.
+  // On some mobile browsers, a previous `body { position: fixed }` lock can persist
+  // after route changes/crashes and make the landing page appear "stuck".
+  useEffect(() => {
+    try {
+      const body = document.body;
+      const html = document.documentElement;
+      body.style.overflow = '';
+      body.style.overflowY = '';
+      body.style.position = '';
+      body.style.width = '';
+      body.style.height = '';
+      html.style.overflow = '';
+      html.style.overflowY = '';
+    } catch {
+      // ignore
+    }
+  }, []);
+
   // In dev mode, bypass and go straight to app
   useEffect(() => {
     if (isDevelopmentMode()) {
@@ -96,7 +115,7 @@ const Index = () => {
   ];
 
   return (
-    <div className="relative min-h-screen overflow-hidden bg-background text-foreground transition-colors duration-500">
+    <div className="relative min-h-screen overflow-y-auto overflow-x-hidden touch-pan-y bg-background text-foreground transition-colors duration-500">
       {/* Fixed Header with User Profile */}
       <div className="fixed top-0 right-0 z-50 p-4 flex items-center gap-3">
         {loading ? null : user ? <UserProfile /> : null}

@@ -2546,14 +2546,30 @@ export const PracticeMode = () => {
           setIsAudioLoading(false);
         };
 
+        // Also handle canplaythrough as backup for onloadeddata
+        audio.oncanplaythrough = () => {
+          setIsAudioLoading(false);
+        };
+
         audio.onplay = () => {
           console.log('▶️ [Round-Based] Audio playback started');
+          setIsAudioLoading(false); // Ensure loading is cleared when playback starts
           setIsPlayingAudio(true);
         };
 
         audio.onended = () => {
           console.log('⏹️ [Round-Based] Audio playback finished');
           setIsPlayingAudio(false);
+          setIsAudioLoading(false);
+        };
+
+        // Also handle pause (in case audio is paused/interrupted)
+        audio.onpause = () => {
+          if (audio.ended || audio.currentTime >= (audio.duration || 0) - 0.1) {
+            console.log('⏹️ [Round-Based] Audio ended via pause event');
+            setIsPlayingAudio(false);
+            setIsAudioLoading(false);
+          }
         };
 
         audio.onerror = (e) => {
@@ -2572,6 +2588,15 @@ export const PracticeMode = () => {
           setIsAudioLoading(false);
           setIsPlayingAudio(false);
         });
+
+        // Safety: force-clear audio states after a generous timeout to prevent stuck UI
+        setTimeout(() => {
+          setIsAudioLoading(false);
+          // Only clear playing if audio has actually ended/errored
+          if (audio.ended || audio.paused) {
+            setIsPlayingAudio(false);
+          }
+        }, 30000);
       } catch (error) {
         console.error('❌ [Round-Based] TTS error:', error);
         setIsAudioLoading(false);
@@ -3045,41 +3070,35 @@ export const PracticeMode = () => {
         <div ref={roundSelectionScrollRef} className="flex-1 overflow-y-auto scrollbar-hide">
           {/* Sticky header: back + interview settings */}
           <div
-            className={`sticky top-0 z-[60] bg-background/70 backdrop-blur-md border-b border-border/30 transition-all duration-300 ${
+            className={`sticky top-0 z-[60] bg-background border-b border-border/30 transition-all duration-300 ${
               showRoundSelectionHeader ? 'translate-y-0 opacity-100' : '-translate-y-full opacity-0 pointer-events-none'
             }`}
           >
-            <div className="max-w-7xl mx-auto w-full px-4 py-3 flex items-center justify-between gap-2">
+            <div className="max-w-7xl mx-auto w-full px-4 py-2.5 flex items-center justify-between gap-3">
+              {/* Left: Back */}
               <Button
                 variant="ghost"
                 onClick={() => { setWelcomeStep('gateway'); setPhase('welcome'); }}
-                className="group h-9 px-3 rounded-full hover:bg-muted/50 text-muted-foreground/70 hover:text-foreground"
+                className="group h-9 px-3 rounded-lg hover:bg-muted/40 text-muted-foreground hover:text-foreground"
               >
-                <ChevronLeft className="w-4 h-4 mr-1.5 group-hover:-translate-x-0.5 transition-transform" />
-                <span className="text-[13px] font-medium tracking-tight">Back</span>
+                <ChevronLeft className="w-4 h-4 mr-1 group-hover:-translate-x-0.5 transition-transform" />
+                <span className="text-[13px] font-medium">Back</span>
               </Button>
 
-              <div className="flex items-center gap-2">
-                <div className="flex items-center gap-2 px-3 py-2 rounded-full bg-card/50 border border-border/40 shadow-sm">
-                  <div className="hidden sm:block">
-                    <div className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground/60 mb-0.5">Interview Settings</div>
-                  </div>
-                  <div className="p-1.5 rounded-full bg-muted/40 text-muted-foreground">
-                    <Camera className="w-4 h-4" />
-                  </div>
-                  <div className="hidden sm:block leading-tight">
-                    <div className="text-xs font-semibold text-foreground/90">Camera-proctored</div>
-                    <div className="text-[11px] text-muted-foreground">Opt-in · No recordings · Local-only</div>
-                  </div>
+              {/* Right: Camera toggle + Progress */}
+              <div className="flex items-center gap-3">
+                <label className="flex items-center gap-2.5 cursor-pointer select-none px-3 py-1.5 rounded-lg hover:bg-muted/30 transition-colors">
+                  <Camera className="w-4 h-4 text-muted-foreground/70" />
+                  <span className="hidden sm:inline text-xs font-medium text-muted-foreground">Proctoring</span>
                   <Switch
                     checked={enableCameraProctoring}
                     onCheckedChange={setEnableCameraProctoring}
                     aria-label="Toggle camera-proctored mode"
                   />
-                </div>
+                </label>
 
                 {viewProgressButton(
-                  "h-9 px-3 md:hidden rounded-xl hover:bg-muted/50 text-muted-foreground hover:text-foreground"
+                  "h-9 px-3 md:hidden rounded-lg hover:bg-muted/40 text-muted-foreground hover:text-foreground"
                 )}
               </div>
             </div>

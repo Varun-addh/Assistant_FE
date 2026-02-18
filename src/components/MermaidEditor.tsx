@@ -287,8 +287,8 @@ export function MermaidEditor({ open, onOpenChange, initialCode, title = "Mermai
         <DialogHeader>
           <DialogTitle>{title}</DialogTitle>
         </DialogHeader>
-        <div className="flex gap-3 h-[70vh]">
-          <div className="w-1/2 h-full flex flex-col">
+        <div className="flex flex-col md:flex-row gap-3 h-[70vh]">
+          <div className="w-full md:w-1/2 h-1/2 md:h-full flex flex-col">
             <div className="flex items-center justify-between mb-2">
               <span className="text-xs text-muted-foreground">Source (Mermaid)</span>
               <div className="flex gap-1">
@@ -304,10 +304,10 @@ export function MermaidEditor({ open, onOpenChange, initialCode, title = "Mermai
               spellCheck={false}
             />
           </div>
-          <div className="w-1/2 h-full flex flex-col">
+          <div className="w-full md:w-1/2 h-1/2 md:h-full flex flex-col">
             <div className="flex items-center justify-between mb-2">
               <span className="text-xs text-muted-foreground">Preview</span>
-              <div className="flex items-center gap-1">
+              <div className="flex items-center gap-1 flex-wrap">
                 <Button variant="outline" size="icon" onClick={zoomIn} title="Zoom In"><ZoomIn className="h-4 w-4"/></Button>
                 <Button variant="outline" size="icon" onClick={zoomOut} title="Zoom Out"><ZoomOut className="h-4 w-4"/></Button>
                 <Button variant="outline" size="icon" onClick={resetZoom} title="Reset Zoom"><RotateCcw className="h-4 w-4"/></Button>
