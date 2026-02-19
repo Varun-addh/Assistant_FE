@@ -46,7 +46,7 @@ export const Teleprompter: React.FC<TeleprompterProps> = ({
   });
 
   const scrollContainerRef = useRef<HTMLDivElement>(null);
-  const scrollIntervalRef = useRef<NodeJS.Timeout | null>(null);
+  const scrollIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const textContainerRef = useRef<HTMLDivElement>(null);
 
   // Use streaming hook for real-time text display

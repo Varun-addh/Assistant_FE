@@ -13,7 +13,7 @@ export const EvaluationOverlay = ({ open, title = "Evaluating...", streamedText,
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const [displayedText, setDisplayedText] = useState("");
   const [isTyping, setIsTyping] = useState(false);
-  const typingTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const typingTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Lock background scroll when overlay is open
   useEffect(() => {

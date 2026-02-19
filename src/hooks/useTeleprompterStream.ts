@@ -13,7 +13,7 @@ export const useTeleprompterStream = (
   const [streamedText, setStreamedText] = useState('');
   const [isStreaming, setIsStreaming] = useState(false);
   const [streamingComplete, setStreamingComplete] = useState(false);
-  const intervalRef = useRef<NodeJS.Timeout | null>(null);
+  const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const lastTextRef = useRef('');
 
   useEffect(() => {

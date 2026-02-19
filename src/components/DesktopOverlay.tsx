@@ -49,10 +49,10 @@ export const DesktopOverlay: React.FC<DesktopOverlayProps> = ({
 
   const overlayRef = useRef<HTMLDivElement>(null);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
-  const scrollIntervalRef = useRef<NodeJS.Timeout | null>(null);
+  const scrollIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const dragStartRef = useRef<{ x: number; y: number; startX: number; startY: number } | null>(null);
   const resizeStartRef = useRef<{ width: number; height: number; startX: number; startY: number } | null>(null);
-  const controlsTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const controlsTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Use streaming hook for real-time text display
   const { streamedText, isStreaming, skipToEnd } = useTeleprompterStream(text, {

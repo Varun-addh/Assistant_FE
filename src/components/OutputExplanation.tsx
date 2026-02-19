@@ -206,7 +206,7 @@ export const OutputExplanation = ({
   const [displayText, setDisplayText] = useState<string>("");
   const [isGenerating, setIsGenerating] = useState(false);
   const [isStreaming, setIsStreaming] = useState(false);
-  const streamTimeoutRef = useRef<NodeJS.Timeout>();
+  const streamTimeoutRef = useRef<ReturnType<typeof setTimeout>>();
   const { toast } = useToast();
 
   // Sync with prop
