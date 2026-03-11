@@ -1,0 +1,3819 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Documentation — Stratax AI | Interview Intelligence Platform</title>
+  <meta name="description"
+    content="Complete technical documentation for Stratax AI. Learn about the architecture, features, API reference, multi-agent interview system, and deployment guides.">
+  <link rel="canonical" href="https://strataxai.in/docs" />
+  <meta name="author" content="Varun Bikkumalla" />
+
+  <!-- Open Graph -->
+  <meta property="og:url" content="https://strataxai.in/docs" />
+  <meta property="og:title" content="Documentation — Stratax AI" />
+  <meta property="og:description"
+    content="Complete technical documentation for Stratax AI. Architecture, features, API reference, and deployment guides." />
+  <meta property="og:type" content="website" />
+  <meta property="og:site_name" content="Stratax AI" />
+  <meta property="og:image" content="https://strataxai.in/icons/stratax-ai-512.png" />
+
+  <!-- Twitter -->
+  <meta name="twitter:card" content="summary" />
+  <meta name="twitter:title" content="Documentation — Stratax AI" />
+  <meta name="twitter:description"
+    content="Complete technical documentation for Stratax AI. Architecture, features, API reference, and deployment guides." />
+
+  <!-- JSON-LD Structured Data -->
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "TechArticle",
+    "name": "Stratax AI Documentation",
+    "headline": "Stratax AI — Technical Documentation",
+    "description": "Complete technical documentation for Stratax AI interview intelligence platform.",
+    "url": "https://strataxai.in/docs",
+    "author": { "@type": "Person", "name": "Varun Bikkumalla" },
+    "publisher": { "@type": "Organization", "name": "Stratax AI", "url": "https://strataxai.in" },
+    "mainEntityOfPage": "https://strataxai.in/docs",
+    "dateModified": "2026-03-10"
+  }
+  </script>
+
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link
+    href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap"
+    rel="stylesheet">
+  <style>
+    /* ─── Design Tokens — Matched to App's Dark Theme ─── */
+    :root {
+      --bg: hsl(220, 13%, 9%);
+      --bg-card: hsl(220, 13%, 11%);
+      --bg-surface: hsl(220, 13%, 13%);
+      --bg-code: hsl(220, 13%, 8%);
+      --border: hsl(220, 13%, 18%);
+      --border-subtle: hsl(220, 13%, 15%);
+      --text: hsl(220, 13%, 93%);
+      --text-secondary: hsl(220, 9%, 65%);
+      --text-muted: hsl(220, 9%, 45%);
+      --primary: hsl(217, 91%, 65%);
+      --primary-dim: hsla(217, 91%, 65%, 0.1);
+      --primary-glow: hsla(217, 91%, 65%, 0.15);
+      --green: hsl(152, 69%, 45%);
+      --green-dim: hsla(152, 69%, 45%, 0.1);
+      --amber: hsl(38, 92%, 60%);
+      --amber-dim: hsla(38, 92%, 60%, 0.1);
+      --red: hsl(0, 84%, 60%);
+      --red-dim: hsla(0, 84%, 60%, 0.1);
+      --sidebar-w: 260px;
+      --header-h: 56px;
+      --radius: 8px;
+      --font-sans: 'Inter', -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
+      --font-mono: 'JetBrains Mono', 'Fira Code', monospace;
+    }
+
+    /* ─── Reset ─── */
+    *,
+    *::before,
+    *::after {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    html {
+      scroll-behavior: smooth;
+      scroll-padding-top: calc(var(--header-h) + 24px);
+    }
+
+    body {
+      font-family: var(--font-sans);
+      background: var(--bg);
+      color: var(--text);
+      line-height: 1.6;
+      font-size: 14px;
+      -webkit-font-smoothing: antialiased;
+      -moz-osx-font-smoothing: grayscale;
+    }
+
+    a {
+      color: var(--primary);
+      text-decoration: none;
+      transition: opacity .15s;
+    }
+
+    a:hover {
+      opacity: 0.8;
+    }
+
+    ::selection {
+      background: var(--primary);
+      color: #fff;
+    }
+
+    * {
+      scrollbar-width: none;
+      -ms-overflow-style: none;
+    }
+
+    *::-webkit-scrollbar {
+      display: none;
+    }
+
+    /* ─── Header ─── */
+    .header {
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      z-index: 100;
+      height: var(--header-h);
+      background: hsla(220, 13%, 9%, 0.8);
+      backdrop-filter: blur(12px) saturate(1.8);
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0 24px;
+    }
+
+    .header-left {
+      display: flex;
+      align-items: center;
+      gap: 16px;
+    }
+
+    .header-logo {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      font-weight: 700;
+      font-size: 15px;
+      color: var(--text);
+      letter-spacing: -0.02em;
+    }
+
+    .header-logo svg {
+      width: 24px;
+      height: 24px;
+    }
+
+    .header-sep {
+      width: 1px;
+      height: 20px;
+      background: var(--border);
+      margin: 0 4px;
+    }
+
+    .header-label {
+      font-size: 13px;
+      color: var(--text-secondary);
+      font-weight: 400;
+    }
+
+    .header-right {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .header-search {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 6px 14px;
+      border-radius: 8px;
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      color: var(--text-muted);
+      font-size: 13px;
+      cursor: pointer;
+      transition: border-color .15s;
+      min-width: 200px;
+    }
+
+    .header-search:hover {
+      border-color: var(--primary);
+    }
+
+    .header-search svg {
+      width: 14px;
+      height: 14px;
+      opacity: 0.5;
+    }
+
+    .header-search kbd {
+      margin-left: auto;
+      font-size: 11px;
+      font-family: var(--font-sans);
+      padding: 1px 6px;
+      border-radius: 4px;
+      background: var(--bg-surface);
+      border: 1px solid var(--border);
+      color: var(--text-muted);
+      font-weight: 500;
+    }
+
+    .header-cta {
+      padding: 6px 16px;
+      border-radius: 8px;
+      background: var(--primary);
+      color: #fff;
+      font-size: 13px;
+      font-weight: 600;
+      transition: opacity .15s;
+    }
+
+    .header-cta:hover {
+      opacity: 0.9;
+      color: #fff;
+    }
+
+    .menu-toggle {
+      display: none;
+      background: none;
+      border: 1px solid var(--border);
+      color: var(--text);
+      cursor: pointer;
+      padding: 6px 8px;
+      border-radius: 6px;
+      font-size: 16px;
+    }
+
+    /* ─── Layout ─── */
+    .layout {
+      display: flex;
+      margin-top: var(--header-h);
+      min-height: calc(100vh - var(--header-h));
+    }
+
+    /* ─── Sidebar ─── */
+    .sidebar {
+      width: var(--sidebar-w);
+      position: fixed;
+      top: var(--header-h);
+      bottom: 0;
+      left: 0;
+      overflow-y: auto;
+      padding: 20px 12px 40px;
+      border-right: 1px solid var(--border);
+      background: var(--bg);
+      z-index: 50;
+      transition: transform .2s ease;
+    }
+
+    .sidebar-group {
+      margin-bottom: 24px;
+    }
+
+    .sidebar-label {
+      font-size: 11px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: var(--text-muted);
+      padding: 0 12px;
+      margin-bottom: 4px;
+    }
+
+    .sidebar-link {
+      display: block;
+      padding: 6px 12px;
+      border-radius: 6px;
+      font-size: 13px;
+      color: var(--text-secondary);
+      transition: all .15s;
+      font-weight: 400;
+    }
+
+    .sidebar-link:hover {
+      color: var(--text);
+      background: var(--primary-dim);
+    }
+
+    .sidebar-link.active {
+      color: var(--primary);
+      background: var(--primary-dim);
+      font-weight: 500;
+    }
+
+    /* ─── Main Content ─── */
+    .main {
+      flex: 1;
+      margin-left: var(--sidebar-w);
+      padding: 48px 64px 80px;
+      width: calc(100% - var(--sidebar-w));
+      max-width: none;
+    }
+
+    .content {
+      width: 100%;
+      max-width: none;
+    }
+
+    /* ─── Hero Split Layout ─── */
+    .hero-split {
+      display: flex;
+      align-items: center;
+      gap: 60px;
+    }
+
+    .hero-split-text {
+      flex: 1;
+      max-width: 580px;
+    }
+
+    .hero-split-visual {
+      flex: 1;
+      display: flex;
+      justify-content: flex-end;
+      perspective: 1000px;
+    }
+
+    /* ─── Hero CTA ─── */
+    .hero-cta {
+      position: relative;
+      display: inline-flex;
+      align-items: center;
+      gap: 10px;
+      padding: 14px 34px;
+      border-radius: 12px;
+      margin-top: 24px;
+      background: linear-gradient(135deg, hsl(217, 91%, 60%), hsl(250, 80%, 60%), hsl(217, 91%, 55%));
+      background-size: 200% 200%;
+      animation: heroGradient 4s ease infinite;
+      color: #fff;
+      font-size: 15px;
+      font-weight: 700;
+      letter-spacing: 0.02em;
+      transition: all .3s cubic-bezier(0.4, 0, 0.2, 1);
+      border: none;
+      cursor: pointer;
+      text-decoration: none;
+      box-shadow:
+        0 4px 15px hsla(217, 91%, 65%, 0.4),
+        0 0 0 1px hsla(217, 91%, 65%, 0.15),
+        inset 0 1px 0 hsla(0, 0%, 100%, 0.15);
+      overflow: hidden;
+      z-index: 1;
+    }
+
+    .hero-cta::before {
+      content: '';
+      position: absolute;
+      top: 0;
+      left: -100%;
+      width: 100%;
+      height: 100%;
+      background: linear-gradient(90deg,
+          transparent,
+          hsla(0, 0%, 100%, 0.2),
+          transparent);
+      transition: left .6s ease;
+    }
+
+    .hero-cta:hover::before {
+      left: 100%;
+    }
+
+    .hero-cta::after {
+      content: '';
+      position: absolute;
+      inset: -2px;
+      border-radius: 14px;
+      background: linear-gradient(135deg, hsl(217, 91%, 65%), hsl(280, 80%, 65%), hsl(217, 91%, 65%));
+      background-size: 200% 200%;
+      animation: heroGradient 4s ease infinite;
+      z-index: -1;
+      opacity: 0.5;
+      filter: blur(8px);
+      transition: opacity .3s ease;
+    }
+
+    .hero-cta:hover {
+      opacity: 1;
+      color: #fff;
+      transform: translateY(-2px) scale(1.02);
+      box-shadow:
+        0 8px 25px hsla(217, 91%, 65%, 0.5),
+        0 0 0 1px hsla(217, 91%, 65%, 0.2),
+        inset 0 1px 0 hsla(0, 0%, 100%, 0.2);
+    }
+
+    .hero-cta:hover::after {
+      opacity: 0.8;
+    }
+
+    .hero-cta:active {
+      transform: translateY(0) scale(0.98);
+    }
+
+    .hero-cta svg {
+      width: 18px;
+      height: 18px;
+      filter: drop-shadow(0 0 4px hsla(0, 0%, 100%, 0.3));
+    }
+
+    @keyframes heroGradient {
+
+      0%,
+      100% {
+        background-position: 0% 50%;
+      }
+
+      50% {
+        background-position: 100% 50%;
+      }
+    }
+
+    .badge-experimental {
+      background: var(--amber-dim);
+      color: var(--amber);
+    }
+
+    /* ─── Hero Graphics ─── */
+    .hero-graphics {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+      gap: 20px;
+      margin-top: 60px;
+    }
+
+    .hero-card {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 24px;
+      display: flex;
+      flex-direction: column;
+      position: relative;
+      overflow: hidden;
+      box-shadow: 0 4px 20px rgba(0, 0, 0, 0.2);
+    }
+
+    .hero-card::before {
+      content: '';
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 2px;
+      background: linear-gradient(90deg, var(--primary), transparent);
+      opacity: 0.5;
+    }
+
+    .hero-card-title {
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: var(--text-muted);
+      margin-bottom: 20px;
+      font-weight: 700;
+      text-align: left;
+    }
+
+    /* ─── Hero Animated Mockup ─── */
+    .hero-mockup {
+      width: 100%;
+      height: 380px;
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      overflow: hidden;
+      box-shadow:
+        0 30px 60px -15px rgba(0, 0, 0, 0.6),
+        0 0 0 1px hsla(217, 91%, 65%, 0.1),
+        0 0 40px hsla(217, 91%, 65%, 0.05);
+      display: flex;
+      flex-direction: column;
+      transform: rotateY(-5deg) rotateX(2deg);
+      transform-style: preserve-3d;
+      animation: floatMockup 6s ease-in-out infinite;
+    }
+
+    @keyframes floatMockup {
+
+      0%,
+      100% {
+        transform: translateY(0) rotateY(-5deg) rotateX(2deg);
+      }
+
+      50% {
+        transform: translateY(-12px) rotateY(-3deg) rotateX(3deg);
+      }
+    }
+
+    .hero-mockup-header {
+      height: 40px;
+      background: var(--bg-surface);
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      padding: 0 16px;
+      gap: 12px;
+    }
+
+    .hero-mockup-dots {
+      display: flex;
+      gap: 6px;
+    }
+
+    .hero-mockup-dots span {
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      background: var(--border);
+    }
+
+    .hero-mockup-dots span:nth-child(1) {
+      background: #ff5f56;
+    }
+
+    .hero-mockup-dots span:nth-child(2) {
+      background: #ffbd2e;
+    }
+
+    .hero-mockup-dots span:nth-child(3) {
+      background: #27c93f;
+    }
+
+    .hero-mockup-url {
+      font-size: 11px;
+      font-family: var(--font-mono);
+      color: var(--text-muted);
+      background: var(--bg);
+      padding: 4px 12px;
+      border-radius: 6px;
+      border: 1px solid var(--border);
+      flex: 1;
+      text-align: center;
+      opacity: 0.8;
+    }
+
+    .hero-mockup-body {
+      flex: 1;
+      display: flex;
+      padding: 20px;
+      gap: 20px;
+      background: radial-gradient(circle at top right, hsla(217, 91%, 65%, 0.05), transparent 60%);
+    }
+
+    .hero-mockup-sidebar {
+      width: 140px;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+
+    .hero-mockup-nav {
+      height: 24px;
+      border-radius: 6px;
+      background: var(--border);
+      opacity: 0.3;
+    }
+
+    .hero-mockup-nav.active {
+      opacity: 1;
+      background: var(--primary-dim);
+      border: 1px solid hsla(217, 91%, 65%, 0.2);
+    }
+
+    .hero-mockup-main {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+    }
+
+    .hero-mockup-chart {
+      height: 100px;
+      border-radius: 8px;
+      border: 1px solid var(--border);
+      background: var(--bg-surface);
+      position: relative;
+      overflow: hidden;
+      display: flex;
+      align-items: flex-end;
+      gap: 8px;
+      padding: 12px;
+    }
+
+    .hm-bar {
+      flex: 1;
+      background: var(--primary);
+      border-radius: 4px;
+      opacity: 0.8;
+      animation: barGrow 2s ease-out forwards;
+      transform-origin: bottom;
+      transform: scaleY(0);
+    }
+
+    .hm-bar:nth-child(1) {
+      animation-delay: 0.1s;
+      background: var(--green);
+    }
+
+    .hm-bar:nth-child(2) {
+      animation-delay: 0.2s;
+      background: var(--amber);
+    }
+
+    .hm-bar:nth-child(3) {
+      animation-delay: 0.3s;
+      background: var(--primary);
+    }
+
+    .hm-bar:nth-child(4) {
+      animation-delay: 0.4s;
+      background: var(--red);
+    }
+
+    .hm-bar:nth-child(5) {
+      animation-delay: 0.5s;
+      background: var(--green);
+    }
+
+    @keyframes barGrow {
+      to {
+        transform: scaleY(1);
+      }
+    }
+
+    .hero-mockup-chat {
+      flex: 1;
+      border-radius: 8px;
+      border: 1px solid var(--border);
+      background: var(--bg-surface);
+      padding: 12px;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+
+    .hm-bubble {
+      padding: 8px 12px;
+      border-radius: 8px;
+      font-size: 10px;
+      line-height: 1.4;
+      max-width: 80%;
+      position: relative;
+    }
+
+    .hm-bubble.ai {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      color: var(--text-secondary);
+      align-self: flex-start;
+      border-bottom-left-radius: 2px;
+    }
+
+    .hm-bubble.user {
+      background: var(--primary);
+      color: #fff;
+      align-self: flex-end;
+      border-bottom-right-radius: 2px;
+    }
+
+    .hm-bubble.ai.typing {
+      width: 40px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 4px;
+    }
+
+    .hm-dot {
+      width: 4px;
+      height: 4px;
+      border-radius: 50%;
+      background: var(--text-muted);
+      animation: typePulse 1.4s infinite ease-in-out both;
+    }
+
+    .hm-dot:nth-child(1) {
+      animation-delay: -0.32s;
+    }
+
+    .hm-dot:nth-child(2) {
+      animation-delay: -0.16s;
+    }
+
+    @keyframes typePulse {
+
+      0%,
+      80%,
+      100% {
+        transform: scale(0);
+      }
+
+      40% {
+        transform: scale(1);
+      }
+    }
+
+    /* Workflow */
+    .workflow-ui {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 10px 0;
+    }
+
+    .wf-node {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .wf-icon {
+      width: 40px;
+      height: 40px;
+      border-radius: 10px;
+      background: hsla(217, 91%, 65%, 0.1);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 18px;
+      border: 1px solid hsla(217, 91%, 65%, 0.2);
+    }
+
+    .wf-label {
+      font-size: 11px;
+      font-weight: 600;
+      color: var(--text-secondary);
+    }
+
+    .wf-arrow {
+      color: var(--text-muted);
+      font-size: 14px;
+    }
+
+    /* Architecture */
+    .arch-hero-ui {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      align-items: center;
+    }
+
+    .arch-hero-box {
+      width: 100%;
+      background: var(--bg);
+      border: 1px solid var(--border);
+      padding: 10px 8px;
+      border-radius: 6px;
+      font-size: 11px;
+      font-weight: 600;
+      color: var(--text-secondary);
+      text-align: center;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .arch-hero-box svg {
+      width: 12px;
+      height: 12px;
+      color: var(--primary);
+    }
+
+    .arch-hero-line {
+      width: 2px;
+      height: 10px;
+      background: var(--primary);
+      opacity: 0.5;
+    }
+
+    /* ─── Visual Arch Diagram ─── */
+    .arch-visual {
+      display: flex;
+      flex-direction: column;
+      gap: 0;
+      margin: 20px 0;
+    }
+
+    .arch-row {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 14px 20px;
+      border: 1px solid var(--border);
+      background: var(--bg-card);
+      position: relative;
+      border-radius: 0;
+      margin: 0;
+    }
+
+    .arch-row:first-child {
+      border-radius: var(--radius) var(--radius) 0 0;
+    }
+
+    .arch-row:last-child {
+      border-radius: 0 0 var(--radius) var(--radius);
+    }
+
+    .arch-row+.arch-row {
+      border-top: none;
+    }
+
+    .arch-row-label {
+      font-size: 10px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      color: var(--primary);
+      min-width: 120px;
+    }
+
+    .arch-row-content {
+      font-size: 13px;
+      color: var(--text-secondary);
+      font-family: var(--font-mono);
+    }
+
+    .arch-arrow {
+      display: flex;
+      justify-content: center;
+      color: var(--text-muted);
+      font-size: 12px;
+      padding: 2px 0;
+    }
+
+    /* ─── API Example ─── */
+    .api-example {
+      margin: 12px 0 20px;
+    }
+
+    .api-example-label {
+      font-size: 11px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      color: var(--text-muted);
+      margin-bottom: 4px;
+    }
+
+    /* ─── Overview Section Upgrades (Premium Concept) ─── */
+    .overview-intro-wrap {
+      position: relative;
+      margin: 48px 0 40px;
+      padding: 36px 40px;
+      border-radius: 20px;
+      overflow: hidden;
+      background: linear-gradient(145deg, hsla(220, 13%, 13%, 0.95), hsla(220, 13%, 10%, 0.98));
+      display: flex;
+      align-items: flex-start;
+      gap: 20px;
+      border: 1px solid hsla(217, 91%, 65%, 0.12);
+      box-shadow:
+        0 16px 40px -16px rgba(0, 0, 0, 0.5),
+        0 0 0 1px hsla(217, 91%, 65%, 0.05);
+      backdrop-filter: blur(20px);
+    }
+
+    .overview-intro-wrap::before {
+      content: '';
+      position: absolute;
+      inset: 0;
+      background:
+        radial-gradient(ellipse at top left, hsla(217, 91%, 65%, 0.1), transparent 50%),
+        radial-gradient(ellipse at bottom right, hsla(280, 80%, 65%, 0.06), transparent 50%);
+      pointer-events: none;
+    }
+
+    .overview-intro-wrap::after {
+      content: '';
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 2px;
+      background: linear-gradient(90deg, transparent 5%, hsla(217, 91%, 65%, 0.6) 30%, hsla(280, 80%, 65%, 0.4) 70%, transparent 95%);
+    }
+
+    .overview-intro-icon {
+      width: 44px;
+      height: 44px;
+      border-radius: 12px;
+      background: linear-gradient(135deg, hsla(217, 91%, 65%, 0.15), hsla(280, 80%, 65%, 0.1));
+      border: 1px solid hsla(217, 91%, 65%, 0.2);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+      margin-top: 2px;
+    }
+
+    .overview-intro-icon svg {
+      width: 20px;
+      height: 20px;
+      color: var(--primary);
+    }
+
+    .overview-intro-box {
+      position: relative;
+      z-index: 10;
+      text-align: left;
+      flex: 1;
+    }
+
+    .overview-intro-box .badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 5px 12px;
+      background: hsla(217, 91%, 65%, 0.08);
+      border: 1px solid hsla(217, 91%, 65%, 0.18);
+      border-radius: 20px;
+      color: var(--primary);
+      font-size: 10px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.1em;
+      margin-bottom: 14px;
+    }
+
+    .overview-intro-box h3 {
+      margin: 0;
+      font-size: 18px;
+      color: var(--text);
+      font-weight: 700;
+      letter-spacing: -0.02em;
+      line-height: 1.3;
+    }
+
+    .overview-intro-box p {
+      margin-top: 10px;
+      font-size: 14px;
+      color: var(--text-secondary);
+      line-height: 1.7;
+    }
+
+    .overview-intro-box p strong {
+      color: var(--text);
+      font-weight: 600;
+    }
+
+    .overview-features-header {
+      text-align: left;
+      margin-bottom: 28px;
+      padding-bottom: 20px;
+      border-bottom: 1px solid var(--border-subtle);
+    }
+
+    .overview-features-header h3 {
+      font-size: 20px;
+      margin-bottom: 6px;
+      font-weight: 700;
+      color: var(--text);
+      letter-spacing: -0.02em;
+    }
+
+    .overview-features {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 20px;
+      margin: 0 0 40px;
+    }
+
+    .overview-feature {
+      position: relative;
+      background: var(--bg-surface);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      padding: 24px;
+      transition: all 0.3s ease;
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+    }
+
+    .overview-feature::before {
+      content: '';
+      position: absolute;
+      inset: 0;
+      background: linear-gradient(135deg, hsla(217, 91%, 65%, 0.1) 0%, transparent 100%);
+      opacity: 0;
+      transition: opacity 0.3s ease;
+      pointer-events: none;
+    }
+
+    .overview-feature:hover {
+      border-color: hsla(217, 91%, 65%, 0.4);
+      transform: translateY(-2px);
+      box-shadow: 0 12px 24px -10px hsla(217, 91%, 65%, 0.15);
+    }
+
+    .overview-feature:hover::before {
+      opacity: 1;
+    }
+
+    @media (max-width: 900px) {
+      .hero-split {
+        flex-direction: column;
+        align-items: flex-start;
+      }
+
+      .product-demo-window {
+        max-width: 100%;
+        margin-top: 40px;
+        transform: none;
+        animation: none;
+      }
+
+      .hero-mockup {
+        transform: rotateY(0) rotateX(0);
+        animation: none;
+      }
+    }
+
+    @media (max-width: 768px) {
+      .overview-features {
+        grid-template-columns: 1fr;
+      }
+
+      .overview-feature:nth-child(n) {
+        grid-column: span 1;
+        display: flex;
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 12px;
+      }
+    }
+
+    .overview-feature-icon {
+      width: 40px;
+      height: 40px;
+      border-radius: 10px;
+      background: hsla(217, 91%, 65%, 0.1);
+      color: var(--primary);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 18px;
+      border: 1px solid hsla(217, 91%, 65%, 0.2);
+      margin-bottom: 16px;
+      box-shadow: inset 0 0 12px hsla(217, 91%, 65%, 0.1);
+    }
+
+    .overview-feature h4 {
+      font-size: 15px;
+      color: var(--text);
+      margin: 0 0 8px;
+      font-weight: 700;
+      letter-spacing: -0.01em;
+    }
+
+    .overview-feature p {
+      font-size: 13px;
+      color: var(--text-muted);
+      margin: 0;
+      line-height: 1.6;
+      flex: 1;
+    }
+
+    /* ─── Stat Tiles ─── */
+    .stat-tiles {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+      gap: 12px;
+      margin: 24px 0 32px;
+    }
+
+    .stat-tile {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 20px 16px;
+      text-align: center;
+    }
+
+    .stat-tile-val {
+      font-size: 28px;
+      font-weight: 800;
+      color: var(--primary);
+      line-height: 1;
+    }
+
+    .stat-tile-label {
+      font-size: 11px;
+      color: var(--text-muted);
+      margin-top: 6px;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      font-weight: 600;
+    }
+
+    /* ─── Pipeline ─── */
+    .pipeline {
+      display: flex;
+      flex-direction: column;
+      gap: 0;
+      margin: 20px 0;
+    }
+
+    .pipeline-step {
+      display: flex;
+      align-items: flex-start;
+      gap: 16px;
+      padding: 16px 20px;
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-top: none;
+    }
+
+    .pipeline-step:first-child {
+      border-top: 1px solid var(--border);
+      border-radius: var(--radius) var(--radius) 0 0;
+    }
+
+    .pipeline-step:last-child {
+      border-radius: 0 0 var(--radius) var(--radius);
+    }
+
+    .pipeline-idx {
+      width: 28px;
+      height: 28px;
+      border-radius: 50%;
+      background: hsla(217, 91%, 65%, 0.12);
+      border: 1px solid hsla(217, 91%, 65%, 0.3);
+      color: var(--primary);
+      font-size: 12px;
+      font-weight: 700;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+    }
+
+    .pipeline-body h4 {
+      margin: 0 0 4px;
+      font-size: 13px;
+      color: var(--text);
+      font-weight: 600;
+    }
+
+    .pipeline-body p {
+      margin: 0;
+      font-size: 12px;
+      color: var(--text-muted);
+      line-height: 1.55;
+    }
+
+    /* ─── Score Meter ─── */
+    .score-meter {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 24px;
+      margin: 20px 0;
+    }
+
+    .score-row {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      margin-bottom: 12px;
+    }
+
+    .score-row:last-child {
+      margin-bottom: 0;
+    }
+
+    .score-lbl {
+      font-size: 12px;
+      color: var(--text-secondary);
+      width: 120px;
+      flex-shrink: 0;
+      font-weight: 500;
+    }
+
+    .score-bar-wrap {
+      flex: 1;
+      background: var(--border);
+      border-radius: 4px;
+      height: 8px;
+      overflow: hidden;
+    }
+
+    .score-bar {
+      height: 100%;
+      border-radius: 4px;
+      background: linear-gradient(90deg, var(--primary), hsl(217, 91%, 55%));
+    }
+
+    .score-pct {
+      font-size: 11px;
+      font-weight: 700;
+      color: var(--primary);
+      width: 30px;
+      text-align: right;
+    }
+
+    /* ─── Agent Grid ─── */
+    .agent-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+      gap: 12px;
+      margin: 20px 0;
+    }
+
+    .agent-card {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 18px 16px;
+      position: relative;
+      overflow: hidden;
+    }
+
+    .agent-card::before {
+      content: '';
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 3px;
+      height: 100%;
+      background: var(--primary);
+      opacity: 0.6;
+    }
+
+    .agent-card-name {
+      font-size: 12px;
+      font-weight: 700;
+      color: var(--text);
+      margin-bottom: 4px;
+    }
+
+    .agent-card-role {
+      font-size: 11px;
+      color: var(--text-muted);
+      margin-bottom: 8px;
+      line-height: 1.45;
+    }
+
+    .agent-card-tech {
+      display: inline-block;
+      font-size: 10px;
+      font-weight: 600;
+      padding: 2px 8px;
+      border-radius: 3px;
+      background: hsla(217, 91%, 65%, 0.1);
+      color: var(--primary);
+      font-family: var(--font-mono);
+    }
+
+    /* ─── Search Visual ─── */
+    .search-visual {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 24px;
+      margin: 20px 0;
+    }
+
+    .search-query {
+      font-family: var(--font-mono);
+      font-size: 13px;
+      color: var(--green);
+      background: var(--bg);
+      padding: 10px 14px;
+      border-radius: 6px;
+      border: 1px solid var(--border);
+      margin-bottom: 16px;
+    }
+
+    .search-pipeline {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+
+    .search-node {
+      font-size: 11px;
+      font-weight: 600;
+      padding: 6px 12px;
+      border-radius: 6px;
+      background: var(--bg);
+      border: 1px solid var(--border);
+      color: var(--text-secondary);
+    }
+
+    .search-node.active {
+      background: hsla(217, 91%, 65%, 0.08);
+      border-color: hsla(217, 91%, 65%, 0.3);
+      color: var(--primary);
+    }
+
+    .search-arrow {
+      color: var(--text-muted);
+      font-size: 12px;
+    }
+
+    /* ─── Code Panel ─── */
+    .code-panel {
+      background: hsl(222, 20%, 9%);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      margin: 20px 0;
+      overflow: hidden;
+    }
+
+    .code-panel-header {
+      background: hsl(222, 18%, 13%);
+      border-bottom: 1px solid var(--border);
+      padding: 10px 16px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .code-panel-dot {
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+    }
+
+    .code-panel-title {
+      font-size: 11px;
+      font-weight: 600;
+      color: var(--text-muted);
+      margin-left: 4px;
+    }
+
+    .code-panel-body {
+      padding: 20px;
+      font-family: var(--font-mono);
+      font-size: 12px;
+      line-height: 1.8;
+      color: var(--text-secondary);
+      white-space: pre-wrap;
+    }
+
+    .code-comment {
+      color: var(--text-muted);
+      font-style: italic;
+    }
+
+    .code-keyword {
+      color: hsl(207, 82%, 66%);
+    }
+
+    .code-fn {
+      color: hsl(210, 65%, 80%);
+    }
+
+    .code-verdict {
+      display: inline-block;
+      margin-top: 12px;
+      font-size: 11px;
+      font-weight: 700;
+      padding: 4px 10px;
+      border-radius: 4px;
+      background: hsla(142, 70%, 45%, 0.12);
+      color: var(--green);
+      border: 1px solid hsla(142, 70%, 45%, 0.2);
+    }
+
+    /* ─── Resume Visual ─── */
+    .resume-visual {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 24px;
+      margin: 20px 0;
+    }
+
+    .res-row {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      margin-bottom: 14px;
+    }
+
+    .res-row:last-child {
+      margin-bottom: 0;
+    }
+
+    .res-label {
+      font-size: 12px;
+      font-weight: 600;
+      color: var(--text-secondary);
+      width: 140px;
+      flex-shrink: 0;
+    }
+
+    .res-bar-wrap {
+      flex: 1;
+      background: var(--border);
+      border-radius: 4px;
+      height: 6px;
+      overflow: hidden;
+    }
+
+    .res-bar {
+      height: 100%;
+      border-radius: 4px;
+    }
+
+    .res-score {
+      font-size: 11px;
+      font-weight: 700;
+      color: var(--text-secondary);
+      width: 34px;
+      text-align: right;
+    }
+
+    /* ─── Page Header ─── */
+    .page-header {
+      margin-bottom: 40px;
+      padding-bottom: 24px;
+    }
+
+    .page-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 12px;
+      font-weight: 600;
+      color: var(--primary);
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      margin-bottom: 12px;
+    }
+
+    .page-badge svg {
+      width: 14px;
+      height: 14px;
+    }
+
+    .page-title {
+      font-size: 32px;
+      font-weight: 800;
+      letter-spacing: -0.03em;
+      line-height: 1.2;
+      color: var(--text);
+      margin-bottom: 12px;
+    }
+
+    .page-desc {
+      font-size: 16px;
+      color: var(--text-secondary);
+      line-height: 1.6;
+      max-width: 680px;
+    }
+
+    /* ─── Sections ─── */
+    .section {
+      margin-bottom: 48px;
+      scroll-margin-top: calc(var(--header-h) + 24px);
+      max-width: 1100px;
+    }
+
+    .section h2 {
+      font-size: 22px;
+      font-weight: 700;
+      letter-spacing: -0.02em;
+      color: var(--text);
+      margin-bottom: 8px;
+      line-height: 1.3;
+    }
+
+    .section h3 {
+      font-size: 16px;
+      font-weight: 600;
+      color: var(--text);
+      margin: 28px 0 8px;
+    }
+
+    .section h4 {
+      font-size: 13px;
+      font-weight: 600;
+      color: var(--text-secondary);
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+      margin: 24px 0 8px;
+    }
+
+    .section>p,
+    .section>.lead {
+      font-size: 14px;
+      color: var(--text-secondary);
+      line-height: 1.7;
+      margin-bottom: 16px;
+    }
+
+    .section>p,
+    .section>.lead {
+      max-width: 780px;
+    }
+
+    .section ul {
+      list-style: none;
+      margin: 0 0 16px;
+      padding: 0;
+    }
+
+    .section ul li {
+      position: relative;
+      padding-left: 20px;
+      font-size: 14px;
+      color: var(--text-secondary);
+      line-height: 1.7;
+      margin-bottom: 6px;
+    }
+
+    .section ul li::before {
+      content: '';
+      position: absolute;
+      left: 0;
+      top: 10px;
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      background: var(--primary);
+      opacity: 0.5;
+    }
+
+    .divider {
+      height: 1px;
+      background: var(--border);
+      margin: 48px 0;
+    }
+
+    /* ─── Feature List (clean, no cards) ─── */
+    .feature-list {
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+      margin: 20px 0;
+    }
+
+    .feature-item {
+      display: flex;
+      gap: 14px;
+      padding: 16px;
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      background: var(--bg-card);
+      transition: border-color .15s;
+    }
+
+    .feature-item:hover {
+      border-color: hsla(217, 91%, 65%, 0.3);
+    }
+
+    .feature-icon {
+      width: 36px;
+      height: 36px;
+      border-radius: 8px;
+      flex-shrink: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 16px;
+      background: var(--primary-dim);
+    }
+
+    .feature-body h3 {
+      font-size: 14px;
+      font-weight: 600;
+      color: var(--text);
+      margin: 0 0 4px;
+    }
+
+    .feature-body p {
+      font-size: 13px;
+      color: var(--text-secondary);
+      line-height: 1.6;
+      margin: 0;
+    }
+
+    .feature-badge {
+      display: inline-block;
+      padding: 2px 8px;
+      border-radius: 4px;
+      font-size: 10px;
+      font-weight: 600;
+      text-transform: uppercase;
+      background: var(--green-dim);
+      color: var(--green);
+      margin-top: 6px;
+    }
+
+    /* ─── Code Blocks ─── */
+    .code-block {
+      background: var(--bg-code);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 16px 20px;
+      font-family: var(--font-mono);
+      font-size: 13px;
+      line-height: 1.7;
+      overflow-x: auto;
+      margin: 12px 0;
+      color: var(--text-secondary);
+    }
+
+    .code-block .kw {
+      color: #c678dd;
+    }
+
+    .code-block .str {
+      color: #98c379;
+    }
+
+    .code-block .cmt {
+      color: hsl(220, 9%, 35%);
+    }
+
+    .code-block .fn {
+      color: #61afef;
+    }
+
+    code {
+      font-family: var(--font-mono);
+      font-size: 12px;
+      background: var(--bg-code);
+      padding: 2px 6px;
+      border-radius: 4px;
+      color: var(--primary);
+      border: 1px solid var(--border);
+    }
+
+    /* ─── Architecture Diagram ─── */
+    .arch-block {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 24px;
+      font-family: var(--font-mono);
+      font-size: 13px;
+      line-height: 1.5;
+      overflow-x: auto;
+      margin: 16px 0;
+      color: var(--text-secondary);
+    }
+
+    .arch-layer {
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 12px 16px;
+      margin: 6px 0;
+    }
+
+    .arch-layer-title {
+      font-weight: 600;
+      color: var(--primary);
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+      margin-bottom: 4px;
+    }
+
+    /* ─── Table ─── */
+    .doc-table {
+      width: 100%;
+      border-collapse: collapse;
+      margin: 16px 0;
+      font-size: 13px;
+    }
+
+    .doc-table th,
+    .doc-table td {
+      padding: 10px 14px;
+      text-align: left;
+      border-bottom: 1px solid var(--border);
+    }
+
+    .doc-table th {
+      background: var(--bg-surface);
+      font-weight: 600;
+      color: var(--text-secondary);
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+    }
+
+    .doc-table td {
+      color: var(--text-secondary);
+    }
+
+    .doc-table td strong {
+      color: var(--text);
+      font-weight: 500;
+    }
+
+    .doc-table tr:hover td {
+      background: var(--primary-dim);
+    }
+
+    /* ─── API Endpoints ─── */
+    .endpoint {
+      padding: 12px 16px;
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      margin: 8px 0;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      background: var(--bg-card);
+      transition: border-color .15s;
+    }
+
+    .endpoint:hover {
+      border-color: hsla(217, 91%, 65%, 0.3);
+    }
+
+    .method {
+      font-family: var(--font-mono);
+      font-size: 11px;
+      font-weight: 700;
+      text-transform: uppercase;
+      padding: 3px 8px;
+      border-radius: 4px;
+      flex-shrink: 0;
+    }
+
+    .method.get {
+      background: var(--green-dim);
+      color: var(--green);
+    }
+
+    .method.post {
+      background: var(--primary-dim);
+      color: var(--primary);
+    }
+
+    .method.delete {
+      background: var(--red-dim);
+      color: var(--red);
+    }
+
+    .ep-path {
+      font-family: var(--font-mono);
+      font-size: 13px;
+      color: var(--text);
+      font-weight: 500;
+    }
+
+    .ep-desc {
+      font-size: 12px;
+      color: var(--text-muted);
+      margin-left: auto;
+    }
+
+    /* ─── Info Callouts ─── */
+    .callout {
+      border-radius: var(--radius);
+      padding: 14px 18px;
+      margin: 16px 0;
+      font-size: 13px;
+      line-height: 1.6;
+      border-left: 3px solid;
+    }
+
+    .callout.info {
+      background: var(--primary-dim);
+      border-color: var(--primary);
+      color: var(--text-secondary);
+    }
+
+    .callout.tip {
+      background: var(--green-dim);
+      border-color: var(--green);
+      color: var(--text-secondary);
+    }
+
+    .callout.warn {
+      background: var(--amber-dim);
+      border-color: var(--amber);
+      color: var(--text-secondary);
+    }
+
+    .callout strong {
+      color: var(--text);
+      display: block;
+      margin-bottom: 4px;
+      font-size: 13px;
+    }
+
+    /* ─── Tech Stack Grid ─── */
+    .tech-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+      gap: 8px;
+      margin: 12px 0;
+    }
+
+    .tech-item {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 10px 14px;
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      font-size: 13px;
+      color: var(--text-secondary);
+      transition: border-color .15s;
+      background: var(--bg-card);
+    }
+
+    .tech-item:hover {
+      border-color: hsla(217, 91%, 65%, 0.3);
+    }
+
+    .tech-dot {
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      background: var(--primary);
+      flex-shrink: 0;
+    }
+
+    /* ─── Footer ─── */
+    .footer {
+      margin-left: var(--sidebar-w);
+      padding: 32px 48px;
+      border-top: 1px solid var(--border);
+      text-align: center;
+    }
+
+    .footer-text {
+      font-size: 13px;
+      color: var(--text-muted);
+    }
+
+    /* ─── On This Page (Right TOC) ─── */
+    .toc {
+      position: fixed;
+      top: calc(var(--header-h) + 40px);
+      right: 32px;
+      width: 180px;
+    }
+
+    .toc-title {
+      font-size: 11px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: var(--text-muted);
+      margin-bottom: 8px;
+    }
+
+    .toc-link {
+      display: block;
+      font-size: 12px;
+      color: var(--text-muted);
+      padding: 3px 0;
+      border-left: 2px solid transparent;
+      padding-left: 10px;
+      transition: all .15s;
+    }
+
+    .toc-link:hover {
+      color: var(--text-secondary);
+    }
+
+    .toc-link.active {
+      color: var(--primary);
+      border-left-color: var(--primary);
+    }
+
+    /* ─── Responsive ─── */
+    @media (max-width: 1200px) {
+      .toc {
+        display: none;
+      }
+    }
+
+    @media (max-width: 900px) {
+      .sidebar {
+        transform: translateX(-100%);
+      }
+
+      .sidebar.open {
+        transform: translateX(0);
+      }
+
+      .main {
+        margin-left: 0;
+        padding: 24px 20px 60px;
+        width: 100%;
+        max-width: none;
+      }
+
+      .footer {
+        margin-left: 0;
+      }
+
+      .menu-toggle {
+        display: block;
+      }
+
+      .header-search {
+        display: none;
+      }
+    }
+
+    @media (max-width: 600px) {
+      .tech-grid {
+        grid-template-columns: 1fr;
+      }
+
+      .endpoint {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 6px;
+      }
+
+      .ep-desc {
+        margin-left: 0;
+      }
+    }
+
+    /* ─── Premium Features Section ─── */
+    .feat-section {
+      position: relative;
+      margin-top: 24px;
+      margin-bottom: 60px;
+    }
+
+    .feat-stats {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 1px;
+      background: rgba(255, 255, 255, 0.06);
+      border-radius: 14px;
+      overflow: hidden;
+      margin-bottom: 56px;
+      border: 1px solid rgba(255, 255, 255, 0.06);
+    }
+
+    @media (max-width: 768px) {
+      .feat-stats {
+        grid-template-columns: repeat(2, 1fr);
+      }
+    }
+
+    .feat-stat-box {
+      background: var(--bg-surface);
+      padding: 20px 24px;
+      text-align: center;
+    }
+
+    .feat-stat-box .val {
+      font-size: 26px;
+      font-weight: 800;
+      color: var(--text);
+      letter-spacing: -0.02em;
+      line-height: 1;
+      margin-bottom: 4px;
+    }
+
+    .feat-stat-box .lbl {
+      font-size: 12px;
+      color: var(--text-secondary);
+    }
+
+    .feat-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+      gap: 14px;
+    }
+
+    .f-card {
+      position: relative;
+      border-radius: 14px;
+      padding: 24px;
+      cursor: pointer;
+      transition: all 0.25s ease;
+      background: rgba(255, 255, 255, 0.02);
+      border: 1px solid rgba(255, 255, 255, 0.06);
+    }
+
+    .f-card:hover {
+      background: rgba(255, 255, 255, 0.04);
+      border-color: rgba(255, 255, 255, 0.1);
+      transform: translateY(-2px);
+      box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
+    }
+
+    .f-title {
+      font-size: 16px;
+      font-weight: 700;
+      color: var(--text);
+      margin-bottom: 3px;
+      line-height: 1.3;
+    }
+
+    .f-desc {
+      font-size: 13.5px;
+      color: var(--text-secondary);
+      line-height: 1.65;
+      margin: 0;
+      display: -webkit-box;
+      -webkit-line-clamp: 3;
+      -webkit-box-orient: vertical;
+      overflow: hidden;
+    }
+
+    .f-panel {
+      display: none;
+      margin-top: 32px;
+      border-radius: 16px;
+      padding: 32px 36px;
+      gap: 40px;
+      align-items: center;
+      transition: all 0.3s ease;
+    }
+
+    @media (max-width: 768px) {
+      .f-panel {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 24px;
+      }
+
+      .f-panel .text-right {
+        text-align: left !important;
+      }
+    }
+
+    /* ─── Premium How It Works Section ─── */
+    .hiw-section {
+      position: relative;
+    }
+
+    .hiw-layout {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 32px;
+      align-items: start;
+    }
+
+    @media (max-width: 900px) {
+      .hiw-layout {
+        grid-template-columns: 1fr;
+      }
+    }
+
+    .hiw-step {
+      display: flex;
+      align-items: center;
+      gap: 16px;
+      padding: 18px 20px;
+      border-radius: 12px;
+      cursor: pointer;
+      background: transparent;
+      border: 1px solid transparent;
+      transition: all 0.2s ease;
+      position: relative;
+    }
+
+    .hiw-step.active {
+      background: var(--hiw-bg);
+      border-color: var(--hiw-border);
+    }
+
+    .hiw-bubble {
+      width: 40px;
+      height: 40px;
+      border-radius: 50%;
+      background: rgba(255, 255, 255, 0.05);
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 13px;
+      font-weight: 800;
+      color: var(--text-secondary);
+      flex-shrink: 0;
+      transition: all 0.2s ease;
+      font-family: monospace;
+    }
+
+    .hiw-step.active .hiw-bubble {
+      background: var(--hiw-color);
+      border-color: var(--hiw-color);
+      color: #fff;
+      box-shadow: 0 0 16px var(--hiw-shadow);
+    }
+
+    .hiw-panel {
+      border-radius: 16px;
+      padding: 32px;
+      position: sticky;
+      top: 24px;
+      transition: border-color 0.3s, background 0.3s;
+    }
+
+    .callout-flex {
+      margin-top: 48px;
+      border-radius: 12px;
+      padding: 24px 28px;
+      display: flex;
+      gap: 20px;
+      align-items: flex-start;
+    }
+
+    .hiw-btn {
+      flex: 1;
+      padding: 10px;
+      border-radius: 8px;
+      font-size: 13px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.2s;
+      text-align: center;
+      border: none;
+      outline: none;
+    }
+
+    /* ─── Architecture Section ─── */
+    .arch-premium {
+      display: grid;
+      grid-template-columns: 300px 1fr;
+      gap: 24px;
+      align-items: start;
+    }
+
+    @media (max-width: 900px) {
+      .arch-premium {
+        grid-template-columns: 1fr;
+      }
+    }
+
+    .arch-layer-card {
+      padding: 13px 16px;
+      border-radius: 10px;
+      cursor: pointer;
+      border: 1px solid rgba(255, 255, 255, 0.06);
+      background: rgba(255, 255, 255, 0.015);
+      transition: all 0.2s;
+      position: relative;
+      overflow: hidden;
+    }
+
+    .arch-layer-card.active {
+      border-color: var(--alc-border);
+      background: var(--alc-bg);
+    }
+
+    .arch-left-bar {
+      position: absolute;
+      left: 0;
+      top: 15%;
+      bottom: 15%;
+      width: 3px;
+      border-radius: 0 2px 2px 0;
+      background: transparent;
+      transition: all 0.25s;
+    }
+
+    .arch-layer-card.active .arch-left-bar {
+      background: var(--alc-color);
+      box-shadow: 0 0 8px var(--alc-color);
+    }
+
+    /* ─── Tech Stack Section ─── */
+    .ts-filter-btn {
+      padding: 7px 14px;
+      border-radius: 8px;
+      cursor: pointer;
+      font-size: 12px;
+      font-weight: 600;
+      background: rgba(255, 255, 255, 0.03);
+      color: #475569;
+      border: 1px solid rgba(255, 255, 255, 0.07);
+      transition: all 0.18s;
+    }
+
+    .ts-filter-btn.active {
+      background: rgba(255, 255, 255, 0.1);
+      color: #f1f5f9;
+      border-color: rgba(255, 255, 255, 0.15);
+    }
+
+    .ts-tech-grid {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 12px;
+    }
+
+    @media (max-width: 900px) {
+      .ts-tech-grid {
+        grid-template-columns: repeat(2, 1fr);
+      }
+    }
+
+    .ts-card {
+      background: rgba(255, 255, 255, 0.02);
+      border: 1px solid rgba(255, 255, 255, 0.07);
+      border-radius: 13px;
+      padding: 20px 18px;
+      transition: all 0.22s ease;
+      position: relative;
+      overflow: hidden;
+      cursor: default;
+    }
+
+    .ts-card:hover {
+      transform: translateY(-3px);
+    }
+
+    .ts-card-bar {
+      position: absolute;
+      bottom: 0;
+      left: 18px;
+      right: 18px;
+      height: 2px;
+      border-radius: 2px;
+      background: transparent;
+      transition: all 0.22s;
+    }
+
+    .ts-card:hover .ts-card-bar {
+      background: var(--tc-gradient);
+    }
+  </style>
+</head>
+
+<body>
+
+  <!-- ═══ Header ═══ -->
+  <header class="header">
+    <div class="header-left">
+      <button class="menu-toggle" onclick="toggleSidebar()" aria-label="Menu">☰</button>
+      <a href="/docs/index.html" class="header-logo">
+        <svg viewBox="0 0 24 24" fill="none">
+          <rect width="24" height="24" rx="6" fill="hsl(217,91%,65%)" /><text x="12" y="17" text-anchor="middle"
+            font-family="Inter" font-weight="800" font-size="14" fill="#fff">S</text>
+        </svg>
+        Stratax AI
+      </a>
+      <div class="header-sep"></div>
+      <span class="header-label">Docs</span>
+    </div>
+    <div class="header-right">
+      <div class="header-search" tabindex="0">
+        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+          <circle cx="11" cy="11" r="8" />
+          <path d="m21 21-4.35-4.35" />
+        </svg>
+        <span>Search docs...</span>
+        <kbd>⌘K</kbd>
+      </div>
+    </div>
+  </header>
+
+  <!-- ═══ Layout ═══ -->
+  <div class="layout">
+
+    <!-- ═══ Sidebar ═══ -->
+    <aside class="sidebar" id="sidebar">
+      <div class="sidebar-group">
+        <div class="sidebar-label">Getting Started</div>
+        <a class="sidebar-link" data-route="overview" href="/docs/overview">Overview</a>
+        <a class="sidebar-link" data-route="features" href="/docs/features">Features</a>
+        <a class="sidebar-link" data-route="how-it-works" href="/docs/how-it-works">How It Works</a>
+      </div>
+      <div class="sidebar-group">
+        <div class="sidebar-label">Architecture</div>
+        <a class="sidebar-link" data-route="architecture" href="/docs/architecture">System Design</a>
+        <a class="sidebar-link" data-route="tech-stack" href="/docs/tech-stack">Tech Stack</a>
+        <a class="sidebar-link" data-route="agents" href="/docs/agents">Multi-Agent System</a>
+      </div>
+      <div class="sidebar-group">
+        <div class="sidebar-label">Modules</div>
+        <a class="sidebar-link" data-route="qa-engine" href="/docs/qa-engine">Q&A Engine</a>
+        <a class="sidebar-link" data-route="practice-mode" href="/docs/practice-mode">Practice Mode</a>
+        <a class="sidebar-link" data-route="mock-interview" href="/docs/mock-interview">Mock Interview</a>
+        <a class="sidebar-link" data-route="interview-intel" href="/docs/interview-intel">Interview Intelligence</a>
+        <a class="sidebar-link" data-route="code-eval" href="/docs/code-eval">Code Evaluation</a>
+        <a class="sidebar-link" data-route="resume" href="/docs/resume">Resume Analysis</a>
+      </div>
+      <div class="sidebar-group">
+        <div class="sidebar-label">Reference</div>
+        <a class="sidebar-link" data-route="api" href="/docs/api">API Reference</a>
+        <a class="sidebar-link" data-route="deployment" href="/docs/deployment">Deployment</a>
+        <a class="sidebar-link" data-route="security" href="/docs/security">Security</a>
+      </div>
+    </aside>
+
+    <!-- ═══ Main Content ═══ -->
+    <main class="main">
+      <div class="content">
+
+        <!-- Page Header -->
+        <div class="page-header" id="overview">
+
+          <div class="hero-split">
+            <div class="hero-split-text">
+              <div class="page-badge">
+                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor"
+                  stroke-width="2">
+                  <path
+                    d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253" />
+                </svg>
+                Documentation
+              </div>
+              <h1 class="page-title">Stratax AI</h1>
+              <p class="page-desc">Interview Simulation & Evaluation Engine — practice interviews, get real
+                interviewer-style feedback, and track your progress with structured, explainable scoring.</p>
+              <a href="/app" class="hero-cta">
+                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor"
+                  stroke-width="2">
+                  <path d="M13 10V3L4 14h7v7l9-11h-7z" />
+                </svg>
+                Try Stratax AI
+              </a>
+            </div>
+
+            <div class="hero-split-visual">
+              <div class="hero-mockup">
+                <div class="hero-mockup-header">
+                  <div class="hero-mockup-dots">
+                    <span></span><span></span><span></span>
+                  </div>
+                  <div class="hero-mockup-url">app.strataxai.in/session</div>
+                  <div style="width:42px;"></div> <!-- balance -->
+                </div>
+                <div class="hero-mockup-body">
+                  <div class="hero-mockup-sidebar">
+                    <div class="hero-mockup-nav active"></div>
+                    <div class="hero-mockup-nav"></div>
+                    <div class="hero-mockup-nav" style="width:70%;"></div>
+                  </div>
+                  <div class="hero-mockup-main">
+                    <div class="hero-mockup-chart">
+                      <div class="hm-bar" style="height: 60%;"></div>
+                      <div class="hm-bar" style="height: 85%;"></div>
+                      <div class="hm-bar" style="height: 40%;"></div>
+                      <div class="hm-bar" style="height: 95%;"></div>
+                      <div class="hm-bar" style="height: 70%;"></div>
+                    </div>
+                    <div class="hero-mockup-chat">
+                      <div class="hm-bubble ai">Hi there! Could you tell me about a time you had to design a scalable
+                        system?</div>
+                      <div class="hm-bubble user">Sure, I led the migration of our monolith to microservices...</div>
+                      <div class="hm-bubble ai typing">
+                        <div class="hm-dot"></div>
+                        <div class="hm-dot"></div>
+                        <div class="hm-dot"></div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- ─── About (merged into Overview) ─── -->
+          <div class="overview-intro-wrap">
+            <div class="overview-intro-icon">
+              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor"
+                stroke-width="2">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M13 10V3L4 14h7v7l9-11h-7z" />
+              </svg>
+            </div>
+            <div class="overview-intro-box">
+              <div class="badge">
+                <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" fill="none" viewBox="0 0 24 24"
+                  stroke="currentColor" stroke-width="2.5">
+                  <path stroke-linecap="round" stroke-linejoin="round" d="M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4" />
+                </svg>
+                Developed independently
+              </div>
+              <p>Stratax AI is an individually developed interview simulation and evaluation platform. Unlike typical
+                tools focusing purely on code syntax or static Q&A banks, Stratax evaluates <strong>reasoning
+                  depth</strong>, <strong>communication clarity</strong>, and <strong>decision-making</strong>. It
+                replicates the nuanced, session-level assessment of a real human interviewer.</p>
+            </div>
+          </div>
+
+          <div class="overview-features-header">
+            <h3>What Makes Stratax Different</h3>
+            <p style="color: var(--text-muted); font-size: 14px;">We focus on the human signals that actually matter in
+              a real interview.</p>
+          </div>
+
+          <div class="overview-features">
+            <div class="overview-feature">
+              <div class="overview-feature-icon">
+                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor"
+                  stroke-width="2">
+                  <path stroke-linecap="round" stroke-linejoin="round" d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6" />
+                </svg>
+              </div>
+              <h4>Session-level evaluation</h4>
+              <p>We grade your entire session's consistency and depth, moving beyond simple per-question gamification.
+                Your ability to maintain context over a 45-minute span is what gets measured.</p>
+            </div>
+
+            <div class="overview-feature">
+              <div class="overview-feature-icon">
+                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor"
+                  stroke-width="2">
+                  <path stroke-linecap="round" stroke-linejoin="round"
+                    d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
+                </svg>
+              </div>
+              <h4>Conversational follow-ups</h4>
+              <p>Dynamic, AI-driven probing questions that act like a real human. If you mention a trade-off, the agent
+                will pivot to ask you to justify it based on scale.</p>
+            </div>
+
+            <div class="overview-feature">
+              <div class="overview-feature-icon">
+                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor"
+                  stroke-width="2">
+                  <path stroke-linecap="round" stroke-linejoin="round"
+                    d="M9 12l2 2 4-4M7.835 4.697a3.42 3.42 0 001.946-.806 3.42 3.42 0 014.438 0 3.42 3.42 0 001.946.806 3.42 3.42 0 013.138 3.138 3.42 3.42 0 00.806 1.946 3.42 3.42 0 010 4.438 3.42 3.42 0 00-.806 1.946 3.42 3.42 0 01-3.138 3.138 3.42 3.42 0 00-1.946.806 3.42 3.42 0 01-4.438 0 3.42 3.42 0 00-1.946-.806 3.42 3.42 0 01-3.138-3.138 3.42 3.42 0 00-.806-1.946 3.42 3.42 0 010-4.438 3.42 3.42 0 00.806-1.946 3.42 3.42 0 013.138-3.138z" />
+                </svg>
+              </div>
+              <h4>Explainable scoring</h4>
+              <p>Scores are meaningless without "why". You get exact strengths, gaps, and red flags mapped to rubrics.
+              </p>
+            </div>
+
+            <div class="overview-feature">
+              <div class="overview-feature-icon">
+                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor"
+                  stroke-width="2">
+                  <path stroke-linecap="round" stroke-linejoin="round"
+                    d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z" />
+                </svg>
+              </div>
+              <h4>Communication signals</h4>
+              <p>Granular tracking of speech pace and filler words using intelligent audio processing.</p>
+            </div>
+
+            <div class="overview-feature">
+              <div class="overview-feature-icon">
+                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor"
+                  stroke-width="2">
+                  <path stroke-linecap="round" stroke-linejoin="round"
+                    d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                </svg>
+              </div>
+              <h4>Claim-based probing</h4>
+              <p>Questions strictly target your specific resume claims ensuring tailored rigor.</p>
+            </div>
+
+            <div class="overview-feature">
+              <div class="overview-feature-icon">
+                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor"
+                  stroke-width="2">
+                  <path
+                    d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
+                  <path d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                </svg>
+              </div>
+              <div>
+                <h4>Unified scoring engine</h4>
+                <p>One powerful analysis pipeline backing your practice runs and interviews for a consistent standard
+                  across all interactions.</p>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- ─── Features ─── -->
+        <section class="section feat-section" id="features">
+          <!-- Ambient glow -->
+          <div
+            style="position: absolute; top: 10%; left: 50%; transform: translateX(-50%); width: 700px; height: 400px; background: radial-gradient(ellipse, rgba(59,130,246,0.06) 0%, transparent 70%); pointer-events: none; border-radius: 50%;">
+          </div>
+
+          <div style="position: relative; z-index: 10;">
+            <!-- Header -->
+            <div style="margin-bottom: 56px;">
+              <div
+                style="display: inline-flex; align-items: center; gap: 8px; background: rgba(59,130,246,0.1); border: 1px solid rgba(59,130,246,0.25); border-radius: 20px; padding: 5px 14px; margin-bottom: 20px;">
+                <div
+                  style="width: 6px; height: 6px; border-radius: 50%; background: #3b82f6; box-shadow: 0 0 8px #3b82f6;">
+                </div>
+                <span
+                  style="font-size: 11px; font-weight: 700; color: #3b82f6; letter-spacing: 0.1em; text-transform: uppercase;">Core
+                  Features</span>
+              </div>
+
+              <h1
+                style="font-size: clamp(32px, 4vw, 42px); font-weight: 800; color: var(--text); margin: 0 0 14px; line-height: 1.15; letter-spacing: -0.02em;">
+                Built for the way <span
+                  style="background: linear-gradient(135deg, #3b82f6, #8b5cf6); -webkit-background-clip: text; -webkit-text-fill-color: transparent;">interviews
+                  actually work</span>
+              </h1>
+              <p style="font-size: 17px; color: var(--text-secondary); max-width: 560px; line-height: 1.6; margin: 0;">
+                Eight modules. One evaluation standard. Every feature targets a signal real interviewers score you on.
+              </p>
+            </div>
+
+            <!-- Stats Bar -->
+            <div class="feat-stats">
+              <div class="feat-stat-box">
+                <div class="val">8</div>
+                <div class="lbl">Feature Modules</div>
+              </div>
+              <div class="feat-stat-box">
+                <div class="val">6</div>
+                <div class="lbl">AI Agents</div>
+              </div>
+              <div class="feat-stat-box">
+                <div class="val">45min</div>
+                <div class="lbl">Session Depth</div>
+              </div>
+              <div class="feat-stat-box">
+                <div class="val">100%</div>
+                <div class="lbl">Explainable Scores</div>
+              </div>
+            </div>
+
+            <!-- Features Grid -->
+            <div class="feat-grid" id="featGrid"></div>
+
+            <!-- Expanded Panel -->
+            <div id="featPanelWrapper"></div>
+
+            <!-- Footer Note -->
+            <div
+              style="margin-top: 48px; padding-top: 32px; border-top: 1px solid rgba(255,255,255,0.06); display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px;">
+              <p style="font-size: 13px; color: var(--text-secondary); margin: 0;">
+                Click any feature to explore it. All modules share a <span style="color: var(--text);">unified scoring
+                  engine</span>.
+              </p>
+              <div style="display: flex; gap: 8px;">
+                <span
+                  style="font-size: 10px; font-weight: 700; color: var(--text-secondary); background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.08); padding: 3px 8px; border-radius: 20px; letter-spacing: 0.06em; font-family: monospace;">CORE</span>
+                <span
+                  style="font-size: 10px; font-weight: 700; color: var(--text-secondary); background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.08); padding: 3px 8px; border-radius: 20px; letter-spacing: 0.06em; font-family: monospace;">6
+                  AI AGENTS</span>
+                <span
+                  style="font-size: 10px; font-weight: 700; color: var(--text-secondary); background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.08); padding: 3px 8px; border-radius: 20px; letter-spacing: 0.06em; font-family: monospace;">HYBRID
+                  SEARCH</span>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <div class="divider"></div>
+
+        <!-- ─── How It Works ─── -->
+        <section class="section hiw-section" id="how-it-works" style="margin-top: 24px; margin-bottom: 60px;">
+          <!-- Ambient glow -->
+          <div
+            style="position: absolute; top: 30%; right: -10%; width: 500px; height: 500px; background: radial-gradient(ellipse, rgba(139,92,246,0.05) 0%, transparent 70%); pointer-events: none; border-radius: 50%;">
+          </div>
+          <div
+            style="position: absolute; bottom: 20%; left: -5%; width: 400px; height: 400px; background: radial-gradient(ellipse, rgba(59,130,246,0.04) 0%, transparent 70%); pointer-events: none; border-radius: 50%;">
+          </div>
+
+          <div style="position: relative; z-index: 10;">
+            <!-- Header -->
+            <div style="margin-bottom: 60px;">
+              <div
+                style="display: inline-flex; align-items: center; gap: 8px; background: rgba(139,92,246,0.1); border: 1px solid rgba(139,92,246,0.25); border-radius: 20px; padding: 5px 14px; margin-bottom: 20px;">
+                <div
+                  style="width: 6px; height: 6px; border-radius: 50%; background: #8b5cf6; box-shadow: 0 0 8px #8b5cf6;">
+                </div>
+                <span
+                  style="font-size: 11px; font-weight: 700; color: #8b5cf6; letter-spacing: 0.1em; text-transform: uppercase;">HOW
+                  IT WORKS</span>
+              </div>
+              <h1
+                style="font-size: clamp(32px, 4vw, 42px); font-weight: 800; color: var(--text); margin: 0 0 14px; line-height: 1.15; letter-spacing: -0.02em;">
+                From session start to <span
+                  style="background: linear-gradient(135deg, #8b5cf6, #3b82f6); -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent;">actionable
+                  insight</span>
+              </h1>
+              <p style="font-size: 17px; color: var(--text-secondary); max-width: 520px; line-height: 1.6; margin: 0;">
+                Six stages. Every one designed to replicate the rigor of a real technical interview panel.
+              </p>
+            </div>
+
+            <!-- Main layout: steps list + detail panel -->
+            <div class="hiw-layout">
+              <!-- Left: step list -->
+              <div style="display: flex; flex-direction: column; gap: 4px;" id="hiwList"></div>
+
+              <!-- Right: detail panel -->
+              <div id="hiwPanelWrapper"></div>
+            </div>
+
+            <!-- Key Differentiator callout -->
+            <div class="callout-flex"
+              style="background: linear-gradient(135deg, rgba(59,130,246,0.08), rgba(139,92,246,0.05)); border: 1px solid rgba(59,130,246,0.2); border-left: 3px solid #3b82f6;">
+              <div
+                style="width: 36px; height: 36px; border-radius: 8px; background: rgba(59,130,246,0.15); border: 1px solid rgba(59,130,246,0.3); display: flex; align-items: center; justify-content: center; flex-shrink: 0;">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#3b82f6" stroke-width="2"
+                  stroke-linecap="round" stroke-linejoin="round">
+                  <polygon
+                    points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2" />
+                </svg>
+              </div>
+              <div>
+                <div
+                  style="font-size: 13px; font-weight: 700; color: #3b82f6; margin-bottom: 6px; letter-spacing: 0.05em; text-transform: uppercase;">
+                  KEY DIFFERENTIATOR</div>
+                <p style="font-size: 14.5px; color: var(--text-secondary); line-height: 1.7; margin: 0;">
+                  Stratax evaluates at the <span style="color: var(--text); font-weight: 700;">session level</span>, not
+                  just per-question. It tracks reasoning patterns, communication improvement, and confidence progression
+                  across your entire practice history — the same lens a real interviewer uses after 45 minutes with you.
+                </p>
+              </div>
+            </div>
+
+            <!-- Advisory note -->
+            <div class="callout-flex"
+              style="margin-top: 16px; background: rgba(245,158,11,0.05); border: 1px solid rgba(245,158,11,0.15); border-left: 3px solid rgba(245,158,11,0.5); padding: 18px 24px; gap: 12px; border-radius: 12px;">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#f59e0b" stroke-width="2"
+                stroke-linecap="round" stroke-linejoin="round" style="flex-shrink: 0; margin-top: 2px;">
+                <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" />
+                <line x1="12" y1="9" x2="12" y2="13" />
+                <line x1="12" y1="17" x2="12.01" y2="17" />
+              </svg>
+              <p style="font-size: 13px; color: #78716c; line-height: 1.6; margin: 0;">
+                <span style="color: #a78bfa; font-weight: 600;">Advisory Note — </span>
+                AI evaluation is advisory and should not be considered a definitive assessment of technical ability.
+                Scores are designed to highlight areas for improvement, not replace professional human judgment.
+              </p>
+            </div>
+          </div>
+        </section>
+
+        <div class="divider"></div>
+
+        <!-- ─── Architecture ─── -->
+        <section class="section" id="architecture" style="position: relative; margin-bottom: 60px;">
+          <!-- glow -->
+          <div
+            style="position: absolute; top: 20%; left: 35%; width: 600px; height: 350px; background: radial-gradient(ellipse, rgba(16,185,129,0.05) 0%, transparent 70%); pointer-events: none;">
+          </div>
+          <div
+            style="position: absolute; bottom: 15%; right: 5%; width: 350px; height: 350px; background: radial-gradient(ellipse, rgba(139,92,246,0.04) 0%, transparent 70%); pointer-events: none;">
+          </div>
+
+          <div style="position: relative; z-index: 10;">
+            <!-- Header -->
+            <div style="margin-bottom: 52px;">
+              <div
+                style="display: inline-flex; align-items: center; gap: 8px; background: rgba(16,185,129,0.08); border: 1px solid rgba(16,185,129,0.22); border-radius: 20px; padding: 5px 14px; margin-bottom: 18px;">
+                <div
+                  style="width: 6px; height: 6px; border-radius: 50%; background: #10b981; box-shadow: 0 0 8px #10b981;">
+                </div>
+                <span
+                  style="font-size: 11px; font-weight: 700; color: #10b981; letter-spacing: 0.1em;">ARCHITECTURE</span>
+              </div>
+              <h1
+                style="font-size: clamp(28px,3.5vw,44px); font-weight: 800; color: var(--text); margin: 0 0 12px; line-height: 1.15; letter-spacing: -0.02em;">
+                System <span
+                  style="background: linear-gradient(135deg,#10b981,#3b82f6); -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent;">Architecture</span>
+              </h1>
+              <p style="font-size: 16px; color: var(--text-secondary); max-width: 500px; line-height: 1.6; margin: 0;">A
+                monolithic FastAPI service with modular, independently toggleable subsystems.</p>
+            </div>
+
+            <!-- Main grid -->
+            <div class="arch-premium">
+              <!-- Left layer stack -->
+              <div>
+                <p
+                  style="font-size: 10px; font-weight: 700; color: #334155; letter-spacing: 0.1em; font-family: monospace; margin-bottom: 12px;">
+                  SYSTEM LAYERS</p>
+                <div id="archLayerList"></div>
+              </div>
+              <!-- Right detail -->
+              <div id="archDetailPanel"></div>
+            </div>
+          </div>
+        </section>
+
+        <div class="divider"></div>
+
+        <!-- ─── Tech Stack ─── -->
+        <section class="section" id="tech-stack" style="position: relative; margin-bottom: 60px;">
+          <div
+            style="position: absolute; top: 10%; right: 10%; width: 500px; height: 500px; background: radial-gradient(ellipse, rgba(245,158,11,0.04) 0%, transparent 70%); pointer-events: none;">
+          </div>
+          <div
+            style="position: absolute; bottom: 10%; left: 5%; width: 400px; height: 400px; background: radial-gradient(ellipse, rgba(59,130,246,0.04) 0%, transparent 70%); pointer-events: none;">
+          </div>
+
+          <div style="position: relative; z-index: 10;">
+            <!-- Header -->
+            <div style="margin-bottom: 48px;">
+              <div
+                style="display: inline-flex; align-items: center; gap: 8px; background: rgba(245,158,11,0.1); border: 1px solid rgba(245,158,11,0.2); border-radius: 20px; padding: 5px 14px; margin-bottom: 18px;">
+                <div
+                  style="width: 5px; height: 5px; border-radius: 50%; background: #f59e0b; box-shadow: 0 0 6px #f59e0b;">
+                </div>
+                <span
+                  style="font-size: 11px; font-weight: 700; color: #f59e0b; letter-spacing: 0.1em; font-family: monospace;">TECH
+                  STACK</span>
+              </div>
+              <div
+                style="display: flex; align-items: flex-end; justify-content: space-between; flex-wrap: wrap; gap: 16px;">
+                <div>
+                  <h1
+                    style="font-size: clamp(30px,3.5vw,44px); font-weight: 800; color: var(--text); margin: 0 0 10px; line-height: 1.15; letter-spacing: -0.02em;">
+                    Technology Stack</h1>
+                  <p id="tsDesc"
+                    style="font-size: 16px; color: var(--text-secondary); line-height: 1.65; margin: 0; max-width: 480px;">
+                    Every layer purpose-selected for the demands of real-time AI interview evaluation.</p>
+                </div>
+                <div style="display: flex; gap: 6px; flex-wrap: wrap;" id="tsFilters"></div>
+              </div>
+            </div>
+
+            <!-- Groups -->
+            <div id="tsGroups" style="display: flex; flex-direction: column; gap: 40px;"></div>
+
+            <!-- Stats bar -->
+            <div
+              style="margin-top: 52px; display: grid; grid-template-columns: repeat(4,1fr); gap: 1px; background: rgba(255,255,255,0.05); border-radius: 14px; overflow: hidden; border: 1px solid rgba(255,255,255,0.06);">
+              <div style="background: var(--bg-surface); padding: 20px 24px; text-align: center;">
+                <div
+                  style="font-size: 18px; font-weight: 800; color: var(--text); letter-spacing: -0.02em; line-height: 1; margin-bottom: 5px; font-family: monospace;">
+                  16</div>
+                <div style="font-size: 11px; color: var(--text-secondary);">Libraries &amp; tools</div>
+              </div>
+              <div style="background: var(--bg-surface); padding: 20px 24px; text-align: center;">
+                <div
+                  style="font-size: 18px; font-weight: 800; color: var(--text); letter-spacing: -0.02em; line-height: 1; margin-bottom: 5px; font-family: monospace;">
+                  Async</div>
+                <div style="font-size: 11px; color: var(--text-secondary);">I/O model</div>
+              </div>
+              <div style="background: var(--bg-surface); padding: 20px 24px; text-align: center;">
+                <div
+                  style="font-size: 18px; font-weight: 800; color: var(--text); letter-spacing: -0.02em; line-height: 1; margin-bottom: 5px; font-family: monospace;">
+                  Dual LLM</div>
+                <div style="font-size: 11px; color: var(--text-secondary);">AI engine</div>
+              </div>
+              <div style="background: var(--bg-surface); padding: 20px 24px; text-align: center;">
+                <div
+                  style="font-size: 18px; font-weight: 800; color: var(--text); letter-spacing: -0.02em; line-height: 1; margin-bottom: 5px; font-family: monospace;">
+                  Hybrid</div>
+                <div style="font-size: 11px; color: var(--text-secondary);">Search strategy</div>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <div class="divider"></div>
+
+        <!-- ─── Multi-Agent ─── -->
+        <section class="section" id="agents">
+          <h2>Multi-Agent Architecture</h2>
+          <p>Practice Mode uses 6 specialized AI agents that collaborate to deliver realistic interview simulation.</p>
+
+          <table class="doc-table">
+            <thead>
+              <tr>
+                <th>Agent</th>
+                <th>Role</th>
+                <th>Technology</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td><strong>InterviewerAgent</strong></td>
+                <td>Question sequencing & micro-feedback</td>
+                <td>Rule-based + LLM</td>
+              </tr>
+              <tr>
+                <td><strong>SpeechAnalyticsAgent</strong></td>
+                <td>WPM, fillers, pauses, pitch variance</td>
+                <td>DSP (no LLM)</td>
+              </tr>
+              <tr>
+                <td><strong>AdaptiveInterviewerAgent</strong></td>
+                <td>LLM-driven answer evaluation</td>
+                <td>Gemini / Groq</td>
+              </tr>
+              <tr>
+                <td><strong>ConversationalAgent</strong></td>
+                <td>Profile inference from natural language</td>
+                <td>LLM</td>
+              </tr>
+              <tr>
+                <td><strong>EvaluationAgent</strong></td>
+                <td>End-of-interview coaching reports</td>
+                <td>LLM</td>
+              </tr>
+              <tr>
+                <td><strong>LocalSTTService</strong></td>
+                <td>Offline speech-to-text transcription</td>
+                <td>faster-whisper</td>
+              </tr>
+            </tbody>
+          </table>
+        </section>
+
+        <div class="divider"></div>
+
+        <!-- ─── Q&A Engine ─── -->
+        <section class="section" id="qa-engine">
+          <h2>Q&A Engine</h2>
+          <p>Context-aware conversational assistant with session persistence, streaming support, and identity
+            protection.</p>
+
+          <div class="stat-tiles">
+            <div class="stat-tile">
+              <div class="stat-tile-val">&infin;</div>
+              <div class="stat-tile-label">Turn Context</div>
+            </div>
+            <div class="stat-tile">
+              <div class="stat-tile-val">2</div>
+              <div class="stat-tile-label">LLM Providers</div>
+            </div>
+            <div class="stat-tile">
+              <div class="stat-tile-val">SSE</div>
+              <div class="stat-tile-label">Streaming</div>
+            </div>
+            <div class="stat-tile">
+              <div class="stat-tile-val">0</div>
+              <div class="stat-tile-label">Impersonation</div>
+            </div>
+          </div>
+
+          <div class="pipeline">
+            <div class="pipeline-step">
+              <div class="pipeline-idx">1</div>
+              <div class="pipeline-body">
+                <h4>User sends message</h4>
+                <p>Message + session history sent to LLM orchestration layer.</p>
+              </div>
+            </div>
+            <div class="pipeline-step">
+              <div class="pipeline-idx">2</div>
+              <div class="pipeline-body">
+                <h4>Provider routing</h4>
+                <p>Groq ↔ Gemini hot-swap with fallback. Resume context injected if uploaded.</p>
+              </div>
+            </div>
+            <div class="pipeline-step">
+              <div class="pipeline-idx">3</div>
+              <div class="pipeline-body">
+                <h4>Response streamed</h4>
+                <p>SSE stream with identity guard enforced. Post-processing applied in real time.</p>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <!-- ─── Practice Mode ─── -->
+        <section class="section" id="practice-mode">
+          <h2>Practice Mode</h2>
+          <p>Real-time audio-based interview simulator with speech analytics and micro-feedback.</p>
+
+          <div class="stat-tiles">
+            <div class="stat-tile">
+              <div class="stat-tile-val">6</div>
+              <div class="stat-tile-label">AI Agents</div>
+            </div>
+            <div class="stat-tile">
+              <div class="stat-tile-val">3</div>
+              <div class="stat-tile-label">Round Types</div>
+            </div>
+            <div class="stat-tile">
+              <div class="stat-tile-val">WPM</div>
+              <div class="stat-tile-label">Speech Metric</div>
+            </div>
+            <div class="stat-tile">
+              <div class="stat-tile-val">0ms</div>
+              <div class="stat-tile-label">Cloud STT</div>
+            </div>
+          </div>
+
+          <h3>Live Evaluation Criteria</h3>
+          <div class="score-meter">
+            <div class="score-row"><span class="score-lbl">Correctness</span>
+              <div class="score-bar-wrap">
+                <div class="score-bar" style="width:92%"></div>
+              </div><span class="score-pct">92</span>
+            </div>
+            <div class="score-row"><span class="score-lbl">Delivery</span>
+              <div class="score-bar-wrap">
+                <div class="score-bar" style="width:78%"></div>
+              </div><span class="score-pct">78</span>
+            </div>
+            <div class="score-row"><span class="score-lbl">Clarity</span>
+              <div class="score-bar-wrap">
+                <div class="score-bar" style="width:85%"></div>
+              </div><span class="score-pct">85</span>
+            </div>
+            <div class="score-row"><span class="score-lbl">Structure</span>
+              <div class="score-bar-wrap">
+                <div class="score-bar" style="width:70%"></div>
+              </div><span class="score-pct">70</span>
+            </div>
+          </div>
+        </section>
+
+        <!-- ─── Mock Interview ─── -->
+        <section class="section" id="mock-interview">
+          <h2>Mock Interview</h2>
+          <p>Multi-question session simulator with progressive hints and 5-criteria LLM evaluation.</p>
+
+          <div class="stat-tiles">
+            <div class="stat-tile">
+              <div class="stat-tile-val">4</div>
+              <div class="stat-tile-label">Interview Types</div>
+            </div>
+            <div class="stat-tile">
+              <div class="stat-tile-val">3</div>
+              <div class="stat-tile-label">Hint Levels</div>
+            </div>
+            <div class="stat-tile">
+              <div class="stat-tile-val">5</div>
+              <div class="stat-tile-label">Eval Criteria</div>
+            </div>
+            <div class="stat-tile">
+              <div class="stat-tile-val">HTML</div>
+              <div class="stat-tile-label">Export Report</div>
+            </div>
+          </div>
+
+          <div class="callout info">
+            <strong>5-Criteria Evaluation</strong>
+            Each answer is graded on: <strong>Correctness</strong>, <strong>Completeness</strong>,
+            <strong>Clarity</strong>, <strong>Confidence</strong>, and <strong>Technical Depth</strong> — with
+            individual scores and a final 0–10 composite.
+          </div>
+        </section>
+
+        <!-- ─── Interview Intelligence ─── -->
+        <section class="section" id="interview-intel">
+          <h2>Interview Intelligence</h2>
+          <p>Hybrid semantic search + LLM-driven question generation engine targeting FAANG+ company prep.</p>
+
+          <div class="search-visual">
+            <div class="search-query">&gt; "Design a distributed rate limiter at Google scale"</div>
+            <div class="search-pipeline">
+              <div class="search-node active">BM25 Lexical</div>
+              <div class="search-arrow">+</div>
+              <div class="search-node active">Qdrant Vectors</div>
+              <div class="search-arrow">→</div>
+              <div class="search-node">LLM Expand</div>
+              <div class="search-arrow">→</div>
+              <div class="search-node">Cohere Rerank</div>
+              <div class="search-arrow">→</div>
+              <div class="search-node active">Top Results</div>
+            </div>
+          </div>
+
+          <div class="stat-tiles">
+            <div class="stat-tile">
+              <div class="stat-tile-val">Hybrid</div>
+              <div class="stat-tile-label">Retrieval</div>
+            </div>
+            <div class="stat-tile">
+              <div class="stat-tile-val">FAANG+</div>
+              <div class="stat-tile-label">Company Prep</div>
+            </div>
+            <div class="stat-tile">
+              <div class="stat-tile-val">WS</div>
+              <div class="stat-tile-label">Live Streaming</div>
+            </div>
+          </div>
+        </section>
+
+        <!-- ─── Code Eval ─── -->
+        <section class="section" id="code-eval">
+          <h2>Code Evaluation</h2>
+          <p>Hybrid static analysis + LLM critique pipeline for code submissions, sandboxed server-side.</p>
+
+          <div class="code-panel">
+            <div class="code-panel-header">
+              <div class="code-panel-dot" style="background:#ff5f56"></div>
+              <div class="code-panel-dot" style="background:#ffbd2e"></div>
+              <div class="code-panel-dot" style="background:#27c93f"></div>
+              <div class="code-panel-title">solution.py · Judge0 Sandbox</div>
+            </div>
+            <div class="code-panel-body">
+              <span class="code-comment"># Two Sum — submitted by user</span>
+              <span class="code-keyword">def</span> <span class="code-fn">two_sum</span>(nums, target):
+              seen = {}
+              <span class="code-keyword">for</span> i, n <span class="code-keyword">in</span> enumerate(nums):
+              diff = target - n
+              <span class="code-keyword">if</span> diff <span class="code-keyword">in</span> seen:
+              <span class="code-keyword">return</span> [seen[diff], i]
+              seen[n] = i
+              <span class="code-comment"># ✓ O(n) time ✓ O(n) space ✓ All edge cases passed</span>
+              <span class="code-verdict">✓ PASSED · LLM Score: 9.2 / 10</span>
+            </div>
+          </div>
+
+          <div class="stat-tiles">
+            <div class="stat-tile">
+              <div class="stat-tile-val">Judge0</div>
+              <div class="stat-tile-label">Sandbox</div>
+            </div>
+            <div class="stat-tile">
+              <div class="stat-tile-val">10+</div>
+              <div class="stat-tile-label">Languages</div>
+            </div>
+            <div class="stat-tile">
+              <div class="stat-tile-val">O(n)</div>
+              <div class="stat-tile-label">Complexity Check</div>
+            </div>
+          </div>
+        </section>
+
+        <!-- ─── Resume ─── -->
+        <section class="section" id="resume">
+          <h2>Resume &amp; Document Intelligence</h2>
+          <p>LLM-based resume parsing with claim extraction, ATS scoring, and document analysis.</p>
+
+          <div class="resume-visual">
+            <div class="res-row"><span class="res-label">ATS Score</span>
+              <div class="res-bar-wrap">
+                <div class="res-bar" style="width:88%;background:var(--green)"></div>
+              </div><span class="res-score">88</span>
+            </div>
+            <div class="res-row"><span class="res-label">Skills Match</span>
+              <div class="res-bar-wrap">
+                <div class="res-bar" style="width:74%;background:var(--primary)"></div>
+              </div><span class="res-score">74</span>
+            </div>
+            <div class="res-row"><span class="res-label">Claim Strength</span>
+              <div class="res-bar-wrap">
+                <div class="res-bar" style="width:62%;background:var(--amber)"></div>
+              </div><span class="res-score">62</span>
+            </div>
+            <div class="res-row"><span class="res-label">Experience Fit</span>
+              <div class="res-bar-wrap">
+                <div class="res-bar" style="width:91%;background:var(--green)"></div>
+              </div><span class="res-score">91</span>
+            </div>
+          </div>
+
+          <div class="stat-tiles">
+            <div class="stat-tile">
+              <div class="stat-tile-val">PDF</div>
+              <div class="stat-tile-label">DOCX · TXT</div>
+            </div>
+            <div class="stat-tile">
+              <div class="stat-tile-val">4</div>
+              <div class="stat-tile-label">Analysis Depths</div>
+            </div>
+            <div class="stat-tile">
+              <div class="stat-tile-val">0</div>
+              <div class="stat-tile-label">Files Stored</div>
+            </div>
+          </div>
+        </section>
+
+        <div class="divider"></div>
+
+        <!-- ─── API Reference ─── -->
+        <section class="section" id="api">
+          <h2>API Reference</h2>
+          <p>RESTful API endpoints powering the Stratax AI platform.</p>
+
+          <h3>Authentication</h3>
+          <div class="endpoint"><span class="method post">POST</span><span
+              class="ep-path">/api/auth/register</span><span class="ep-desc">Register a new user account</span></div>
+          <div class="endpoint"><span class="method post">POST</span><span class="ep-path">/api/auth/login</span><span
+              class="ep-desc">Authenticate and get JWT token</span></div>
+
+          <h3>Chat / Q&A</h3>
+          <div class="endpoint"><span class="method post">POST</span><span class="ep-path">/api/chat</span><span
+              class="ep-desc">Send message, get AI response (SSE)</span></div>
+          <div class="api-example">
+            <div class="api-example-label">Example Request</div>
+            <div class="code-block">
+              {
+              <span class="str">"message"</span>: <span class="str">"Explain distributed systems"</span>
+              }
+            </div>
+            <div class="api-example-label">Example Response</div>
+            <div class="code-block">
+              {
+              <span class="str">"answer"</span>: <span class="str">"A distributed system is..."</span>,
+              <span class="str">"session_id"</span>: <span class="str">"abc-123-xyz"</span>
+              }
+            </div>
+          </div>
+          <div class="endpoint"><span class="method get">GET</span><span class="ep-path">/api/sessions</span><span
+              class="ep-desc">List user's chat sessions</span></div>
+
+          <h3>Mock Interview</h3>
+          <div class="endpoint"><span class="method post">POST</span><span
+              class="ep-path">/api/mock-interview/sessions/start</span><span class="ep-desc">Start a mock interview
+              session</span></div>
+          <div class="api-example">
+            <div class="api-example-label">Example Request</div>
+            <div class="code-block">
+              {
+              <span class="str">"type"</span>: <span class="str">"System Design"</span>,
+              <span class="str">"difficulty"</span>: <span class="str">"Hard"</span>,
+              <span class="str">"num_questions"</span>: 3
+              }
+            </div>
+            <div class="api-example-label">Example Response</div>
+            <div class="code-block">
+              {
+              <span class="str">"session_id"</span>: <span class="str">"mock-789"</span>,
+              <span class="str">"status"</span>: <span class="str">"in_progress"</span>,
+              <span class="str">"first_question"</span>: {
+              <span class="str">"text"</span>: <span class="str">"Design a global rate limiter..."</span>
+              }
+              }
+            </div>
+          </div>
+          <div class="endpoint"><span class="method post">POST</span><span
+              class="ep-path">/api/mock-interview/sessions/{id}/submit</span><span class="ep-desc">Submit answer for
+              current question</span></div>
+          <div class="endpoint"><span class="method get">GET</span><span
+              class="ep-path">/api/mock-interview/sessions/{id}/summary</span><span class="ep-desc">Get session
+              summary</span></div>
+
+          <h3>Practice Mode</h3>
+          <div class="endpoint"><span class="method post">POST</span><span
+              class="ep-path">/api/practice/start</span><span class="ep-desc">Start practice session</span></div>
+          <div class="endpoint"><span class="method post">POST</span><span
+              class="ep-path">/api/practice/session/{id}/answer</span><span class="ep-desc">Submit audio answer</span>
+          </div>
+
+          <h3>Interview Intelligence</h3>
+          <div class="endpoint"><span class="method post">POST</span><span
+              class="ep-path">/api/interview-intelligence/search</span><span class="ep-desc">Search with hybrid
+              retrieval</span></div>
+
+          <h3>Code Execution</h3>
+          <div class="endpoint"><span class="method post">POST</span><span class="ep-path">/api/code/execute</span><span
+              class="ep-desc">Execute code in sandbox</span></div>
+
+          <div class="callout tip">
+            <strong>Interactive API Docs</strong>
+            Full interactive documentation is available via Swagger UI at <code>/docs</code> and ReDoc at
+            <code>/redoc</code> when running the server.
+          </div>
+        </section>
+
+        <div class="divider"></div>
+
+        <!-- ─── Deployment ─── -->
+        <section class="section" id="deployment">
+          <h2>Deployment</h2>
+          <p>Get Stratax AI running locally or in production with Docker.</p>
+
+          <h3>Environment Setup</h3>
+          <div class="callout info" style="margin-bottom: 24px;">
+            <strong>Deployment Status</strong>
+            Stratax AI is currently available as a managed, hosted platform. Source code repositories are private and
+            access is restricted.
+          </div>
+
+          <h3>Environment Variables</h3>
+          <table class="doc-table">
+            <thead>
+              <tr>
+                <th>Variable</th>
+                <th>Required</th>
+                <th>Description</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td><code>GROQ_API_KEY</code></td>
+                <td>One of Groq/Gemini</td>
+                <td>Groq API key for Llama/Mixtral</td>
+              </tr>
+              <tr>
+                <td><code>GEMINI_API_KEY</code></td>
+                <td>One of Groq/Gemini</td>
+                <td>Google Gemini API key</td>
+              </tr>
+              <tr>
+                <td><code>DATABASE_URL</code></td>
+                <td>Recommended</td>
+                <td>PostgreSQL connection string</td>
+              </tr>
+              <tr>
+                <td><code>QDRANT_URL</code></td>
+                <td>Optional</td>
+                <td>Qdrant vector DB endpoint</td>
+              </tr>
+              <tr>
+                <td><code>REDIS_URL</code></td>
+                <td>Optional</td>
+                <td>Redis for caching & rate limiting</td>
+              </tr>
+              <tr>
+                <td><code>JWT_SECRET_KEY</code></td>
+                <td>Production</td>
+                <td>Persistent JWT signing key</td>
+              </tr>
+              <tr>
+                <td><code>COOKIE_SECRET</code></td>
+                <td>Production</td>
+                <td>Cookie encryption secret</td>
+              </tr>
+            </tbody>
+          </table>
+
+          <div class="callout warn">
+            <strong>Production Notes</strong>
+            Always use PostgreSQL (not SQLite), set persistent <code>JWT_SECRET_KEY</code> and
+            <code>COOKIE_SECRET</code>, and enable <code>STRATAX_SECRETS_ENCRYPTION_KEY</code> for encrypted API key
+            storage.
+          </div>
+        </section>
+
+        <div class="divider"></div>
+
+        <!-- ─── Security ─── -->
+        <section class="section" id="security">
+          <h2>Security & Privacy</h2>
+          <p>Built with privacy-safe design principles from the ground up.</p>
+          <ul>
+            <li><strong>Privacy-safe identifiers:</strong> SHA256/HMAC-SHA256 hashed user IDs in telemetry</li>
+            <li><strong>No raw audio storage:</strong> Audio files are session-only, never used for learning</li>
+            <li><strong>Resume privacy:</strong> Raw uploaded files deleted after extraction</li>
+            <li><strong>Encrypted API keys:</strong> User-stored provider keys encrypted with Fernet</li>
+            <li><strong>JWT + OAuth:</strong> Stateless JWT authentication with Google OAuth integration</li>
+            <li><strong>Rate limiting:</strong> Tier-based rate limiting with Redis-backed coordination</li>
+            <li><strong>CORS:</strong> Configurable origin whitelist</li>
+            <li><strong>Identity Guard:</strong> System prompt prevents AI impersonation</li>
+          </ul>
+        </section>
+
+
+
+      </div>
+    </main>
+  </div>
+
+  <!-- ═══ Footer ═══ -->
+  <footer class="footer">
+    <div class="footer-text">
+      Stratax AI · Interview Simulation & Evaluation Engine · Developed by Varun Bikkumalla · © 2026
+    </div>
+  </footer>
+
+  <!-- ═══ Scripts ═══ -->
+  <script>
+    function toggleSidebar() {
+      document.getElementById('sidebar').classList.toggle('open');
+    }
+
+    document.querySelectorAll('.sidebar-link').forEach(link => {
+      link.addEventListener('click', () => {
+        document.getElementById('sidebar').classList.remove('open');
+      });
+    });
+
+    const sections = document.querySelectorAll('.section, .page-header');
+    const dividers = document.querySelectorAll('.divider');
+    const sidebarLinks = document.querySelectorAll('.sidebar-link');
+
+    function routeTo(path, pushState = true) {
+      if (typeof path !== 'string' || !path.startsWith('/docs')) {
+        return;
+      }
+
+      const id = path.split('/').pop() || 'overview';
+      let targetSection = document.getElementById(id);
+
+      if (!targetSection) {
+        targetSection = document.getElementById('overview');
+      }
+
+      if (pushState) {
+        window.history.pushState({}, '', path);
+      }
+
+      // Hide all content and dividers
+      sections.forEach(sec => sec.style.display = 'none');
+      dividers.forEach(div => div.style.display = 'none');
+
+      // Show only target
+      if (targetSection) {
+        targetSection.style.display = 'block';
+
+        // Ensure Page Header shows correctly (remove margin if it's acting as standalone)
+        if (targetSection.classList.contains('section')) {
+          targetSection.style.marginTop = '0';
+        }
+      }
+
+      // Update sidebar UI
+      sidebarLinks.forEach(link => {
+        link.classList.remove('active');
+        if (link.getAttribute('href') === path || link.dataset.route === id) {
+          link.classList.add('active');
+        }
+      });
+
+      window.scrollTo(0, 0);
+    }
+
+    // Intercept clicks
+    sidebarLinks.forEach(link => {
+      link.addEventListener('click', (e) => {
+        e.preventDefault();
+        routeTo(link.getAttribute('href'));
+        document.getElementById('sidebar').classList.remove('open');
+      });
+    });
+
+    // Handle back/forward buttons
+    window.addEventListener('popstate', () => {
+      routeTo(window.location.pathname, false);
+    });
+
+    // Initialize initial route based on URL, default to overview
+    const currentPath = window.location.pathname === '/docs' || window.location.pathname === '/docs/' || window.location.pathname === '/docs/index.html'
+      ? '/docs/overview'
+      : window.location.pathname;
+
+    routeTo(currentPath, false);
+
+    // ─── Features Reactivity Logic ───
+    const fData = [
+      { id: "copilot", badge: "CORE", badgeColor: "#3b82f6", accentColor: "#3b82f6", title: "AI Copilot Chat", subtitle: "Context-Aware Intelligence", description: "Powered by Gemini & Groq with persistent session memory. Every follow-up is informed by what came before — no context resets, no repeated explanations. It reads the room like a seasoned interviewer.", stat: "Gemini + Groq", statLabel: "Dual-engine", icon: `<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/><circle cx="12" cy="10" r="1" fill="currentColor"/><circle cx="8" cy="10" r="1" fill="currentColor"/><circle cx="16" cy="10" r="1" fill="currentColor"/></svg>` },
+      { id: "practice", badge: "6 AI AGENTS", badgeColor: "#8b5cf6", accentColor: "#8b5cf6", title: "Live Practice Mode", subtitle: "Real-Time Audio Simulation", description: "Six specialized agents collaborate in real time — one listens, one tracks speech patterns, one measures pace, one flags filler words, one scores delivery, one synthesizes it all. It's a full panel, not a chatbot.", stat: "< 800ms", statLabel: "Avg. latency", icon: `<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg>` },
+      { id: "mock", badge: "LLM EVALUATED", badgeColor: "#10b981", accentColor: "#10b981", title: "Mock Interview", subtitle: "Progressive Depth Sessions", description: "Multi-question sessions with adaptive hint scaffolding, per-question scoring from 0–10, and model answers post-session. Difficulty calibrates to your response quality — easier questions don't stay easy.", stat: "0–10", statLabel: "Granular scoring", icon: `<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>` },
+      { id: "intelligence", badge: "HYBRID SEARCH", badgeColor: "#f59e0b", accentColor: "#f59e0b", title: "Interview Intelligence", subtitle: "Semantic + BM25 Hybrid Retrieval", description: "Company-specific prep powered by BM25 sparse retrieval fused with dense vector embeddings. Questions aren't generic — they're derived from actual patterns at your target company.", stat: "BM25 + Vector", statLabel: "Hybrid retrieval", icon: `<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/><line x1="11" y1="8" x2="11" y2="14"/><line x1="8" y1="11" x2="14" y2="11"/></svg>` },
+      { id: "code", badge: "SANDBOX", badgeColor: "#06b6d4", accentColor: "#06b6d4", title: "Code Studio", subtitle: "Judge0 Execution + LLM Critique", description: "LeetCode-style problems with server-side sandbox execution via Judge0, static analysis, trace visualization, and LLM critique that goes beyond pass/fail — it explains why your approach scales or breaks.", stat: "Judge0", statLabel: "Execution engine", icon: `<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/><line x1="12" y1="2" x2="12" y2="22" opacity="0.5"/></svg>` },
+      { id: "resume", badge: "NEW", badgeColor: "#ec4899", accentColor: "#ec4899", title: "Resume Intelligence", subtitle: "ATS Scoring + Claim-Based Probing", description: "Parses your resume with LLM-powered ATS simulation, identifies skill gaps against a target role, then generates interview questions that specifically probe every claim you've made — no softballs.", stat: "ATS + Gap", statLabel: "Dual analysis", icon: `<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M20 7H4a2 2 0 0 0-2 2v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2z"/><path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16"/></svg>` },
+      { id: "arch", badge: "EXPERIMENTAL", badgeColor: "#f97316", accentColor: "#f97316", title: "Architecture Generator", subtitle: "Diagrams from Code, Instantly", description: "Drop in a codebase and get component, deployment, sequence, and data flow diagrams auto-generated. Designed to help you explain system design in interviews without memorizing every edge.", stat: "4 views", statLabel: "Diagram types", icon: `<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg>` },
+      { id: "mirror", badge: "NEW", badgeColor: "#3b82f6", accentColor: "#3b82f6", title: "Mirror Mode", subtitle: "Ontology-Based Progress Tracking", description: "LLM-generated knowledge maps track not just scores, but understanding. Each attempt updates your ontology — you see exactly which concepts solidify and which remain fragile.", stat: "Cross-session", statLabel: "Memory", icon: `<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 6 13.5 15.5 8.5 10.5 1 18"/><polyline points="17 6 23 6 23 12"/></svg>` }
+    ];
+
+    let activeFeatId = "practice";
+
+    function renderFeatures() {
+      const grid = document.getElementById("featGrid");
+      if (!grid) return;
+
+      grid.innerHTML = "";
+      fData.forEach((f) => {
+        const isActive = f.id === activeFeatId;
+        const bg = isActive ? `linear-gradient(135deg, ${f.accentColor}12, ${f.accentColor}06)` : "rgba(255,255,255,0.02)";
+        const border = isActive ? `1px solid ${f.accentColor}50` : "1px solid rgba(255,255,255,0.06)";
+        const shadow = isActive ? `0 0 0 1px ${f.accentColor}30, 0 8px 32px ${f.accentColor}15` : "none";
+        const transform = isActive ? "none" : ""; // hover transform handled by css
+
+        const cardHTML = `
+          <div class="f-card ${isActive ? 'active' : ''}" onclick="setFeature('${f.id}')" style="background: ${bg}; border: ${border}; box-shadow: ${shadow};">
+            <!-- Top row -->
+            <div style="display: flex; align-items: flex-start; justify-content: space-between; margin-bottom: 16px;">
+              <div style="width: 44px; height: 44px; border-radius: 10px; background: ${f.accentColor}18; border: 1px solid ${f.accentColor}30; display: flex; align-items: center; justify-content: center; color: ${f.accentColor}; flex-shrink: 0;">
+                ${f.icon}
+              </div>
+              <span style="font-size: 10px; font-weight: 700; letter-spacing: 0.08em; color: ${f.accentColor}; background: ${f.accentColor}15; border: 1px solid ${f.accentColor}30; padding: 3px 8px; border-radius: 20px; font-family: monospace;">
+                ${f.badge}
+              </span>
+            </div>
+            
+            <!-- Text -->
+            <div style="margin-bottom: 16px;">
+              <div class="f-title">${f.title}</div>
+              <div style="font-size: 12px; color: ${f.accentColor}; font-weight: 500; opacity: 0.85; margin-bottom: 10px;">${f.subtitle}</div>
+              <p class="f-desc" style="${isActive ? 'display: block; overflow: visible;' : ''}">${f.description}</p>
+            </div>
+            
+            <!-- Stat -->
+            <div style="display: flex; align-items: center; gap: 8px;">
+              <div style="font-size: 12px; font-weight: 700; color: ${f.accentColor}; font-family: monospace;">${f.stat}</div>
+              <div style="width: 3px; height: 3px; border-radius: 50%; background: rgba(255,255,255,0.2);"></div>
+              <div style="font-size: 11px; color: var(--text-secondary);">${f.statLabel}</div>
+            </div>
+
+            ${isActive ? `<div style="position: absolute; bottom: 0; left: 24px; right: 24px; height: 2px; border-radius: 2px; background: linear-gradient(90deg, ${f.accentColor}, transparent);"></div>` : ''}
+          </div>
+        `;
+        grid.insertAdjacentHTML("beforeend", cardHTML);
+      });
+
+      renderPanel();
+    }
+
+    function renderPanel() {
+      const panelWrapper = document.getElementById("featPanelWrapper");
+      if (!panelWrapper) return;
+
+      const activeF = fData.find(f => f.id === activeFeatId);
+      if (!activeF) return;
+
+      panelWrapper.innerHTML = `
+        <div class="f-panel active" style="background: linear-gradient(135deg, ${activeF.accentColor}0a, var(--bg-surface)); border: 1px solid ${activeF.accentColor}30;">
+          <div style="width: 64px; height: 64px; border-radius: 16px; background: ${activeF.accentColor}20; border: 1px solid ${activeF.accentColor}40; display: flex; align-items: center; justify-content: center; color: ${activeF.accentColor}; flex-shrink: 0; transform: scale(1.1);">
+            ${activeF.icon}
+          </div>
+          <div style="flex: 1;">
+            <div style="font-size: 20px; font-weight: 700; color: var(--text); margin-bottom: 6px;">
+              ${activeF.title}
+              <span style="margin-left: 12px; font-size: 11px; font-weight: 700; color: ${activeF.accentColor}; background: ${activeF.accentColor}18; padding: 2px 8px; border-radius: 10px; letter-spacing: 0.06em; vertical-align: middle; font-family: monospace;">
+                ${activeF.badge}
+              </span>
+            </div>
+            <p style="font-size: 14.5px; color: var(--text-secondary); line-height: 1.7; margin: 0;">${activeF.description}</p>
+          </div>
+          <div class="text-right" style="text-align: right; flex-shrink: 0;">
+            <div style="font-size: 32px; font-weight: 800; color: ${activeF.accentColor}; letter-spacing: -0.03em;">${activeF.stat}</div>
+            <div style="font-size: 12px; color: var(--text-secondary); margin-top: 2px;">${activeF.statLabel}</div>
+          </div>
+        </div>
+      `;
+    }
+
+    window.setFeature = function (id) {
+      if (activeFeatId === id) return;
+      activeFeatId = id;
+      renderFeatures();
+    };
+
+    renderFeatures();
+
+    // ─── Architecture Section ───
+    const archLayers = [
+      {
+        id: "client", tag: "CLIENT", title: "Client Layer", subtitle: "Web UI (React + Vite) · Mobile", accentColor: "#3b82f6",
+        items: ["React + Vite", "Mobile PWA", "WebSocket", "Audio Capture"],
+        description: "The user-facing surface. React handles real-time UI updates during live sessions; the audio pipeline captures voice input and streams it to the STT layer with sub-200ms handoff.",
+        stats: [{ label: "Framework", value: "React + Vite" }, { label: "Protocol", value: "WebSocket" }],
+        icon: `<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="20" height="14" rx="2"/><path d="M8 21h8m-4-4v4"/></svg>`
+      },
+      {
+        id: "gateway", tag: "API GATEWAY", title: "API Gateway", subtitle: "FastAPI · CORS · JWT Auth · Rate Limiting", accentColor: "#8b5cf6",
+        items: ["FastAPI (async)", "CORS middleware", "JWT Auth", "Rate Limiting"],
+        description: "A monolithic FastAPI service with modular, independently toggleable subsystems. JWT guards every route; rate limiting prevents abuse during concurrent session spikes.",
+        stats: [{ label: "Runtime", value: "FastAPI async" }, { label: "Auth", value: "JWT" }],
+        icon: `<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M18 20V10"/><path d="M12 20V4"/><path d="M6 20v-6"/><path d="M3 10l9-7 9 7"/></svg>`
+      },
+      {
+        id: "core", tag: "CORE SERVICES", title: "Core Services", subtitle: "Q&A Engine · Practice Mode · Intelligence Engine", accentColor: "#10b981",
+        items: ["Q&A Engine", "Practice Mode", "Intelligence Engine", "Code Studio", "Resume Analysis", "Mirror Mode"],
+        description: "Six independently routed service modules each with its own evaluation pipeline. The Intelligence Engine coordinates cross-module context so session state persists across services.",
+        stats: [{ label: "Modules", value: "6 services" }, { label: "Routing", value: "Independent" }],
+        icon: `<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14M4.93 4.93a10 10 0 0 0 0 14.14"/><path d="M15.54 8.46a5 5 0 0 1 0 7.07M8.46 8.46a5 5 0 0 0 0 7.07"/></svg>`
+      },
+      {
+        id: "ai", tag: "AI LAYER", title: "AI Layer", subtitle: "Google Gemini API / Groq · faster-whisper (STT)", accentColor: "#f59e0b",
+        items: ["Google Gemini API", "Groq SDK", "faster-whisper (STT)", "sentence-transformers", "6-Agent system"],
+        description: "Dual-engine LLM: Gemini for deep evaluation and structured scoring; Groq for latency-sensitive follow-up generation. faster-whisper runs server-side for real-time speech-to-text.",
+        stats: [{ label: "LLMs", value: "Gemini + Groq" }, { label: "STT", value: "faster-whisper" }],
+        icon: `<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 1 1 7.072 0l-.548.547A3.374 3.374 0 0 0 14 18.469V19a2 2 0 1 1-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z"/></svg>`
+      },
+      {
+        id: "storage", tag: "STORAGE", title: "Storage Layer", subtitle: "PostgreSQL · Qdrant Vector DB · Redis", accentColor: "#ec4899",
+        items: ["PostgreSQL / SQLite", "Qdrant Vector DB", "Redis (optional)", "BM25 + Cohere Reranker"],
+        description: "Hybrid storage: Postgres for structured session records; Qdrant for semantic vector retrieval; Redis for ephemeral session state; BM25 + Cohere powers the hybrid search pipeline.",
+        stats: [{ label: "Relational", value: "PostgreSQL" }, { label: "Vector", value: "Qdrant" }],
+        icon: `<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3"/><path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"/></svg>`
+      }
+    ];
+
+    const archFlows = [
+      { from: "CLIENT", to: "GATEWAY", label: "HTTPS / WS", color: "#3b82f6" },
+      { from: "GATEWAY", to: "CORE", label: "Async dispatch", color: "#8b5cf6" },
+      { from: "CORE", to: "AI LAYER", label: "LLM inference", color: "#10b981" },
+      { from: "CORE", to: "STORAGE", label: "Read / Write", color: "#f59e0b" },
+      { from: "AI LAYER", to: "STORAGE", label: "Embeddings", color: "#ec4899" }
+    ];
+
+    let activeArchId = "core";
+
+    function renderArch() {
+      const listEl = document.getElementById("archLayerList");
+      if (!listEl) return;
+      listEl.innerHTML = "";
+
+      archLayers.forEach((l, i) => {
+        const on = activeArchId === l.id;
+        const c = l.accentColor;
+
+        listEl.insertAdjacentHTML('beforeend', `
+          <div class="arch-layer-card ${on ? 'active' : ''}" onclick="setArch('${l.id}')" style="--alc-border: ${c}45; --alc-bg: ${c}0c; --alc-color: ${c}; margin-bottom: ${i < archLayers.length - 1 ? '0' : '0'}">
+            <div class="arch-left-bar"></div>
+            <div style="display: flex; align-items: center; gap: 10px;">
+              <div style="width: 30px; height: 30px; border-radius: 7px; background: ${c}18; border: 1px solid ${c}30; display: flex; align-items: center; justify-content: center; color: ${c}; flex-shrink: 0;">${l.icon}</div>
+              <div style="flex: 1; min-width: 0;">
+                <div style="font-size: 12.5px; font-weight: 700; color: ${on ? '#f1f5f9' : '#64748b'}; margin-bottom: 2px; transition: color 0.2s;">${l.title}</div>
+                <div style="font-size: 10px; color: #334155; font-family: monospace; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${l.subtitle}</div>
+              </div>
+              <span style="font-size: 8.5px; font-weight: 700; color: ${c}; background: ${c}15; border: 1px solid ${c}25; padding: 2px 5px; border-radius: 6px; letter-spacing: 0.06em; font-family: monospace; flex-shrink: 0;">${l.tag}</span>
+            </div>
+          </div>
+          ${i < archLayers.length - 1 ? `<div style="display: flex; justify-content: center; height: 28px; align-items: center; position: relative;"><div style="width: 1px; height: 100%; background: linear-gradient(to bottom, ${c}80, ${c}10);"></div><div style="position: absolute; bottom: 0; width: 0; height: 0; border-left: 5px solid transparent; border-right: 5px solid transparent; border-top: 7px solid ${c}70;"></div></div>` : ''}
+        `);
+      });
+
+      renderArchDetail();
+    }
+
+    function renderArchDetail() {
+      const panel = document.getElementById("archDetailPanel");
+      if (!panel) return;
+      const l = archLayers.find(x => x.id === activeArchId);
+      if (!l) return;
+      const c = l.accentColor;
+
+      const itemPills = l.items.map(item =>
+        `<span style="font-size: 11.5px; color: ${c}; background: ${c}10; border: 1px solid ${c}22; padding: 4px 10px; border-radius: 20px; font-family: monospace; font-weight: 600;">${item}</span>`
+      ).join('');
+
+      const statsHtml = l.stats.map(s =>
+        `<div style="background: rgba(0,0,0,0.25); border-radius: 9px; padding: 10px 14px; border: 1px solid rgba(255,255,255,0.05);"><div style="font-size: 10px; color: #475569; margin-bottom: 3px;">${s.label}</div><div style="font-size: 13px; font-weight: 700; color: ${c}; font-family: monospace;">${s.value}</div></div>`
+      ).join('');
+
+      const flowsHtml = archFlows.map(f =>
+        `<div style="display: flex; align-items: center; gap: 8px;">
+          <span style="font-size: 10px; color: #475569; font-family: monospace; width: 68px; flex-shrink: 0;">${f.from}</span>
+          <div style="flex: 1; height: 1px; background: linear-gradient(90deg,${f.color}55,${f.color}10); position: relative;">
+            <div style="position: absolute; right: 0; top: -3px; width: 0; height: 0; border-top: 4px solid transparent; border-bottom: 4px solid transparent; border-left: 6px solid ${f.color}55;"></div>
+          </div>
+          <span style="font-size: 10px; color: ${f.color}; background: ${f.color}14; padding: 2px 8px; border-radius: 10px; font-family: monospace; font-weight: 600; flex-shrink: 0;">${f.label}</span>
+          <span style="font-size: 10px; color: #475569; font-family: monospace; width: 68px; text-align: right; flex-shrink: 0;">${f.to}</span>
+        </div>`
+      ).join('');
+
+      panel.innerHTML = `
+        <div style="display: flex; flex-direction: column; gap: 13px;">
+          <div style="background: linear-gradient(135deg,${c}09,rgba(13,17,23,0.9)); border: 1px solid ${c}28; border-radius: 14px; padding: 24px; transition: all 0.3s;">
+            <div style="display: flex; align-items: center; gap: 12px; margin-bottom: 15px;">
+              <div style="width: 44px; height: 44px; border-radius: 11px; background: ${c}1c; border: 1px solid ${c}38; display: flex; align-items: center; justify-content: center; color: ${c};">${l.icon}</div>
+              <div>
+                <div style="font-size: 9.5px; color: ${c}; font-weight: 700; letter-spacing: 0.1em; font-family: monospace; margin-bottom: 2px;">${l.tag}</div>
+                <div style="font-size: 18px; font-weight: 800; color: var(--text); letter-spacing: -0.01em;">${l.title}</div>
+              </div>
+            </div>
+            <p style="font-size: 13.5px; color: var(--text-secondary); line-height: 1.75; margin-bottom: 15px;">${l.description}</p>
+            <div style="display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 15px;">${itemPills}</div>
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">${statsHtml}</div>
+          </div>
+          <div style="background: rgba(255,255,255,0.02); border: 1px solid rgba(255,255,255,0.06); border-radius: 12px; padding: 16px 20px;">
+            <p style="font-size: 10px; font-weight: 700; color: #334155; letter-spacing: 0.1em; font-family: monospace; margin-bottom: 11px;">DATA FLOW PATHS</p>
+            <div style="display: flex; flex-direction: column; gap: 8px;">${flowsHtml}</div>
+          </div>
+          <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 10px;">
+            <div style="background: rgba(255,255,255,0.02); border: 1px solid rgba(255,255,255,0.06); border-radius: 10px; padding: 15px 13px;"><div style="font-size: 17px; margin-bottom:7px;">&#9889;</div><div style="font-size: 12px; font-weight: 700; color: #f59e0b; margin-bottom: 5px;">Async First</div><p style="font-size: 11px; color: #3d5166; line-height: 1.55; margin: 0;">All handlers are fully async — no blocking I/O during LLM calls.</p></div>
+            <div style="background: rgba(255,255,255,0.02); border: 1px solid rgba(255,255,255,0.06); border-radius: 10px; padding: 15px 13px;"><div style="font-size: 17px; margin-bottom:7px;">&#128268;</div><div style="font-size: 12px; font-weight: 700; color: #10b981; margin-bottom: 5px;">Modular Toggle</div><p style="font-size: 11px; color: #3d5166; line-height: 1.55; margin: 0;">Each subsystem exposes a feature flag for independent control.</p></div>
+            <div style="background: rgba(255,255,255,0.02); border: 1px solid rgba(255,255,255,0.06); border-radius: 10px; padding: 15px 13px;"><div style="font-size: 17px; margin-bottom:7px;">&#128274;</div><div style="font-size: 12px; font-weight: 700; color: #8b5cf6; margin-bottom: 5px;">JWT Scoped</div><p style="font-size: 11px; color: #3d5166; line-height: 1.55; margin: 0;">Session data is user-isolated at the gateway level.</p></div>
+          </div>
+        </div>
+      `;
+    }
+
+    window.setArch = function (id) {
+      if (activeArchId === id) return;
+      activeArchId = id;
+      renderArch();
+    };
+
+    renderArch();
+
+    // ─── Tech Stack Section ───
+    const tsGroups = [
+      {
+        id: "platform", label: "CORE PLATFORM", color: "#8b5cf6", description: "The runtime and framework backbone of Stratax AI.", items: [
+          { name: "Python 3.11+", desc: "Runtime", detail: "Modern async-first Python with full type hint support.", icon: "&#x1F40D;", role: "Runtime" },
+          { name: "FastAPI", desc: "Web framework", detail: "High-performance ASGI framework with auto-generated OpenAPI docs.", icon: "&#x26A1;", role: "Framework" },
+          { name: "Uvicorn (ASGI)", desc: "Server", detail: "Lightning-fast ASGI server powering concurrent WebSocket sessions.", icon: "&#x1F680;", role: "Server" },
+          { name: "Pydantic v2", desc: "Validation", detail: "Rust-powered validation layer for all request/response schemas.", icon: "&#x1F537;", role: "Validation" }
+        ]
+      },
+      {
+        id: "ai", label: "AI & MACHINE LEARNING", color: "#f59e0b", description: "The dual-engine intelligence layer behind every evaluation.", items: [
+          { name: "Google Gemini API", desc: "LLM evaluation", detail: "Deep structured scoring across all 5 criteria per response.", icon: "&#x2728;", role: "Evaluation" },
+          { name: "Groq SDK", desc: "Low-latency LLM", detail: "Sub-100ms follow-up question generation and probing.", icon: "&#x26A1;", role: "Inference" },
+          { name: "sentence-transformers", desc: "Embeddings", detail: "Dense vector embeddings powering semantic search in Intelligence Engine.", icon: "&#x1F9E0;", role: "Embeddings" },
+          { name: "faster-whisper", desc: "Speech-to-text", detail: "Server-side STT with WPM tracking, pause detection, and filler extraction.", icon: "&#x1F39A;", role: "STT" }
+        ]
+      },
+      {
+        id: "storage", label: "STORAGE & SEARCH", color: "#ec4899", description: "Hybrid storage purpose-built for session-level retrieval.", items: [
+          { name: "PostgreSQL / SQLite", desc: "Relational DB", detail: "Structured session records, user data, and scoring history.", icon: "&#x1F5C4;", role: "Primary DB" },
+          { name: "Qdrant Vector DB", desc: "Semantic search", detail: "Dense vector storage powering company-specific interview retrieval.", icon: "&#x1F50D;", role: "Vector DB" },
+          { name: "Redis (optional)", desc: "Session cache", detail: "Ephemeral session state with sub-millisecond read latency.", icon: "&#x26A1;", role: "Cache" },
+          { name: "BM25 + Cohere Reranker", desc: "Hybrid search", detail: "Sparse BM25 fused with Cohere reranking for precision retrieval.", icon: "&#x1F3AF;", role: "Search" }
+        ]
+      },
+      {
+        id: "frontend", label: "FRONTEND", color: "#3b82f6", description: "Fast, type-safe UI with a consistent component system.", items: [
+          { name: "React + TypeScript", desc: "UI framework", detail: "Type-safe component tree with real-time session state management.", icon: "&#x269B;", role: "UI" },
+          { name: "Vite", desc: "Build tool", detail: "Sub-second HMR and optimized production bundling.", icon: "&#x1F525;", role: "Build" },
+          { name: "Tailwind CSS", desc: "Styling", detail: "Utility-first styling with consistent dark theme design tokens.", icon: "&#x1F3A8;", role: "Styling" },
+          { name: "shadcn/ui", desc: "Components", detail: "Accessible, themeable component primitives built on Radix UI.", icon: "&#x1F9E9;", role: "Components" }
+        ]
+      }
+    ];
+
+    let activeTsGroup = null;
+
+    function renderTsFilters() {
+      const el = document.getElementById("tsFilters");
+      if (!el) return;
+      el.innerHTML = `<button class="ts-filter-btn ${!activeTsGroup ? 'active' : ''}" onclick="setTsGroup(null)">All</button>`;
+      tsGroups.forEach(g => {
+        el.insertAdjacentHTML('beforeend', `<button class="ts-filter-btn ${activeTsGroup === g.id ? 'active' : ''}" onclick="setTsGroup('${g.id}')" style="${activeTsGroup === g.id ? `color:${g.color};background:${g.color}18;border-color:${g.color}35;` : ''}">${g.label.split(' ')[0]}</button>`);
+      });
+    }
+
+    function renderTsGroups() {
+      const el = document.getElementById("tsGroups");
+      if (!el) return;
+      const descEl = document.getElementById("tsDesc");
+      const filtered = activeTsGroup ? tsGroups.filter(g => g.id === activeTsGroup) : tsGroups;
+      if (descEl) descEl.textContent = activeTsGroup ? tsGroups.find(g => g.id === activeTsGroup)?.description : 'Every layer purpose-selected for the demands of real-time AI interview evaluation.';
+      el.innerHTML = "";
+      filtered.forEach(group => {
+        let cardsHtml = group.items.map(item => `
+          <div class="ts-card" style="--tc-gradient: linear-gradient(90deg,${group.color}60,transparent);" onmouseenter="this.style.background='${group.color}09'; this.style.borderColor='${group.color}35';" onmouseleave="this.style.background='rgba(255,255,255,0.02)'; this.style.borderColor='rgba(255,255,255,0.07)';" >
+            <div style="display: flex; align-items: flex-start; justify-content: space-between; margin-bottom: 14px;">
+              <div style="width: 42px; height: 42px; border-radius: 10px; background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.08); display: flex; align-items: center; justify-content: center; font-size: 20px;">${item.icon}</div>
+              <span style="font-size: 9px; font-weight: 700; letter-spacing: 0.07em; color: #334155; background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.06); padding: 2px 7px; border-radius: 6px; font-family: monospace;">${item.role}</span>
+            </div>
+            <div style="font-size: 13.5px; font-weight: 700; color: #94a3b8; margin-bottom: 4px; line-height: 1.3;">${item.name}</div>
+            <div style="font-size: 11.5px; color: #475569; margin-bottom: 8px;">${item.desc}</div>
+            <div style="font-size: 12px; color: #64748b; line-height: 1.6;">${item.detail}</div>
+            <div class="ts-card-bar"></div>
+          </div>
+        `).join('');
+
+        el.insertAdjacentHTML('beforeend', `
+          <div>
+            <div style="display: flex; align-items: center; gap: 12px; margin-bottom: 18px;">
+              <div style="width: 8px; height: 8px; border-radius: 50%; background: ${group.color}; box-shadow: 0 0 8px ${group.color};"></div>
+              <span style="font-size: 11px; font-weight: 700; color: ${group.color}; letter-spacing: 0.1em; font-family: monospace;">${group.label}</span>
+              <div style="flex: 1; height: 1px; background: linear-gradient(90deg,${group.color}30,transparent);"></div>
+              <span style="font-size: 11px; color: #2d3a47; font-family: monospace;">${group.items.length} tools</span>
+            </div>
+            <div class="ts-tech-grid">${cardsHtml}</div>
+          </div>
+        `);
+      });
+    }
+
+    window.setTsGroup = function (id) {
+      activeTsGroup = id;
+      renderTsFilters();
+      renderTsGroups();
+    };
+
+    renderTsFilters();
+    renderTsGroups();
+
+    // ─── How It Works Reactivity Logic ───
+    const hiwData = [
+      { number: "01", tag: "SETUP", tagColor: "#3b82f6", accentColor: "#3b82f6", title: "Session Created", subtitle: "You configure the conditions", description: "Choose interview type (behavioral, technical, system design), set difficulty, and define question count. Optionally attach your resume — Stratax will extract claims and target them directly.", details: ["Interview type selection", "Difficulty calibration", "Resume ingestion (optional)", "Company-specific targeting"], icon: `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>` },
+      { number: "02", tag: "INTELLIGENCE", tagColor: "#8b5cf6", accentColor: "#8b5cf6", title: "Question Presented", subtitle: "Adaptive, not random", description: "The Intelligence Engine generates a question using semantic + BM25 hybrid retrieval. It factors in your resume claims, target company patterns, and session difficulty — nothing is filler.", details: ["Hybrid BM25 + vector retrieval", "Resume-claim targeting", "Company-specific patterns", "Adaptive difficulty"], icon: `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>` },
+      { number: "03", tag: "INPUT", tagColor: "#10b981", accentColor: "#10b981", title: "Answer Submitted", subtitle: "Text or voice — both tracked", description: "Respond via text or live audio. Speech mode extracts WPM, filler word frequency, confidence score, pacing consistency, and pause patterns in real time via six specialized agents.", details: ["WPM & pace tracking", "Filler word detection", "Confidence signal extraction", "Real-time audio processing"], icon: `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg>` },
+      { number: "04", tag: "EVALUATION", tagColor: "#f59e0b", accentColor: "#f59e0b", title: "AI Evaluation", subtitle: "5 criteria, zero ambiguity", description: "LLM scores your answer across correctness, completeness, clarity, confidence, and technical depth. Each criterion is scored 0–10 with reasoning — no black-box output.", details: ["Correctness (0–10)", "Completeness (0–10)", "Clarity (0–10)", "Confidence + Technical depth"], icon: `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>` },
+      { number: "05", tag: "FEEDBACK", tagColor: "#ec4899", accentColor: "#ec4899", title: "Structured Feedback", subtitle: "Actionable, not decorative", description: "Per-question: strengths, improvement gaps, red flags, a model answer, and coaching tips. Not a score — a coaching session. Follow-up probing questions are generated if your answer was shallow.", details: ["Strengths & gap analysis", "Model answer provided", "Coaching tips generated", "Dynamic follow-up probing"], icon: `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>` },
+      { number: "06", tag: "ANALYTICS", tagColor: "#06b6d4", accentColor: "#06b6d4", title: "Session Summary", subtitle: "The full picture", description: "Overall session score, improvement trajectory across questions, consistency analysis, and a downloadable HTML report. Mirror Mode updates your knowledge ontology for cross-session tracking.", details: ["Aggregate session score", "Improvement trajectory", "Consistency analysis", "Downloadable HTML report"], icon: `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>` }
+    ];
+
+    const criteriaData = [
+      { label: "Correctness", color: "#3b82f6", pct: 88 },
+      { label: "Completeness", color: "#8b5cf6", pct: 74 },
+      { label: "Clarity", color: "#10b981", pct: 92 },
+      { label: "Confidence", color: "#f59e0b", pct: 65 },
+      { label: "Technical Depth", color: "#ec4899", pct: 81 }
+    ];
+
+    let activeHiwIdx = 0;
+
+    function renderHiw() {
+      const listEl = document.getElementById("hiwList");
+      if (!listEl) return;
+
+      listEl.innerHTML = "";
+      hiwData.forEach((s, idx) => {
+        const isActive = activeHiwIdx === idx;
+        const color = s.accentColor;
+
+        let activeGlow = isActive ? `<div style="width: 3px; height: 24px; border-radius: 2px; background: ${color}; box-shadow: 0 0 8px ${color}80;"></div>` : '';
+
+        listEl.insertAdjacentHTML('beforeend', `
+          <div class="hiw-step ${isActive ? 'active' : ''}" onclick="setHiwStep(${idx})" style="--hiw-bg: ${color}0e; --hiw-border: ${color}35; --hiw-color: ${color}; --hiw-shadow: ${color}50;">
+            <div class="hiw-bubble">${s.number}</div>
+            <div style="flex: 1; min-width: 0;">
+              <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 2px;">
+                <span style="font-size: 14.5px; font-weight: 700; color: ${isActive ? '#f1f5f9' : '#94a3b8'}; transition: color 0.2s;">${s.title}</span>
+                <span style="font-size: 9px; font-weight: 700; color: ${color}; background: ${color}18; border: 1px solid ${color}30; padding: 1px 6px; border-radius: 10px; letter-spacing: 0.07em; font-family: monospace; opacity: ${isActive ? 1 : 0.6};">${s.tag}</span>
+              </div>
+              <div style="font-size: 12px; color: ${isActive ? '#64748b' : '#334155'}; transition: color 0.2s;">${s.subtitle}</div>
+            </div>
+            ${activeGlow}
+          </div>
+        `);
+      });
+
+      // Add Progress bar
+      const activeStepObj = hiwData[activeHiwIdx];
+      const progColor = activeStepObj.accentColor;
+      const pct = ((activeHiwIdx + 1) / hiwData.length) * 100;
+
+      listEl.insertAdjacentHTML('beforeend', `
+        <div style="margin-top: 16px; padding: 0 20px;">
+          <div style="display: flex; justify-content: space-between; margin-bottom: 6px;">
+            <span style="font-size: 11px; color: #475569;">Session progress</span>
+            <span style="font-size: 11px; color: ${progColor}; font-family: monospace;">${activeHiwIdx + 1}/6</span>
+          </div>
+          <div style="height: 3px; background: rgba(255,255,255,0.06); border-radius: 3px; overflow: hidden;">
+            <div style="height: 100%; width: ${pct}%; background: linear-gradient(90deg, ${progColor}, ${progColor}80); border-radius: 3px; transition: width 0.4s ease;"></div>
+          </div>
+        </div>
+      `);
+
+      renderHiwPanel();
+    }
+
+    function renderHiwPanel() {
+      const p = document.getElementById("hiwPanelWrapper");
+      if (!p) return;
+
+      const s = hiwData[activeHiwIdx];
+
+      let detailsHtml = s.details.map(d => `
+        <div style="display: flex; align-items: center; gap: 10px;">
+          <div style="width: 6px; height: 6px; border-radius: 50%; background: ${s.accentColor}; opacity: 0.7; flex-shrink: 0;"></div>
+          <span style="font-size: 13px; color: #64748b;">${d}</span>
+        </div>
+      `).join('');
+
+      let criteriaHtml = '';
+      if (activeHiwIdx === 3) {
+        criteriaHtml = `
+          <div style="background: rgba(0,0,0,0.3); border-radius: 12px; padding: 16px; border: 1px solid rgba(255,255,255,0.06); margin-bottom: 28px;">
+            <div style="font-size: 11px; color: #475569; font-weight: 700; letter-spacing: 0.08em; margin-bottom: 14px; font-family: monospace;">SCORING BREAKDOWN</div>
+            <div style="display: flex; flex-direction: column; gap: 10px;">
+              ${criteriaData.map((c, i) => `
+                <div>
+                  <div style="display: flex; justify-content: space-between; margin-bottom: 4px;">
+                    <span style="font-size: 12px; color: #64748b;">${c.label}</span>
+                    <span style="font-size: 12px; color: ${c.color}; font-family: monospace;">${c.pct}/100</span>
+                  </div>
+                  <div style="height: 4px; background: rgba(255,255,255,0.06); border-radius: 4px; overflow: hidden;">
+                    <div class="anim-bar" style="height: 100%; width: 0%; background: ${c.color}; border-radius: 4px; transition: width 0.8s cubic-bezier(0.4,0,0.2,1);" data-width="${c.pct}%"></div>
+                  </div>
+                </div>
+              `).join('')}
+            </div>
+          </div>
+        `;
+        setTimeout(() => {
+          document.querySelectorAll('.anim-bar').forEach(bar => {
+            bar.style.width = bar.dataset.width;
+          });
+        }, 50);
+      }
+
+      const isPrevDis = activeHiwIdx === 0;
+      const isNextDis = activeHiwIdx === hiwData.length - 1;
+
+      p.innerHTML = `
+        <div class="hiw-panel" style="background: linear-gradient(135deg, ${s.accentColor}0a, var(--bg-surface)); border: 1px solid ${s.accentColor}25;">
+          <div style="display: flex; align-items: center; gap: 12px; margin-bottom: 24px;">
+            <div style="width: 52px; height: 52px; border-radius: 14px; background: ${s.accentColor}20; border: 1px solid ${s.accentColor}40; display: flex; align-items: center; justify-content: center; color: ${s.accentColor};">
+              ${s.icon}
+            </div>
+            <div>
+              <div style="font-size: 11px; color: ${s.accentColor}; font-weight: 700; letter-spacing: 0.1em; font-family: monospace; margin-bottom: 2px;">STEP ${s.number}</div>
+              <div style="font-size: 19px; font-weight: 800; color: var(--text); letter-spacing: -0.01em;">${s.title}</div>
+            </div>
+          </div>
+          
+          <p style="font-size: 14.5px; color: var(--text-secondary); line-height: 1.75; margin-bottom: 24px;">${s.description}</p>
+          
+          <div style="display: flex; flex-direction: column; gap: 8px; margin-bottom: ${activeHiwIdx === 3 ? '16px' : '28px'};">
+            ${detailsHtml}
+          </div>
+
+          ${criteriaHtml}
+
+          <div style="display: flex; gap: 8px; margin-top: 24px;">
+            <button class="hiw-btn" onclick="setHiwStep(activeHiwIdx - 1)" ${isPrevDis ? 'disabled' : ''} style="background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.08); color: ${isPrevDis ? '#2d3748' : 'var(--text-secondary)'}; cursor: ${isPrevDis ? 'not-allowed' : 'pointer'};">
+              ← Previous
+            </button>
+            <button class="hiw-btn" onclick="setHiwStep(activeHiwIdx + 1)" ${isNextDis ? 'disabled' : ''} style="background: ${isNextDis ? 'rgba(255,255,255,0.04)' : s.accentColor + '20'}; border: 1px solid ${isNextDis ? 'rgba(255,255,255,0.08)' : s.accentColor + '40'}; color: ${isNextDis ? '#2d3748' : s.accentColor}; cursor: ${isNextDis ? 'not-allowed' : 'pointer'};">
+              Next →
+            </button>
+          </div>
+        </div>
+      `;
+    }
+
+    window.setHiwStep = function (idx) {
+      if (idx < 0 || idx >= hiwData.length || idx === activeHiwIdx) return;
+      activeHiwIdx = idx;
+      renderHiw();
+    };
+
+    renderHiw();
+  </script>
+
+</body>
+
+</html>

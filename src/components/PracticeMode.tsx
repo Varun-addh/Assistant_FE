@@ -347,7 +347,13 @@ export const PracticeMode = () => {
   useEffect(() => {
     try {
       const raw = window.localStorage.getItem('practice_next_session_plan');
-      if (raw) setPhase('round-selection');
+      if (raw) {
+        // Consume the next-session plan once and remove it so subsequent
+        // navigations to the Practice tab don't automatically jump to
+        // round-selection every time.
+        try { window.localStorage.removeItem('practice_next_session_plan'); } catch { }
+        setPhase('round-selection');
+      }
     } catch { }
   }, []);
 

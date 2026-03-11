@@ -73,24 +73,24 @@ export function formatOverlayChunkHtml(text: string): string {
 function convertForeignObjectToSvgText(svgElement: SVGSVGElement): void {
   const foreignObjects = Array.from(svgElement.querySelectorAll('foreignObject'));
   const processedPositions = new Set<string>();
-  
+
   console.log(`[PDF] Converting ${foreignObjects.length} foreignObject elements to SVG text`);
-  
+
   foreignObjects.forEach((fo, index) => {
     const x = parseFloat(fo.getAttribute('x') || '0');
     const y = parseFloat(fo.getAttribute('y') || '0');
     const width = parseFloat(fo.getAttribute('width') || '100');
     const height = parseFloat(fo.getAttribute('height') || '30');
-    
+
     // Extract ALL text from inner HTML elements - Mermaid nests divs/spans deeply
     let textContent = '';
-    
+
     // Method 1: Try to get text from specific Mermaid label classes
     const labelEl = fo.querySelector('.nodeLabel, .label, .edgeLabel, .labelText');
     if (labelEl) {
       textContent = labelEl.textContent?.trim() || '';
     }
-    
+
     // Method 2: Try innermost div/span
     if (!textContent) {
       const innerEl = fo.querySelector('div > div, div > span, span > span, p');
@@ -98,7 +98,7 @@ function convertForeignObjectToSvgText(svgElement: SVGSVGElement): void {
         textContent = innerEl.textContent?.trim() || '';
       }
     }
-    
+
     // Method 3: Try direct children
     if (!textContent) {
       const directChild = fo.querySelector('div, span, p');
@@ -106,12 +106,12 @@ function convertForeignObjectToSvgText(svgElement: SVGSVGElement): void {
         textContent = directChild.textContent?.trim() || '';
       }
     }
-    
+
     // Method 4: Fallback to direct textContent
     if (!textContent) {
       textContent = fo.textContent?.trim() || '';
     }
-    
+
     // Clean up the text - remove extra whitespace and HTML entities
     textContent = textContent
       .replace(/\s+/g, ' ')
@@ -120,14 +120,14 @@ function convertForeignObjectToSvgText(svgElement: SVGSVGElement): void {
       .replace(/&lt;/g, '<')
       .replace(/&gt;/g, '>')
       .trim();
-    
+
     console.log(`[PDF] ForeignObject ${index}: position=(${x}, ${y}), size=(${width}x${height}), text="${textContent.substring(0, 30)}..."`);
-    
+
     if (!textContent) {
       fo.remove();
       return;
     }
-    
+
     // Avoid duplicates at same position
     const posKey = `${Math.round(x)}-${Math.round(y)}`;
     if (processedPositions.has(posKey)) {
@@ -136,7 +136,7 @@ function convertForeignObjectToSvgText(svgElement: SVGSVGElement): void {
       return;
     }
     processedPositions.add(posKey);
-    
+
     // Create native SVG text element
     const textEl = document.createElementNS('http://www.w3.org/2000/svg', 'text');
     textEl.setAttribute('x', String(x + width / 2));
@@ -147,7 +147,7 @@ function convertForeignObjectToSvgText(svgElement: SVGSVGElement): void {
     textEl.setAttribute('font-size', '12');
     textEl.setAttribute('fill', '#1e293b');
     textEl.setAttribute('font-weight', '500');
-    
+
     // Handle multiline text
     const lines = textContent.split(/[\n\r]+/).map(l => l.trim()).filter(Boolean);
     if (lines.length === 1) {
@@ -167,7 +167,7 @@ function convertForeignObjectToSvgText(svgElement: SVGSVGElement): void {
         textEl.appendChild(tspan);
       });
     }
-    
+
     // Insert text BEFORE the foreignObject's parent (usually a g element)
     const parent = fo.parentElement;
     if (parent) {
@@ -183,12 +183,12 @@ async function svgToPngDataUrl(svgElement: SVGSVGElement): Promise<string | null
     try {
       // Clone the SVG to avoid modifying the original
       const clonedSvg = svgElement.cloneNode(true) as SVGSVGElement;
-      
+
       // Remove style tags that might cause issues
       clonedSvg.querySelectorAll('style').forEach(s => s.remove());
-      
+
       // Store foreignObject text data before conversion for canvas fallback
-      const textData: Array<{x: number, y: number, text: string, width: number, height: number}> = [];
+      const textData: Array<{ x: number, y: number, text: string, width: number, height: number }> = [];
       clonedSvg.querySelectorAll('foreignObject').forEach(fo => {
         const x = parseFloat(fo.getAttribute('x') || '0');
         const y = parseFloat(fo.getAttribute('y') || '0');
@@ -203,13 +203,13 @@ async function svgToPngDataUrl(svgElement: SVGSVGElement): Promise<string | null
           textData.push({ x, y, text, width, height });
         }
       });
-      
+
       // CRITICAL: Convert foreignObject to native SVG text elements
       convertForeignObjectToSvgText(clonedSvg);
-      
+
       // Also remove any remaining foreignObject elements
       clonedSvg.querySelectorAll('foreignObject').forEach(fo => fo.remove());
-      
+
       // Get dimensions
       let width = 800, height = 600;
       const viewBox = clonedSvg.getAttribute('viewBox');
@@ -223,13 +223,13 @@ async function svgToPngDataUrl(svgElement: SVGSVGElement): Promise<string | null
         width = parseFloat(clonedSvg.getAttribute('width') || '800');
         height = parseFloat(clonedSvg.getAttribute('height') || '600');
       }
-      
+
       // Scale for PDF quality while keeping reasonable size
       const maxW = 650, maxH = 500;
       const scale = Math.min(maxW / width, maxH / height, 2);
       const finalW = Math.round(width * scale);
       const finalH = Math.round(height * scale);
-      
+
       // Set explicit dimensions
       clonedSvg.setAttribute('width', String(finalW));
       clonedSvg.setAttribute('height', String(finalH));
@@ -237,7 +237,7 @@ async function svgToPngDataUrl(svgElement: SVGSVGElement): Promise<string | null
         clonedSvg.setAttribute('xmlns', 'http://www.w3.org/2000/svg');
       }
       clonedSvg.setAttribute('xmlns:xlink', 'http://www.w3.org/1999/xlink');
-      
+
       // Add a white background rect as first child
       const bgRect = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
       bgRect.setAttribute('width', '100%');
@@ -248,7 +248,7 @@ async function svgToPngDataUrl(svgElement: SVGSVGElement): Promise<string | null
       } else {
         clonedSvg.appendChild(bgRect);
       }
-      
+
       // CRITICAL: Embed a web-safe font definition in the SVG
       const defs = document.createElementNS('http://www.w3.org/2000/svg', 'defs');
       const styleEl = document.createElementNS('http://www.w3.org/2000/svg', 'style');
@@ -260,36 +260,36 @@ async function svgToPngDataUrl(svgElement: SVGSVGElement): Promise<string | null
       `;
       defs.appendChild(styleEl);
       clonedSvg.insertBefore(defs, clonedSvg.firstChild);
-      
+
       // Serialize SVG
       const serializer = new XMLSerializer();
       let svgStr = serializer.serializeToString(clonedSvg);
-      
+
       // Use base64 data URL
       const base64 = btoa(unescape(encodeURIComponent(svgStr)));
       const dataUrl = 'data:image/svg+xml;base64,' + base64;
-      
+
       const img = new Image();
       img.onload = () => {
         const canvas = document.createElement('canvas');
         const dpr = 2; // High DPI for crisp text
         canvas.width = finalW * dpr;
         canvas.height = finalH * dpr;
-        
+
         const ctx = canvas.getContext('2d');
         if (ctx) {
           ctx.fillStyle = '#ffffff';
           ctx.fillRect(0, 0, canvas.width, canvas.height);
           ctx.scale(dpr, dpr);
           ctx.drawImage(img, 0, 0, finalW, finalH);
-          
+
           // FALLBACK: Draw text directly on canvas if SVG text didn't render
           // This ensures text is always visible even if SVG text fails
           ctx.font = '500 12px Arial, Helvetica, sans-serif';
           ctx.fillStyle = '#1e293b';
           ctx.textAlign = 'center';
           ctx.textBaseline = 'middle';
-          
+
           textData.forEach(({ x, y, text, width: w, height: h }) => {
             const scaledX = (x + w / 2) * scale;
             const scaledY = (y + h / 2) * scale;
@@ -297,7 +297,7 @@ async function svgToPngDataUrl(svgElement: SVGSVGElement): Promise<string | null
             const displayText = text.length > 30 ? text.substring(0, 27) + '...' : text;
             ctx.fillText(displayText, scaledX, scaledY);
           });
-          
+
           resolve(canvas.toDataURL('image/png', 1.0));
         } else {
           resolve(null);
@@ -305,51 +305,51 @@ async function svgToPngDataUrl(svgElement: SVGSVGElement): Promise<string | null
       };
       img.onerror = (e) => {
         console.error('[PDF] Image load error:', e);
-        
+
         // ULTIMATE FALLBACK: Draw just the shapes and text using canvas
         const canvas = document.createElement('canvas');
         const dpr = 2;
         canvas.width = finalW * dpr;
         canvas.height = finalH * dpr;
-        
+
         const ctx = canvas.getContext('2d');
         if (ctx) {
           ctx.scale(dpr, dpr);
           ctx.fillStyle = '#ffffff';
           ctx.fillRect(0, 0, finalW, finalH);
-          
+
           // Draw text for each node
           ctx.font = '500 12px Arial, Helvetica, sans-serif';
           ctx.fillStyle = '#1e293b';
           ctx.textAlign = 'center';
           ctx.textBaseline = 'middle';
-          
+
           textData.forEach(({ x, y, text, width: w, height: h }) => {
             const scaledX = (x + w / 2) * scale;
             const scaledY = (y + h / 2) * scale;
             const scaledW = w * scale;
             const scaledH = h * scale;
-            
+
             // Draw box
             ctx.strokeStyle = '#a5b4fc';
             ctx.lineWidth = 1;
-            ctx.strokeRect(scaledX - scaledW/2, scaledY - scaledH/2, scaledW, scaledH);
+            ctx.strokeRect(scaledX - scaledW / 2, scaledY - scaledH / 2, scaledW, scaledH);
             ctx.fillStyle = '#f0f4ff';
-            ctx.fillRect(scaledX - scaledW/2, scaledY - scaledH/2, scaledW, scaledH);
-            
+            ctx.fillRect(scaledX - scaledW / 2, scaledY - scaledH / 2, scaledW, scaledH);
+
             // Draw text
             ctx.fillStyle = '#1e293b';
             const displayText = text.length > 25 ? text.substring(0, 22) + '...' : text;
             ctx.fillText(displayText, scaledX, scaledY);
           });
-          
+
           resolve(canvas.toDataURL('image/png', 1.0));
         } else {
           resolve(null);
         }
       };
       img.src = dataUrl;
-      
+
     } catch (e) {
       console.error('[PDF] svgToPngDataUrl error:', e);
       resolve(null);
@@ -363,26 +363,26 @@ async function renderMermaidToPng(mermaidCode: string): Promise<string | null> {
     // Clean up the code
     let code = mermaidCode.trim();
     if (!code) return null;
-    
+
     // Add init directive for better rendering if not present
     if (!code.includes('%%{init:')) {
       code = `%%{init: {'theme': 'neutral', 'flowchart': {'htmlLabels': false}}}%%\n${code}`;
     }
-    
+
     console.log('[PDF] Rendering mermaid to PNG via Kroki...');
-    
+
     // Use Kroki PNG endpoint
     const response = await fetch('https://kroki.io/mermaid/png', {
       method: 'POST',
       headers: { 'Content-Type': 'text/plain' },
       body: code
     });
-    
+
     if (!response.ok) {
       console.error('[PDF] Kroki PNG request failed:', response.status);
       return null;
     }
-    
+
     // Convert response to base64 data URL
     const blob = await response.blob();
     return new Promise((resolve) => {
@@ -405,14 +405,14 @@ async function renderMermaidToPng(mermaidCode: string): Promise<string | null> {
 async function processMermaidDiagrams(pdfContent: HTMLElement, mermaidSources: string[] = []): Promise<void> {
   // Remove ALL <style> tags - they render as text in html2canvas
   pdfContent.querySelectorAll('style').forEach(style => style.remove());
-  
+
   // Find ALL mermaid/diagram containers
   const mermaidContainers = Array.from(pdfContent.querySelectorAll('.mermaid, .mermaid-rendered, .diagram-container, [data-lang="mermaid"]')) as HTMLElement[];
-  
+
   console.log(`[PDF] Processing ${mermaidContainers.length} mermaid containers with ${mermaidSources.length} pre-extracted sources`);
-  
+
   let sourceIndex = 0;
-  
+
   for (const container of mermaidContainers) {
     // If it already has an <img> tag with data URL, it's already converted - good!
     if (container.querySelector('img[src^="data:image"]')) {
@@ -420,30 +420,30 @@ async function processMermaidDiagrams(pdfContent: HTMLElement, mermaidSources: s
       sourceIndex++;
       continue;
     }
-    
+
     // FIRST: Try to get original Mermaid source from attribute OR from pre-extracted sources
-    let mermaidSource = container.getAttribute('data-mermaid-source') || 
-                        container.querySelector('[data-mermaid-source]')?.getAttribute('data-mermaid-source');
-    
+    let mermaidSource = container.getAttribute('data-mermaid-source') ||
+      container.querySelector('[data-mermaid-source]')?.getAttribute('data-mermaid-source');
+
     // If not found in attributes, use pre-extracted source
     if (!mermaidSource && sourceIndex < mermaidSources.length) {
       mermaidSource = mermaidSources[sourceIndex];
       console.log(`[PDF] Using pre-extracted source ${sourceIndex}`);
     }
-    
+
     if (mermaidSource) {
       console.log('[PDF] Found mermaid source, rendering via Kroki PNG...');
       console.log('[PDF] Source preview:', mermaidSource.substring(0, 100) + '...');
-      
+
       const pngDataUrl = await renderMermaidToPng(mermaidSource);
-      
+
       if (pngDataUrl) {
         console.log('[PDF] Successfully rendered via Kroki PNG');
         const img = document.createElement('img');
         img.src = pngDataUrl;
         img.style.cssText = 'max-width: 100%; height: auto; display: block; margin: 16px auto;';
         img.alt = 'Architecture Diagram';
-        
+
         container.innerHTML = '';
         container.appendChild(img);
         container.style.cssText = 'text-align: center; margin: 16px 0; page-break-inside: avoid;';
@@ -451,22 +451,22 @@ async function processMermaidDiagrams(pdfContent: HTMLElement, mermaidSources: s
         continue;
       }
     }
-    
+
     // FALLBACK: Find SVG element and try to convert
     const svg = container.querySelector('svg') as SVGSVGElement | null;
     if (svg) {
       console.log('[PDF] Found SVG, converting to PNG...');
-      
+
       // Convert SVG to PNG for reliable text rendering in PDF
       const pngDataUrl = await svgToPngDataUrl(svg);
-      
+
       if (pngDataUrl) {
         console.log('[PDF] Successfully converted SVG to PNG');
         const img = document.createElement('img');
         img.src = pngDataUrl;
         img.style.cssText = 'max-width: 100%; height: auto; display: block; margin: 16px auto;';
         img.alt = 'Architecture Diagram';
-        
+
         container.innerHTML = '';
         container.appendChild(img);
         container.style.cssText = 'text-align: center; margin: 16px 0; page-break-inside: avoid;';
@@ -481,7 +481,7 @@ async function processMermaidDiagrams(pdfContent: HTMLElement, mermaidSources: s
       }
       continue;
     }
-    
+
     // Check for raw CSS text content that leaked through
     const text = container.textContent || '';
     if (text.includes('{fill:') || text.includes('!important') || text.includes('#mermaid-svg')) {
@@ -491,7 +491,7 @@ async function processMermaidDiagrams(pdfContent: HTMLElement, mermaidSources: s
       container.replaceWith(placeholder);
     }
   }
-  
+
   // Hide any text elements with CSS content that leaked outside containers
   pdfContent.querySelectorAll('p, span, div').forEach(el => {
     const text = el.textContent || '';
@@ -510,9 +510,9 @@ async function processMermaidDiagrams(pdfContent: HTMLElement, mermaidSources: s
  * - No UI flash: Renders completely off-screen
  * - Progress callback: For showing export progress
  */
-export async function downloadAnswerPdf(opts: { 
-  question: string; 
-  answerHtml: string; 
+export async function downloadAnswerPdf(opts: {
+  question: string;
+  answerHtml: string;
   fileName?: string;
   onProgress?: (stage: string) => void;
   mermaidSources?: string[]; // Pre-extracted mermaid source codes
@@ -529,13 +529,13 @@ export async function downloadAnswerPdf(opts: {
   try {
     onProgress?.('Loading PDF library...');
     await yieldToMain();
-    
+
     const html2pdf = await ensureHtml2Pdf();
     if (!html2pdf) throw new Error('PDF export failed: html2pdf library could not be loaded.');
-    
+
     onProgress?.('Preparing document...');
     await yieldToMain();
-    
+
     // Create a hidden container in the MAIN document (not iframe - iframe causes capture issues)
     // Position it far off-screen but with actual dimensions
     const container = document.createElement('div');
@@ -549,7 +549,7 @@ export async function downloadAnswerPdf(opts: {
       z-index: -9999;
       visibility: hidden;
     `;
-    
+
     // Build the PDF content with inline styles (most reliable for html2canvas)
     container.innerHTML = `
       <div style="
@@ -597,10 +597,10 @@ export async function downloadAnswerPdf(opts: {
         <div style="height: 40px;"></div>
       </div>
     `;
-    
+
     document.body.appendChild(container);
     await yieldToMain();
-    
+
     // Apply inline styles to ALL content elements for reliable capture
     const contentDiv = container.querySelector('.pdf-answer-content') as HTMLElement;
     if (contentDiv) {
@@ -608,12 +608,12 @@ export async function downloadAnswerPdf(opts: {
       contentDiv.querySelectorAll('p').forEach(el => {
         (el as HTMLElement).style.cssText = 'margin: 12px 0; line-height: 1.8; word-wrap: break-word; text-align: justify;';
       });
-      
+
       // Style all headings
       contentDiv.querySelectorAll('h1, h2, h3, h4, h5, h6').forEach(el => {
         (el as HTMLElement).style.cssText = 'font-weight: 700; color: #0f172a; margin: 20px 0 12px 0;';
       });
-      
+
       // Style all lists
       contentDiv.querySelectorAll('ul, ol').forEach(el => {
         (el as HTMLElement).style.cssText = 'margin: 12px 0; padding-left: 24px;';
@@ -621,7 +621,7 @@ export async function downloadAnswerPdf(opts: {
       contentDiv.querySelectorAll('li').forEach(el => {
         (el as HTMLElement).style.cssText = 'margin: 6px 0; line-height: 1.7; text-align: justify;';
       });
-      
+
       // Style code blocks - CRITICAL for proper rendering
       contentDiv.querySelectorAll('pre, .code-block').forEach(el => {
         (el as HTMLElement).style.cssText = `
@@ -640,7 +640,7 @@ export async function downloadAnswerPdf(opts: {
           max-width: 720px;
         `;
       });
-      
+
       contentDiv.querySelectorAll('code').forEach(el => {
         const parent = el.parentElement;
         if (parent?.tagName === 'PRE' || parent?.classList.contains('code-block')) {
@@ -651,7 +651,7 @@ export async function downloadAnswerPdf(opts: {
           (el as HTMLElement).style.cssText = 'background: #f1f5f9; padding: 2px 6px; border-radius: 4px; font-family: Consolas, Monaco, monospace; font-size: 12px; color: #0f172a;';
         }
       });
-      
+
       // Style tables
       contentDiv.querySelectorAll('table').forEach(el => {
         (el as HTMLElement).style.cssText = `
@@ -669,65 +669,65 @@ export async function downloadAnswerPdf(opts: {
       contentDiv.querySelectorAll('td').forEach(el => {
         (el as HTMLElement).style.cssText = 'background: #374151; color: #ffffff; padding: 10px; border: 1px solid #4b5563; word-wrap: break-word;';
       });
-      
+
       // Style ALL images to fit within content area
       contentDiv.querySelectorAll('img').forEach(el => {
         (el as HTMLElement).style.cssText = 'max-width: 580px !important; width: auto !important; height: auto !important; display: block !important;';
       });
-      
+
       // Style mermaid containers
       contentDiv.querySelectorAll('.mermaid-rendered').forEach(el => {
         (el as HTMLElement).style.cssText = 'max-width: 600px; overflow: visible; margin: 12px 0;';
       });
-      
+
       // Process Mermaid diagrams FIRST - convert SVGs to PNGs for reliable text rendering
       // This must happen BEFORE other styling since it replaces SVGs with images
       console.log('[PDF] Starting Mermaid diagram processing...');
       await processMermaidDiagrams(contentDiv, mermaidSources);
       console.log('[PDF] Mermaid diagram processing complete');
-      
+
       // Style session blocks (for multi-QA exports)
       contentDiv.querySelectorAll('.session-block').forEach(el => {
         (el as HTMLElement).style.cssText = 'margin-bottom: 32px; padding-bottom: 24px; border-bottom: 1px solid #e2e8f0;';
       });
-      
+
       // Style strong/bold - default dark color for normal text
       contentDiv.querySelectorAll('strong, b').forEach(el => {
         (el as HTMLElement).style.cssText = 'font-weight: 700; color: #0f172a;';
       });
-      
+
       // Style strong/bold INSIDE tables - must be WHITE
       contentDiv.querySelectorAll('th strong, th b, td strong, td b').forEach(el => {
         (el as HTMLElement).style.cssText = 'font-weight: 700; color: #ffffff !important;';
       });
-      
+
       // Hide buttons and interactive elements
       contentDiv.querySelectorAll('button, .lucide, svg.lucide, [class*="copy-"]').forEach(el => {
         (el as HTMLElement).style.display = 'none';
       });
-      
+
       // Hide thinking process
       contentDiv.querySelectorAll('details, .thinking-process').forEach(el => {
         (el as HTMLElement).style.display = 'none';
       });
     }
-    
+
     onProgress?.('Rendering document...');
     await yieldToMain();
-    
+
     // Give browser time to apply styles
     await new Promise(resolve => setTimeout(resolve, 100));
-    
+
     onProgress?.('Generating PDF...');
     await yieldToMain();
-    
+
     // Generate PDF - balanced quality and speed
     await html2pdf()
       .set({
         margin: [5, 5, 5, 5], // top, right, bottom, left in mm
         filename: safeFile,
         image: { type: 'jpeg', quality: 0.90 }, // JPEG for smaller file size
-        html2canvas: { 
+        html2canvas: {
           scale: 2, // Good quality without huge file size
           useCORS: true,
           backgroundColor: '#ffffff',
@@ -735,26 +735,26 @@ export async function downloadAnswerPdf(opts: {
           scrollX: 0,
           scrollY: 0,
         },
-        jsPDF: { 
-          unit: 'mm', 
-          format: 'a4', 
+        jsPDF: {
+          unit: 'mm',
+          format: 'a4',
           orientation: 'portrait',
           compress: true, // Compress for faster download
         },
-        pagebreak: { 
+        pagebreak: {
           mode: ['css', 'legacy'],
           avoid: ['h1', 'h2', 'h3', 'h4', 'tr', '.session-block', '.mermaid-rendered']
         },
       })
       .from(container.firstElementChild)
       .save();
-    
+
     // Cleanup
     document.body.removeChild(container);
-    
+
     onProgress?.('Complete!');
     return;
-    
+
   } catch (err) {
     console.error('[PDF Export] Error:', err);
     // Try to cleanup on error

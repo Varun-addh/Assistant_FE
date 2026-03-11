@@ -29,14 +29,14 @@ const StrataxMark = ({ className }: { className?: string }) => (
       strokeLinejoin="round"
       opacity="0.92"
     />
-    
+
     {/* Architecture nodes — decision points at key bends/intersections */}
     {/* Top node: Entry decision point */}
     <circle cx="7.5" cy="8" r="1.4" fill="currentColor" opacity="0.85" />
-    
+
     {/* Center node: Core intersection (system complexity) */}
     <circle cx="12" cy="12" r="1.6" fill="currentColor" opacity="0.9" />
-    
+
     {/* Bottom node: Exit/output decision */}
     <circle cx="16.5" cy="16" r="1.4" fill="currentColor" opacity="0.85" />
   </svg>
@@ -953,11 +953,11 @@ export const InterviewAssistant = () => {
     // Keep legacy key set for older builds / back-compat.
     localStorage.setItem("onboarding_tour_completed", "true");
     setShowOnboardingTour(false);
-    
+
     // Check if user already has API keys (returning user scenario)
     const groqKey = localStorage.getItem("user_api_key");
     const geminiKey = localStorage.getItem("gemini_api_key");
-    
+
     if (groqKey || geminiKey) {
       // User already has keys, mark as connected and proceed
       localStorage.setItem("api_keys_connected", "true");
@@ -1692,21 +1692,21 @@ export const InterviewAssistant = () => {
     } catch {
       void 0;
     }
-    
+
     // Hide choice UI
     setShowArchitectureChoice(false);
     setArchitectureChoicePayload(null);
-    
+
     // Show loading state
     setIsGenerating(true);
-    const loadingMessage = mode === "single" 
+    const loadingMessage = mode === "single"
       ? "🏗️ Generating comprehensive single-view architecture..."
       : "🏗️ Generating multi-view architecture with specialized diagrams...";
     setAnswer(loadingMessage);
 
     try {
       const sid = await ensureSession();
-      
+
       // Resend the question with the selected architecture_mode
       const res = await apiSubmitQuestion({
         session_id: sid,
@@ -1741,7 +1741,7 @@ export const InterviewAssistant = () => {
         const base = prev?.items ? [...prev.items] : [];
         // Find the existing entry with this question
         const existingIdx = base.findIndex(it => it.question === pendingArchitectureQuestion);
-        
+
         if (existingIdx >= 0) {
           // Update existing entry
           const next = base.map((it, i) => i === existingIdx ? ({
@@ -2188,7 +2188,7 @@ export const InterviewAssistant = () => {
       if (res?.ui_action === "collect_mirror_answer") {
         setPendingMirrorQuestion(q);
         setMirrorDialogOpen(true);
-        setAnswer("Mirror mode needs your draft answer. Please paste it to analyze.");
+        setAnswer("Mirror Mode initialized. Please paste your draft answer below to receive a strategic critique and an improved rewrite.");
         return;
       }
 
@@ -2204,12 +2204,12 @@ export const InterviewAssistant = () => {
           const next = base.map((it, i) =>
             i === pendingIdx
               ? {
-                  question: q,
-                  answer: res.answer,
-                  style: res.style,
-                  created_at: base[pendingIdx].created_at,
-                  mode: (it as any)?.mode ?? (res as any)?.mode ?? "mirror",
-                }
+                question: q,
+                answer: res.answer,
+                style: res.style,
+                created_at: base[pendingIdx].created_at,
+                mode: (it as any)?.mode ?? (res as any)?.mode ?? "mirror",
+              }
               : it
           );
           return { session_id: effectiveSid, items: next } as GetHistoryResponse;
@@ -2233,7 +2233,7 @@ export const InterviewAssistant = () => {
       } catch { }
 
       loadSessions();
-      
+
       // Clear the mirror answer so next question will prompt again
       setMirrorUserAnswer("");
     } catch (err: any) {
@@ -2354,7 +2354,7 @@ export const InterviewAssistant = () => {
         try {
           // 🏗️ ARCHITECTURE REQUESTS NOW GO TO BACKEND FOR MODE SELECTION
           // Old direct frontend generation removed - backend handles choice flow
-          
+
           // Debug: log outgoing payload so we can inspect it in network/console
           console.log('[api] POST /api/question payload', {
             session_id: sid,
@@ -2467,12 +2467,12 @@ export const InterviewAssistant = () => {
               const next = base.map((it, i) =>
                 i === pendingIdx
                   ? {
-                      question: currentQuestion,
-                      answer: "",
-                      style: res.style,
-                      created_at: base[pendingIdx].created_at,
-                      mode: (it as any)?.mode ?? ((res as any)?.mode as ("answer" | "mirror" | undefined)) ?? questionMode,
-                    }
+                    question: currentQuestion,
+                    answer: "",
+                    style: res.style,
+                    created_at: base[pendingIdx].created_at,
+                    mode: (it as any)?.mode ?? ((res as any)?.mode as ("answer" | "mirror" | undefined)) ?? questionMode,
+                  }
                   : it
               );
               return { session_id: effectiveSid, items: next } as GetHistoryResponse;
@@ -2487,7 +2487,7 @@ export const InterviewAssistant = () => {
         if (res?.ui_action === "collect_mirror_answer") {
           setPendingMirrorQuestion(currentQuestion);
           setMirrorDialogOpen(true);
-          setAnswer("Mirror mode: paste your answer to analyze.");
+          setAnswer("Mirror Mode: Please paste your draft answer to analyze it for structural improvements and clarity.");
           setIsGenerating(false);
           return;
         }
@@ -2555,10 +2555,10 @@ export const InterviewAssistant = () => {
           const CUTOFF = 1000;
           window.localStorage.setItem(archiveKey, JSON.stringify(list.slice(0, CUTOFF)));
         } catch { }
-        
+
         // ✅ SUCCESS - Now clear the input field
         if (!overrideQuestion) setQuestion("");
-        
+
         setShowAnswer(true);
       } catch (err) {
         console.error("[question] error", err);
@@ -2826,15 +2826,15 @@ export const InterviewAssistant = () => {
       <div className="absolute inset-0 pointer-events-none overflow-hidden">
         {/* Primary gradient mesh */}
         <div className="absolute inset-0 bg-gradient-to-br from-background via-background to-background" />
-        
+
         {/* Sophisticated gradient orbs - Always visible with theme-appropriate opacity */}
         <div className="absolute -top-20 -right-20 sm:-top-40 sm:-right-40 w-[300px] h-[300px] sm:w-[500px] sm:h-[500px] bg-gradient-to-br from-blue-500/[0.07] via-cyan-500/[0.05] to-transparent rounded-full blur-3xl dark:opacity-100 opacity-0 transition-opacity duration-300 animate-float-slow" />
         <div className="absolute -bottom-20 -left-20 sm:-bottom-40 sm:-left-40 w-[300px] h-[300px] sm:w-[500px] sm:h-[500px] bg-gradient-to-tr from-violet-500/[0.07] via-purple-500/[0.05] to-transparent rounded-full blur-3xl dark:opacity-100 opacity-0 transition-opacity duration-300 animate-float-slower" />
         <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[400px] h-[400px] sm:w-[600px] sm:h-[600px] bg-gradient-to-r from-indigo-500/[0.04] via-transparent to-cyan-500/[0.04] rounded-full blur-3xl dark:opacity-100 opacity-0 transition-opacity duration-300" />
-        
+
         {/* Subtle grid pattern overlay for tech feel */}
         <div className="absolute inset-0 dark:opacity-100 opacity-0 transition-opacity duration-300" style={{ backgroundImage: 'radial-gradient(circle at 1px 1px, rgba(255,255,255,0.02) 1px, transparent 0)', backgroundSize: '40px 40px' }} />
-        
+
         {/* Light mode elegant gradient - Always rendered */}
         <div className="absolute inset-0 bg-gradient-to-br from-blue-50/40 via-transparent to-purple-50/30 dark:opacity-0 opacity-100 transition-opacity duration-300" />
         <div className="absolute top-1/4 right-1/4 w-[250px] h-[250px] sm:w-[400px] sm:h-[400px] bg-gradient-to-br from-blue-400/15 via-cyan-300/8 to-transparent rounded-full blur-3xl dark:opacity-0 opacity-100 transition-opacity duration-300 animate-float-slow" />
@@ -3581,7 +3581,7 @@ export const InterviewAssistant = () => {
                                 onClick={() => handleSelectMockSession(session)}
                               >
                                 <div className="flex items-start justify-between gap-3">
-                                <div className="min-w-0 flex-1">
+                                  <div className="min-w-0 flex-1">
                                     <p className="text-sm font-medium capitalize group-hover:text-foreground transition-colors">
                                       {session.interview_type?.replace('_', ' ') || 'Interview'} • {session.difficulty || 'Unknown'}
                                     </p>
@@ -4237,64 +4237,64 @@ export const InterviewAssistant = () => {
                             </div>
                           )}
                           <div className="flex items-end gap-3">
-                          <DropdownMenu>
-                            <DropdownMenuTrigger asChild>
-                              <Button
-                                variant="outline"
-                                size="icon"
-                                disabled={isUploadingProfile}
-                                className="h-12 w-12 rounded-2xl border-primary/20 bg-background/95 backdrop-blur-xl hover:bg-primary/5 text-primary transition-all shrink-0"
-                                title="Actions"
-                              >
-                                {isUploadingProfile ? (
-                                  <Loader2 className="h-5 w-5 animate-spin" />
-                                ) : (
-                                  <Plus className="h-6 w-6" />
-                                )}
-                              </Button>
-                            </DropdownMenuTrigger>
-                            <DropdownMenuContent align="start" className="w-56">
-                              <DropdownMenuItem
-                                onSelect={(e) => {
-                                  e.preventDefault();
-                                  handleProfileUploadClick();
-                                }}
-                              >
-                                Upload Resume/Profile
-                              </DropdownMenuItem>
-                              <DropdownMenuSeparator />
-                              <DropdownMenuLabel>Mode</DropdownMenuLabel>
-                              <DropdownMenuRadioGroup
-                                value={questionMode}
-                                onValueChange={(v) => setQuestionMode(v as "answer" | "mirror")}
-                              >
-                                <DropdownMenuRadioItem value="answer">Answer</DropdownMenuRadioItem>
-                                <DropdownMenuRadioItem value="mirror">Mirror (Feedback)</DropdownMenuRadioItem>
-                              </DropdownMenuRadioGroup>
-                              <div className="px-2 py-1.5 text-xs text-muted-foreground">
-                                Mirror Mode: enter the question, then paste your draft answer for critique + a stronger rewrite.
-                              </div>
-                            </DropdownMenuContent>
-                          </DropdownMenu>
+                            <DropdownMenu>
+                              <DropdownMenuTrigger asChild>
+                                <Button
+                                  variant="outline"
+                                  size="icon"
+                                  disabled={isUploadingProfile}
+                                  className="h-12 w-12 rounded-2xl border-primary/20 bg-background/95 backdrop-blur-xl hover:bg-primary/5 text-primary transition-all shrink-0"
+                                  title="Actions"
+                                >
+                                  {isUploadingProfile ? (
+                                    <Loader2 className="h-5 w-5 animate-spin" />
+                                  ) : (
+                                    <Plus className="h-6 w-6" />
+                                  )}
+                                </Button>
+                              </DropdownMenuTrigger>
+                              <DropdownMenuContent align="start" className="w-56">
+                                <DropdownMenuItem
+                                  onSelect={(e) => {
+                                    e.preventDefault();
+                                    handleProfileUploadClick();
+                                  }}
+                                >
+                                  Upload Resume/Profile
+                                </DropdownMenuItem>
+                                <DropdownMenuSeparator />
+                                <DropdownMenuLabel>Mode</DropdownMenuLabel>
+                                <DropdownMenuRadioGroup
+                                  value={questionMode}
+                                  onValueChange={(v) => setQuestionMode(v as "answer" | "mirror")}
+                                >
+                                  <DropdownMenuRadioItem value="answer">Answer</DropdownMenuRadioItem>
+                                  <DropdownMenuRadioItem value="mirror">Mirror (Feedback)</DropdownMenuRadioItem>
+                                </DropdownMenuRadioGroup>
+                                <div className="px-2 py-1.5 text-xs text-muted-foreground">
+                                  Mirror Mode: enter the question, then paste your draft answer for critique + a stronger rewrite.
+                                </div>
+                              </DropdownMenuContent>
+                            </DropdownMenu>
 
-                          <div className="flex-1">
-                            <SearchBar
-                              value={question}
-                              onChange={(v) => {
-                                if (viewingHistory) setViewingHistory(false);
-                                setQuestion(v);
-                              }}
-                              placeholder="Ask anything..."
-                              resetToken={resetToken}
-                              ensureSession={ensureSession}
-                              onGenerate={handleGenerateAnswer}
-                              isGenerating={isGenerating}
-                              canGenerate={!viewingHistory}
-                              mode={questionMode}
-                              onModeClick={() => setQuestionMode(questionMode === "answer" ? "mirror" : "answer")}
-                            />
+                            <div className="flex-1">
+                              <SearchBar
+                                value={question}
+                                onChange={(v) => {
+                                  if (viewingHistory) setViewingHistory(false);
+                                  setQuestion(v);
+                                }}
+                                placeholder="Ask anything..."
+                                resetToken={resetToken}
+                                ensureSession={ensureSession}
+                                onGenerate={handleGenerateAnswer}
+                                isGenerating={isGenerating}
+                                canGenerate={!viewingHistory}
+                                mode={questionMode}
+                                onModeClick={() => setQuestionMode(questionMode === "answer" ? "mirror" : "answer")}
+                              />
+                            </div>
                           </div>
-                        </div>
                         </div>
 
                         {/* Quick suggestions */}
@@ -4417,64 +4417,64 @@ export const InterviewAssistant = () => {
                   )}
 
                   <div className="flex items-end gap-2 md:gap-3">
-                  <DropdownMenu>
-                    <DropdownMenuTrigger asChild>
-                      <Button
-                        variant="outline"
-                        size="icon"
-                        disabled={isUploadingProfile}
-                        className="h-12 w-12 rounded-full border-primary/20 bg-background/95 dark:backdrop-blur-xl hover:bg-primary/5 text-primary transition-all shrink-0 shadow-sm"
-                        title="Actions"
-                      >
-                        {isUploadingProfile ? (
-                          <Loader2 className="h-4 w-4 md:h-5 md:w-5 animate-spin" />
-                        ) : (
-                          <Plus className="h-5 w-5 md:h-6 md:w-6" />
-                        )}
-                      </Button>
-                    </DropdownMenuTrigger>
-                    <DropdownMenuContent align="start" className="w-56">
-                      <DropdownMenuItem
-                        onSelect={(e) => {
-                          e.preventDefault();
-                          handleProfileUploadClick();
-                        }}
-                      >
-                        Upload Resume/Profile
-                      </DropdownMenuItem>
-                      <DropdownMenuSeparator />
-                      <DropdownMenuLabel>Mode</DropdownMenuLabel>
-                      <DropdownMenuRadioGroup
-                        value={questionMode}
-                        onValueChange={(v) => setQuestionMode(v as "answer" | "mirror")}
-                      >
-                        <DropdownMenuRadioItem value="answer">Answer</DropdownMenuRadioItem>
-                        <DropdownMenuRadioItem value="mirror">Mirror (Feedback)</DropdownMenuRadioItem>
-                      </DropdownMenuRadioGroup>
-                      <div className="px-2 py-1.5 text-xs text-muted-foreground">
-                        Mirror Mode: enter the question, then paste your draft answer for critique + a stronger rewrite.
-                      </div>
-                    </DropdownMenuContent>
-                  </DropdownMenu>
+                    <DropdownMenu>
+                      <DropdownMenuTrigger asChild>
+                        <Button
+                          variant="outline"
+                          size="icon"
+                          disabled={isUploadingProfile}
+                          className="h-12 w-12 rounded-full border-primary/20 bg-background/95 dark:backdrop-blur-xl hover:bg-primary/5 text-primary transition-all shrink-0 shadow-sm"
+                          title="Actions"
+                        >
+                          {isUploadingProfile ? (
+                            <Loader2 className="h-4 w-4 md:h-5 md:w-5 animate-spin" />
+                          ) : (
+                            <Plus className="h-5 w-5 md:h-6 md:w-6" />
+                          )}
+                        </Button>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent align="start" className="w-56">
+                        <DropdownMenuItem
+                          onSelect={(e) => {
+                            e.preventDefault();
+                            handleProfileUploadClick();
+                          }}
+                        >
+                          Upload Resume/Profile
+                        </DropdownMenuItem>
+                        <DropdownMenuSeparator />
+                        <DropdownMenuLabel>Mode</DropdownMenuLabel>
+                        <DropdownMenuRadioGroup
+                          value={questionMode}
+                          onValueChange={(v) => setQuestionMode(v as "answer" | "mirror")}
+                        >
+                          <DropdownMenuRadioItem value="answer">Answer</DropdownMenuRadioItem>
+                          <DropdownMenuRadioItem value="mirror">Mirror (Feedback)</DropdownMenuRadioItem>
+                        </DropdownMenuRadioGroup>
+                        <div className="px-2 py-1.5 text-xs text-muted-foreground">
+                          Mirror Mode: enter the question, then paste your draft answer for critique + a stronger rewrite.
+                        </div>
+                      </DropdownMenuContent>
+                    </DropdownMenu>
 
-                  <div className="flex-1">
-                    <SearchBar
-                      value={question}
-                      onChange={(v) => {
-                        if (viewingHistory) setViewingHistory(false);
-                        setQuestion(v);
-                      }}
-                      placeholder="Ask Stratax AI..."
-                      resetToken={resetToken}
-                      ensureSession={ensureSession}
-                      onGenerate={handleGenerateAnswer}
-                      isGenerating={isGenerating}
-                      canGenerate={!viewingHistory}
-                      mode={questionMode}
-                      onModeClick={() => setQuestionMode(questionMode === "answer" ? "mirror" : "answer")}
-                    />
+                    <div className="flex-1">
+                      <SearchBar
+                        value={question}
+                        onChange={(v) => {
+                          if (viewingHistory) setViewingHistory(false);
+                          setQuestion(v);
+                        }}
+                        placeholder="Ask Stratax AI..."
+                        resetToken={resetToken}
+                        ensureSession={ensureSession}
+                        onGenerate={handleGenerateAnswer}
+                        isGenerating={isGenerating}
+                        canGenerate={!viewingHistory}
+                        mode={questionMode}
+                        onModeClick={() => setQuestionMode(questionMode === "answer" ? "mirror" : "answer")}
+                      />
+                    </div>
                   </div>
-                </div>
                 </div>
               </div>
 
@@ -4510,7 +4510,7 @@ export const InterviewAssistant = () => {
                 id="mirror-user-answer"
                 value={mirrorUserAnswer}
                 onChange={(e) => setMirrorUserAnswer(e.target.value)}
-                placeholder="Paste your answer to analyze"
+                placeholder="Paste your draft answer here to analyze..."
                 className="min-h-[200px]"
               />
             </div>

@@ -21,24 +21,24 @@ export default function Auth() {
   ];
 
   return (
-    <div className="relative min-h-screen overflow-x-hidden bg-background text-foreground transition-colors duration-500">
+    <div className="relative min-h-screen bg-background text-foreground transition-colors duration-500 overflow-x-clip" style={{ maxWidth: '100vw' }}>
       {/* World-Class Futuristic Background */}
-      <div className="fixed inset-0 overflow-hidden">
+      <div className="fixed inset-0 overflow-hidden pointer-events-none">
         {/* Base gradient */}
         <div className="absolute inset-0 bg-gradient-to-br from-slate-50 via-white to-purple-50 dark:from-slate-950 dark:via-slate-900 dark:to-purple-950 transition-colors duration-500" />
-        
+
         {/* Sophisticated floating orbs - Always rendered with opacity transitions */}
         <div className="absolute top-1/4 right-0 sm:right-1/4 w-[300px] h-[300px] sm:w-[550px] sm:h-[550px] bg-gradient-to-br from-purple-500/[0.18] via-pink-400/[0.10] to-transparent rounded-full blur-3xl dark:opacity-100 opacity-0 transition-opacity duration-500 animate-float-slow" />
         <div className="absolute bottom-1/4 left-0 sm:left-1/4 w-[300px] h-[300px] sm:w-[500px] sm:h-[500px] bg-gradient-to-tr from-blue-500/[0.18] via-cyan-400/[0.10] to-transparent rounded-full blur-3xl dark:opacity-100 opacity-0 transition-opacity duration-500 animate-float-slower" />
         <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[350px] h-[350px] sm:w-[600px] sm:h-[600px] bg-gradient-to-r from-violet-500/[0.08] via-transparent to-blue-500/[0.08] rounded-full blur-3xl dark:opacity-100 opacity-0 transition-opacity duration-500" />
-        
+
         {/* Light mode elegant orbs */}
         <div className="absolute top-1/4 right-0 sm:right-1/4 w-[300px] h-[300px] sm:w-[550px] sm:h-[550px] bg-gradient-to-br from-purple-400/25 via-pink-300/15 to-transparent rounded-full blur-3xl dark:opacity-0 opacity-100 transition-opacity duration-500 animate-float-slow" />
         <div className="absolute bottom-1/4 left-0 sm:left-1/4 w-[300px] h-[300px] sm:w-[500px] sm:h-[500px] bg-gradient-to-tr from-blue-400/25 via-cyan-300/15 to-transparent rounded-full blur-3xl dark:opacity-0 opacity-100 transition-opacity duration-500 animate-float-slower" />
-        
+
         {/* Subtle dot grid pattern */}
         <div className="absolute inset-0 opacity-[0.02] dark:opacity-[0.03] transition-opacity duration-500" style={{ backgroundImage: 'radial-gradient(circle at 1px 1px, currentColor 1px, transparent 0)', backgroundSize: '36px 36px' }} />
-        
+
         {/* Glassmorphism overlay */}
         <div className="absolute inset-0 bg-gradient-to-b from-transparent via-white/40 to-white/70 dark:via-black/30 dark:to-black/50 transition-colors duration-500" />
       </div>
@@ -92,7 +92,7 @@ export default function Auth() {
         </div>
 
         {/* Right Side - Auth Form */}
-        <div className="w-full lg:w-1/2 flex items-start justify-center px-6 py-12 lg:h-screen lg:overflow-y-auto">
+        <div className="w-full lg:w-1/2 flex items-start justify-center px-6 py-12 lg:h-screen lg:overflow-y-auto" style={{ WebkitOverflowScrolling: 'touch' }}>
           <motion.div
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}

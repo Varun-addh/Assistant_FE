@@ -12,7 +12,8 @@ import {
   Zap,
   ChevronDown,
   ChevronRight,
-  Network
+  Network,
+  BookOpen
 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { isDevelopmentMode } from "@/lib/devUtils";
@@ -115,29 +116,29 @@ const Index = () => {
   ];
 
   return (
-    <div className="relative min-h-screen overflow-y-auto overflow-x-hidden touch-pan-y bg-background text-foreground transition-colors duration-500">
+    <div className="relative min-h-screen overflow-y-auto touch-pan-y bg-background text-foreground transition-colors duration-500 overflow-x-clip" style={{ maxWidth: '100vw', WebkitOverflowScrolling: 'touch' }}>
       {/* Fixed Header with User Profile */}
       <div className="fixed top-0 right-0 z-50 p-4 flex items-center gap-3">
         {loading ? null : user ? <UserProfile /> : null}
       </div>
 
       {/* World-Class Futuristic Background */}
-      <div className="absolute inset-0 overflow-hidden">
+      <div className="absolute inset-0 overflow-hidden pointer-events-none">
         {/* Base gradient */}
         <div className="absolute inset-0 bg-gradient-to-br from-slate-50 via-white to-blue-50 dark:from-slate-950 dark:via-slate-900 dark:to-blue-950 transition-colors duration-500" />
-        
+
         {/* Sophisticated floating orbs - Dark mode - Always rendered with opacity */}
         <div className="absolute top-10 right-0 sm:top-20 sm:right-1/4 w-[350px] h-[350px] sm:w-[600px] sm:h-[600px] bg-gradient-to-br from-blue-500/[0.15] via-cyan-400/[0.08] to-transparent rounded-full blur-3xl dark:opacity-100 opacity-0 transition-opacity duration-500 animate-float-slow" />
         <div className="absolute bottom-10 left-0 sm:bottom-20 sm:left-1/4 w-[300px] h-[300px] sm:w-[500px] sm:h-[500px] bg-gradient-to-tr from-violet-500/[0.15] via-purple-400/[0.08] to-transparent rounded-full blur-3xl dark:opacity-100 opacity-0 transition-opacity duration-500 animate-float-slower" />
         <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[400px] h-[400px] sm:w-[700px] sm:h-[700px] bg-gradient-to-r from-indigo-500/[0.06] via-transparent to-pink-500/[0.06] rounded-full blur-3xl dark:opacity-100 opacity-0 transition-opacity duration-500" />
-        
+
         {/* Light mode elegant orbs - Always rendered */}
         <div className="absolute top-10 right-0 sm:top-20 sm:right-1/4 w-[350px] h-[350px] sm:w-[600px] sm:h-[600px] bg-gradient-to-br from-blue-400/20 via-cyan-300/10 to-transparent rounded-full blur-3xl dark:opacity-0 opacity-100 transition-opacity duration-500 animate-float-slow" />
         <div className="absolute bottom-10 left-0 sm:bottom-20 sm:left-1/4 w-[300px] h-[300px] sm:w-[500px] sm:h-[500px] bg-gradient-to-tr from-violet-400/20 via-purple-300/10 to-transparent rounded-full blur-3xl dark:opacity-0 opacity-100 transition-opacity duration-500 animate-float-slower" />
-        
+
         {/* Subtle dot matrix pattern */}
         <div className="absolute inset-0 opacity-[0.015] dark:opacity-[0.025] transition-opacity duration-500" style={{ backgroundImage: 'radial-gradient(circle at 1px 1px, currentColor 1px, transparent 0)', backgroundSize: '32px 32px' }} />
-        
+
         {/* Glassmorphism overlay */}
         <div className="absolute inset-0 bg-gradient-to-b from-transparent via-white/30 to-white/60 dark:via-black/20 dark:to-black/40 transition-colors duration-500" />
       </div>
@@ -277,7 +278,7 @@ const Index = () => {
           </DialogHeader>
           <DialogDescription className="text-sm md:text-base leading-relaxed space-y-4 md:space-y-6">
             <p className="text-foreground">{selectedFeature?.description}</p>
-            
+
             <div className="pt-3 md:pt-4 border-t">
               <h4 className="font-semibold mb-3 md:mb-4 text-base md:text-lg text-foreground">Key Features & Benefits:</h4>
               <ul className="space-y-2 md:space-y-3">
@@ -348,7 +349,7 @@ const Index = () => {
             </div>
           </DialogDescription>
           <DialogFooter>
-            <Button 
+            <Button
               onClick={() => setShowFeatureModal(false)}
               className="bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700 text-white w-full"
             >

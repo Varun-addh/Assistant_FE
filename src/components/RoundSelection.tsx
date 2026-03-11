@@ -279,12 +279,8 @@ export default function RoundSelection({ onRoundStart, userProfile, ensureLiveMe
 
     const desired = normalizeRoundType(nextSessionPrefill?.recommended_round);
     if (desired) {
-      const candidates = [...recommendedRounds, ...recommendedSequence, ...allRounds];
-      const match = candidates.find((r) => normalizeRoundType(r.round_type) === desired);
-      if (match) {
-        setSelectedRound(match);
-        setView('recommended');
-      }
+      // We don't auto-select the round anymore so the user sees the list first.
+      // But we could potentially use this to highlight the round in the UI.
     }
 
     setPrefillApplied(true);
@@ -460,22 +456,6 @@ export default function RoundSelection({ onRoundStart, userProfile, ensureLiveMe
     }
   };
 
-  // If the progress CTA requested auto-start, start once prefill is applied and we have a selected round.
-  useEffect(() => {
-    const autostart = !!nextSessionPrefill?._autostart;
-    if (!autostart) return;
-    if (!prefillApplied) return;
-    if (starting) return;
-    if (!selectedRound) return;
-
-    const effectiveDomain = (domain || userProfile?.domain || '').trim();
-    if (!effectiveDomain) return;
-
-    // Fire once; handleStartRound sets `starting`.
-    handleStartRound();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [nextSessionPrefill, prefillApplied, selectedRound, domain]);
-
   // Build contextual recommendation label for a round
   const getRecommendationLabel = (round: RoundConfig): string | null => {
     // Only label rounds that are actually in the recommended set
@@ -511,13 +491,12 @@ export default function RoundSelection({ onRoundStart, userProfile, ensureLiveMe
 
     return (
       <Card
-        className={`group cursor-pointer transition-all duration-300 hover:shadow-2xl hover:scale-[1.03] ${
-          isSelected
-            ? 'ring-2 ring-primary shadow-2xl scale-[1.02] border-primary/50'
-            : isStartHere
-              ? 'border-primary/40 shadow-lg shadow-primary/5 hover:border-primary/60'
-              : 'hover:border-primary/30'
-        } ${isDomainMissing ? 'opacity-50 cursor-not-allowed' : ''}`}
+        className={`group cursor-pointer transition-all duration-300 hover:shadow-2xl hover:scale-[1.03] ${isSelected
+          ? 'ring-2 ring-primary shadow-2xl scale-[1.02] border-primary/50'
+          : isStartHere
+            ? 'border-primary/40 shadow-lg shadow-primary/5 hover:border-primary/60'
+            : 'hover:border-primary/30'
+          } ${isDomainMissing ? 'opacity-50 cursor-not-allowed' : ''}`}
         onClick={() => {
           if (isDomainMissing) {
             toast({
@@ -660,84 +639,84 @@ export default function RoundSelection({ onRoundStart, userProfile, ensureLiveMe
                           <span>Domain / Specialization</span>
                           <span className="text-red-400 text-sm leading-none">*</span>
                         </Label>
-                      <Select value={domain} onValueChange={setDomain}>
-                        <SelectTrigger
-                          id="domain"
-                          className={`h-10 bg-background/50 transition-colors ${!domain ? 'border-red-400/40 focus:border-red-400/60 focus:ring-1 focus:ring-red-400/20' : 'border-border/40 focus:border-primary/40 focus:ring-1 focus:ring-primary/20'}`}
-                        >
-                          <SelectValue placeholder="Select your domain..." />
-                        </SelectTrigger>
-                        <SelectContent className="max-h-[300px]">
-                          <SelectItem value="Python Backend Development">Python Backend Development</SelectItem>
-                          <SelectItem value="Java Backend Development">Java Backend Development</SelectItem>
-                          <SelectItem value="JavaScript/Node.js Backend">JavaScript/Node.js Backend</SelectItem>
-                          <SelectItem value="Go Backend Development">Go Backend Development</SelectItem>
-                          <SelectItem value="C# .NET Development">C# .NET Development</SelectItem>
-                          <SelectItem value="Frontend Development (React)">Frontend Development (React)</SelectItem>
-                          <SelectItem value="Frontend Development (Vue)">Frontend Development (Vue)</SelectItem>
-                          <SelectItem value="Frontend Development (Angular)">Frontend Development (Angular)</SelectItem>
-                          <SelectItem value="Full Stack Development">Full Stack Development</SelectItem>
-                          <SelectItem value="Mobile Development (iOS)">Mobile Development (iOS)</SelectItem>
-                          <SelectItem value="Mobile Development (Android)">Mobile Development (Android)</SelectItem>
-                          <SelectItem value="Mobile Development (React Native)">Mobile Development (React Native)</SelectItem>
-                          <SelectItem value="Data Engineering">Data Engineering</SelectItem>
-                          <SelectItem value="Machine Learning Engineering">Machine Learning Engineering</SelectItem>
-                          <SelectItem value="Data Science">Data Science</SelectItem>
-                          <SelectItem value="DevOps Engineering">DevOps Engineering</SelectItem>
-                          <SelectItem value="Site Reliability Engineering (SRE)">Site Reliability Engineering (SRE)</SelectItem>
-                          <SelectItem value="Cloud Engineering (AWS)">Cloud Engineering (AWS)</SelectItem>
-                          <SelectItem value="Cloud Engineering (Azure)">Cloud Engineering (Azure)</SelectItem>
-                          <SelectItem value="Cloud Engineering (GCP)">Cloud Engineering (GCP)</SelectItem>
-                          <SelectItem value="Security Engineering">Security Engineering</SelectItem>
-                          <SelectItem value="System Design & Architecture">System Design & Architecture</SelectItem>
-                          <SelectItem value="Database Administration">Database Administration</SelectItem>
-                          <SelectItem value="Product Management">Product Management</SelectItem>
-                        </SelectContent>
-                      </Select>
-                      {!domain && (
-                        <p className="text-[11px] text-red-400/90 flex items-center gap-1.5">
-                          <Target className="w-3 h-3" />
-                          Required for relevant questions
-                        </p>
-                      )}
-                    </div>
-
-                    {/* Experience Years */}
-                    <div className="space-y-2">
-                      <Label htmlFor="experience" className="text-xs sm:text-sm font-medium text-foreground/80">
-                        Years of Experience
-                      </Label>
-                      <Input
-                        id="experience"
-                        type="number"
-                        min="0"
-                        max="30"
-                        value={experienceYears || ''}
-                        onChange={(e) => setExperienceYears(parseInt(e.target.value) || 0)}
-                        placeholder="0-30 years"
-                        className="h-10 bg-background/50 border-border/40 focus:border-primary/40 focus:ring-1 focus:ring-primary/20 transition-colors"
-                        maxLength={3}
-                      />
-                      <p className="text-[11px] text-muted-foreground/70 flex items-center gap-1">
-                        <TrendingUp className="w-3 h-3" />
-                        Personalizes question difficulty
-                      </p>
-                    </div>
-
-                    {/* Update Button */}
-                    {(domain !== (userProfile?.domain || '') || experienceYears !== (userProfile?.experience_years || 0)) && (
-                      <div className="md:col-span-2">
-                        <Button
-                          onClick={loadRounds}
-                          variant="outline"
-                          className="w-full h-10 border-primary/25 hover:bg-primary/5 hover:border-primary/40 text-xs sm:text-sm transition-all"
-                          disabled={loading || !domain}
-                        >
-                          <TrendingUp className="w-3.5 h-3.5 mr-2" />
-                          Update Recommendations
-                        </Button>
+                        <Select value={domain} onValueChange={setDomain}>
+                          <SelectTrigger
+                            id="domain"
+                            className={`h-10 bg-background/50 transition-colors ${!domain ? 'border-red-400/40 focus:border-red-400/60 focus:ring-1 focus:ring-red-400/20' : 'border-border/40 focus:border-primary/40 focus:ring-1 focus:ring-primary/20'}`}
+                          >
+                            <SelectValue placeholder="Select your domain..." />
+                          </SelectTrigger>
+                          <SelectContent className="max-h-[300px]">
+                            <SelectItem value="Python Backend Development">Python Backend Development</SelectItem>
+                            <SelectItem value="Java Backend Development">Java Backend Development</SelectItem>
+                            <SelectItem value="JavaScript/Node.js Backend">JavaScript/Node.js Backend</SelectItem>
+                            <SelectItem value="Go Backend Development">Go Backend Development</SelectItem>
+                            <SelectItem value="C# .NET Development">C# .NET Development</SelectItem>
+                            <SelectItem value="Frontend Development (React)">Frontend Development (React)</SelectItem>
+                            <SelectItem value="Frontend Development (Vue)">Frontend Development (Vue)</SelectItem>
+                            <SelectItem value="Frontend Development (Angular)">Frontend Development (Angular)</SelectItem>
+                            <SelectItem value="Full Stack Development">Full Stack Development</SelectItem>
+                            <SelectItem value="Mobile Development (iOS)">Mobile Development (iOS)</SelectItem>
+                            <SelectItem value="Mobile Development (Android)">Mobile Development (Android)</SelectItem>
+                            <SelectItem value="Mobile Development (React Native)">Mobile Development (React Native)</SelectItem>
+                            <SelectItem value="Data Engineering">Data Engineering</SelectItem>
+                            <SelectItem value="Machine Learning Engineering">Machine Learning Engineering</SelectItem>
+                            <SelectItem value="Data Science">Data Science</SelectItem>
+                            <SelectItem value="DevOps Engineering">DevOps Engineering</SelectItem>
+                            <SelectItem value="Site Reliability Engineering (SRE)">Site Reliability Engineering (SRE)</SelectItem>
+                            <SelectItem value="Cloud Engineering (AWS)">Cloud Engineering (AWS)</SelectItem>
+                            <SelectItem value="Cloud Engineering (Azure)">Cloud Engineering (Azure)</SelectItem>
+                            <SelectItem value="Cloud Engineering (GCP)">Cloud Engineering (GCP)</SelectItem>
+                            <SelectItem value="Security Engineering">Security Engineering</SelectItem>
+                            <SelectItem value="System Design & Architecture">System Design & Architecture</SelectItem>
+                            <SelectItem value="Database Administration">Database Administration</SelectItem>
+                            <SelectItem value="Product Management">Product Management</SelectItem>
+                          </SelectContent>
+                        </Select>
+                        {!domain && (
+                          <p className="text-[11px] text-red-400/90 flex items-center gap-1.5">
+                            <Target className="w-3 h-3" />
+                            Required for relevant questions
+                          </p>
+                        )}
                       </div>
-                    )}
+
+                      {/* Experience Years */}
+                      <div className="space-y-2">
+                        <Label htmlFor="experience" className="text-xs sm:text-sm font-medium text-foreground/80">
+                          Years of Experience
+                        </Label>
+                        <Input
+                          id="experience"
+                          type="number"
+                          min="0"
+                          max="30"
+                          value={experienceYears || ''}
+                          onChange={(e) => setExperienceYears(parseInt(e.target.value) || 0)}
+                          placeholder="0-30 years"
+                          className="h-10 bg-background/50 border-border/40 focus:border-primary/40 focus:ring-1 focus:ring-primary/20 transition-colors"
+                          maxLength={3}
+                        />
+                        <p className="text-[11px] text-muted-foreground/70 flex items-center gap-1">
+                          <TrendingUp className="w-3 h-3" />
+                          Personalizes question difficulty
+                        </p>
+                      </div>
+
+                      {/* Update Button */}
+                      {(domain !== (userProfile?.domain || '') || experienceYears !== (userProfile?.experience_years || 0)) && (
+                        <div className="md:col-span-2">
+                          <Button
+                            onClick={loadRounds}
+                            variant="outline"
+                            className="w-full h-10 border-primary/25 hover:bg-primary/5 hover:border-primary/40 text-xs sm:text-sm transition-all"
+                            disabled={loading || !domain}
+                          >
+                            <TrendingUp className="w-3.5 h-3.5 mr-2" />
+                            Update Recommendations
+                          </Button>
+                        </div>
+                      )}
                     </div>
                   </CardContent>
                 </Card>
@@ -763,11 +742,10 @@ export default function RoundSelection({ onRoundStart, userProfile, ensureLiveMe
                     variant={view === 'recommended' ? 'default' : 'ghost'}
                     onClick={() => setView('recommended')}
                     size="sm"
-                    className={`gap-1.5 px-4 h-9 text-xs sm:text-sm rounded-md transition-all ${
-                      view === 'recommended'
-                        ? 'shadow-md'
-                        : 'text-muted-foreground hover:text-foreground'
-                    }`}
+                    className={`gap-1.5 px-4 h-9 text-xs sm:text-sm rounded-md transition-all ${view === 'recommended'
+                      ? 'shadow-md'
+                      : 'text-muted-foreground hover:text-foreground'
+                      }`}
                   >
                     Recommended
                   </Button>
@@ -775,11 +753,10 @@ export default function RoundSelection({ onRoundStart, userProfile, ensureLiveMe
                     variant={view === 'all' ? 'default' : 'ghost'}
                     onClick={() => setView('all')}
                     size="sm"
-                    className={`gap-1.5 px-4 h-9 text-xs sm:text-sm rounded-md transition-all ${
-                      view === 'all'
-                        ? 'shadow-md'
-                        : 'text-muted-foreground hover:text-foreground'
-                    }`}
+                    className={`gap-1.5 px-4 h-9 text-xs sm:text-sm rounded-md transition-all ${view === 'all'
+                      ? 'shadow-md'
+                      : 'text-muted-foreground hover:text-foreground'
+                      }`}
                   >
                     <Layers className="w-3.5 h-3.5" />
                     All Rounds

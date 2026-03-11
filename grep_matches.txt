@@ -1,0 +1,4 @@
+246:  const [selectedRound, setSelectedRound] = useState<RoundConfig | null>(null);
+509:          setSelectedRound(round);
+873:                      onClick={() => setSelectedRound(null)}
+1003:                      onClick={() => setSelectedRound(null)}

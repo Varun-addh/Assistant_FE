@@ -23,6 +23,58 @@ import { downloadAnswerPdf, waitForSvgInDiagram, preloadHtml2Pdf } from "@/lib/u
 import { svgElementToPngImage } from "@/lib/utils";
 import { replaceDiagramSvgWithImg } from "@/lib/utils";
 
+// Robust code block parser to prevent split parity inversion bugs 
+// with unclosed code blocks or full-response markdown wrappers.
+const splitMarkdownFences = (text: string): string[] => {
+  let normalized = text;
+  // Deepseek/Llama global markdown wrapper strip
+  if (normalized.match(/^```(?:markdown|md)\s*\n/) && normalized.trim().endsWith('```')) {
+    const firstNewline = normalized.indexOf('\n');
+    normalized = normalized.substring(firstNewline + 1);
+    if (normalized.trim().endsWith('```')) {
+      const lastFence = normalized.lastIndexOf('```');
+      if (lastFence !== -1) {
+        normalized = normalized.substring(0, lastFence);
+      }
+    }
+  }
+
+  const result: string[] = [];
+  let current = normalized;
+  
+  while (current.length > 0) {
+    const openMatch = current.match(/(?:^|\n)```([a-zA-Z0-9+#._-]*)(?:[ \t]*\n|$)/);
+    if (!openMatch) {
+      result.push(current);
+      break;
+    }
+    
+    const openIdx = openMatch.index!;
+    const matchStr = openMatch[0];
+    const isNewlineStart = matchStr.startsWith('\n');
+    const lang = openMatch[1] || '';
+    
+    const beforeText = current.substring(0, openIdx + (isNewlineStart ? 1 : 0));
+    result.push(beforeText);
+    
+    const codeStart = openIdx + matchStr.length;
+    const closeMatch = current.substring(codeStart).match(/(?:^|\n)```(?:[ \t]*\n|$)/);
+    
+    if (closeMatch) {
+      const codeContent = current.substring(codeStart, codeStart + closeMatch.index!);
+      result.push(lang + '\n' + codeContent);
+      current = current.substring(codeStart + closeMatch.index! + closeMatch[0].length);
+    } else {
+      result.push(lang + '\n' + current.substring(codeStart));
+      current = '';
+    }
+  }
+  if (current === '') {
+    result.push(''); // Ensure trailing text block exists if ends immediately after code
+  }
+  return result;
+};
+
 interface AnswerCardProps {
   answer: string;
   question: string;
@@ -558,23 +610,23 @@ export const AnswerCard = ({ answer, question, mode, streaming = true, onEdit, o
   // 🛡️ SANITIZE: Strip CSS/HTML markup from Mermaid code
   const sanitizeMermaidCode = (code: string): string => {
     let sanitized = code.trim();
-    
+
     // Remove HTML tags
     sanitized = sanitized.replace(/<[^>]+>/g, '');
-    
+
     // Remove CSS style blocks
     sanitized = sanitized.replace(/style\s*=\s*["'][^"']*["']/gi, '');
     sanitized = sanitized.replace(/<style[^>]*>[\s\S]*?<\/style>/gi, '');
-    
+
     // Remove CSS class declarations that aren't Mermaid classDef
     sanitized = sanitized.replace(/\.[\w-]+\s*\{[^}]*\}/g, '');
-    
+
     // Remove inline CSS comments (/* ... */)
     sanitized = sanitized.replace(/\/\*[\s\S]*?\*\//g, '');
-    
+
     // Remove CSS @rules
     sanitized = sanitized.replace(/@[\w-]+[^{]*\{[^}]*\}/g, '');
-    
+
     // Decode HTML entities
     sanitized = sanitized
       .replace(/&lt;/g, '<')
@@ -582,14 +634,14 @@ export const AnswerCard = ({ answer, question, mode, streaming = true, onEdit, o
       .replace(/&amp;/g, '&')
       .replace(/&quot;/g, '"')
       .replace(/&#39;/g, "'");
-    
+
     // Remove excessive whitespace but preserve structure
     sanitized = sanitized
       .split('\n')
       .map(line => line.trim())
       .filter(line => line.length > 0)
       .join('\n');
-    
+
     return sanitized;
   };
 
@@ -1314,8 +1366,8 @@ export const AnswerCard = ({ answer, question, mode, streaming = true, onEdit, o
 
   const formatStreamingText = (text: string) => {
     if (!text) return '';
-    // Split by code fences to handle mixed content; sanitize only non-code parts
-    const parts = text.split(/```/g);
+    // Split by code fences using robust parser
+    const parts = splitMarkdownFences(text);
     let result = '';
 
     for (let i = 0; i < parts.length; i++) {
@@ -1356,47 +1408,6 @@ export const AnswerCard = ({ answer, question, mode, streaming = true, onEdit, o
     return result;
   };
 
-  // Handle incomplete code blocks during streaming
-  const formatIncompleteCodeBlock = (text: string) => {
-    // Find the last ``` to get the incomplete code section without altering code content
-    const lastCodeStart = text.lastIndexOf('```');
-    if (lastCodeStart === -1) return formatTextContent(sanitizeIncoming(text));
-
-    const beforeCode = sanitizeIncoming(text.substring(0, lastCodeStart));
-    const incompleteCodeSection = text.substring(lastCodeStart + 3);
-
-    let result = '';
-
-    // Format any text before the code block
-    if (beforeCode.trim()) {
-      result += formatStreamingText(beforeCode);
-    }
-
-    // Handle the incomplete code section
-    if (incompleteCodeSection.trim()) {
-      const lines = incompleteCodeSection.split('\n');
-      let lang = '';
-      let codeContent = '';
-
-      if (lines.length > 0 && lines[0].trim().match(/^\w+$/)) {
-        lang = lines[0].trim();
-        codeContent = lines.slice(1).join('\n');
-      } else {
-        codeContent = incompleteCodeSection;
-      }
-
-      // Show the incomplete code block
-      result += `<div class="code-block streaming" data-lang="${lang}">`;
-      result += `<div class="code-header">${lang ? lang.charAt(0).toUpperCase() + lang.slice(1) + ' Code' : 'Code'} (streaming...)</div>`;
-      // Do NOT sanitize/normalize code content
-      result += `<pre><code class="language-${lang}">${highlightCode(codeContent, lang)}</code></pre>`;
-      result += `</div>`;
-    }
-
-    return result;
-  };
-
-  // Format text content with real-time markdown-like formatting
   const formatTextContent = (text: string) => {
     if (!text.trim()) return '';
 
@@ -1644,8 +1655,8 @@ export const AnswerCard = ({ answer, question, mode, streaming = true, onEdit, o
   const parseContent = (text: string) => {
     const blocks: Array<{ type: string, content: string, lang?: string }> = [];
 
-    // First, split by code fences to separate code from text; sanitize only non-code parts
-    const parts = text.split(/```/g);
+    // First, split by code fences using robust parser to separate code from text
+    const parts = splitMarkdownFences(text);
 
     for (let i = 0; i < parts.length; i++) {
       if (i % 2 === 1) {
@@ -1800,7 +1811,7 @@ export const AnswerCard = ({ answer, question, mode, streaming = true, onEdit, o
               // Create a paragraph block for the description
               blocks.push({
                 type: 'p',
-                content: description
+                content: description.charAt(0).toUpperCase() + description.slice(1)
               });
               currentBlock = null;
               return;
@@ -2474,7 +2485,7 @@ export const AnswerCard = ({ answer, question, mode, streaming = true, onEdit, o
 
   const extractFirstCodeBlock = (text: string): { lang: string; code: string } | null => {
     if (!text) return null;
-    const parts = text.split(/```/g);
+    const parts = splitMarkdownFences(text);
     for (let i = 1; i < parts.length; i += 2) {
       const raw = parts[i].trim();
       const lines = raw.split('\n');
@@ -2896,7 +2907,7 @@ export const AnswerCard = ({ answer, question, mode, streaming = true, onEdit, o
 
       <CardContent className="pl-2 pr-3 md:px-6 py-2 overflow-x-hidden">
         {((!answer || answer.includes("Analyzing your question")) && isGenerating) ||
-         (answer && !answer.includes("Analyzing your question") && displayedBlocks.length === 0 && !typedText && streaming) ? (
+          (answer && !answer.includes("Analyzing your question") && displayedBlocks.length === 0 && !typedText && streaming) ? (
           <div className="space-y-3 py-2 animate-in fade-in duration-500">
             <div className="h-4 bg-muted/40 rounded-full w-3/4 animate-pulse" />
             <div className="h-4 bg-muted/40 rounded-full w-1/2 animate-pulse" />
@@ -3135,23 +3146,12 @@ export const AnswerCard = ({ answer, question, mode, streaming = true, onEdit, o
               </div>
             ))}
 
-            {/* Current typing block with real-time formatting */}
             {typedText && (
               <div className="prose prose-neutral dark:prose-invert max-w-none streaming-content">
                 <div
                   className="text-sm leading-relaxed streaming-content"
                   dangerouslySetInnerHTML={{
-                    __html: (() => {
-                      // Check if we're in an incomplete code block
-                      const codeBlockMatches = typedText.match(/```/g);
-                      const isIncompleteCodeBlock = codeBlockMatches && codeBlockMatches.length % 2 === 1;
-
-                      if (isIncompleteCodeBlock) {
-                        return formatIncompleteCodeBlock(typedText) + '<span class="animate-pulse">|</span>';
-                      } else {
-                        return formatStreamingText(typedText) + '<span class="animate-pulse">|</span>';
-                      }
-                    })()
+                    __html: formatStreamingText(typedText) + '<span class="animate-pulse">|</span>'
                   }}
                 />
               </div>

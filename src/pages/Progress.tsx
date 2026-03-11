@@ -153,7 +153,7 @@ export default function Progress() {
 
     // Persist plan so PracticeMode/RoundSelection can auto-apply it.
     try {
-      window.localStorage.setItem('practice_next_session_plan', JSON.stringify({ ...nextPlan, _autostart: true }));
+      window.localStorage.setItem('practice_next_session_plan', JSON.stringify({ ...nextPlan }));
     } catch {
       // Ignore storage failures; user can still start manually.
     }

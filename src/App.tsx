@@ -19,7 +19,23 @@ import { DemoGateModal } from "./components/DemoGateModal";
 import { PwaInstallProvider } from "./context/PwaInstallContext";
 
 
+import { useEffect } from "react";
+
 const queryClient = new QueryClient();
+
+/**
+ * Redirects to the static documentation page.
+ * Used for both "/" and "/docs" routes so that
+ * strataxai.in → Documentation homepage
+ * strataxai.in/docs → Documentation (same page)
+ * strataxai.in/app → Application
+ */
+const DocsRedirect = () => {
+  useEffect(() => {
+    window.location.replace('/docs/');
+  }, []);
+  return null;
+};
 
 const App = () => (
   <QueryClientProvider client={queryClient}>
@@ -30,13 +46,13 @@ const App = () => (
         <DemoGateModal />
         <RateLimitWarning onUpgradeClick={() => {
           // Trigger upgrade modal
-          window.dispatchEvent(new CustomEvent('ratelimit:exceeded', { 
-            detail: { 
+          window.dispatchEvent(new CustomEvent('ratelimit:exceeded', {
+            detail: {
               message: 'You are approaching your rate limit.',
               current_usage: 0,
               limit: 0,
               tier: 'free'
-            } 
+            }
           }));
         }} />
         <BrowserRouter>
@@ -49,7 +65,10 @@ const App = () => (
             <Route path="/auth/google/callback" element={<GoogleCallback />} />
             <Route path="/auth/verify-email" element={<VerifyEmail />} />
             <Route path="/auth/reset-password" element={<ResetPassword />} />
-            <Route path="/" element={<Index />} />
+            {/* Root "/" → Documentation (redirect to static docs page) */}
+            <Route path="/" element={<DocsRedirect />} />
+            {/* Landing page is now accessible at /landing for direct access */}
+            <Route path="/landing" element={<Index />} />
             <Route path="/app" element={
               <InterviewAssistant />
             } />
@@ -68,6 +87,8 @@ const App = () => (
                 <Progress />
               </ProtectedRoute>
             } />
+            {/* /docs → Also redirects to documentation */}
+            <Route path="/docs" element={<DocsRedirect />} />
             {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
             <Route path="*" element={<NotFound />} />
           </Routes>

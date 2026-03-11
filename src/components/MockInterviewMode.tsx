@@ -1119,17 +1119,17 @@ export const MockInterviewMode = ({ selectedHistorySession, onHistoryUpdate }: M
                   </Badge>
                 )}
               </div>
-              <div className="flex items-center justify-between sm:justify-end gap-2 sm:gap-4 order-1 sm:order-2 w-full sm:w-auto">
+                <div className="flex items-center justify-between sm:justify-end gap-2 sm:gap-4 order-1 sm:order-2 w-full sm:w-auto">
                 <div className="flex items-center gap-2">
-                  <div className="flex items-center gap-1.5 text-xs font-bold tabular-nums px-2 py-1 rounded-md bg-muted/30">
-                    <Clock className={`h-3.5 w-3.5 ${elapsedTime < 180 ? 'text-green-500' : elapsedTime < 300 ? 'text-yellow-500' : 'text-red-500'}`} />
+                  <div className="flex items-center gap-1.5 text-xs font-bold tabular-nums px-2.5 py-1.5 rounded-lg bg-muted/40 border border-border/20 shadow-sm">
+                    <Clock className={`h-4 w-4 ${elapsedTime < 180 ? 'text-green-500' : elapsedTime < 300 ? 'text-yellow-500' : 'text-red-500'}`} />
                     <span className={elapsedTime < 180 ? 'text-green-500' : elapsedTime < 300 ? 'text-yellow-500' : 'text-red-500'}>
                       {formatTime(elapsedTime)}
                     </span>
                   </div>
                   {hintsUsed > 0 && (
-                    <div className="flex items-center gap-1 text-[10px] sm:text-xs text-muted-foreground bg-yellow-500/10 px-2 py-1 rounded-md">
-                      <Lightbulb className="h-3 w-3 text-yellow-500" />
+                    <div className="flex items-center gap-1.5 text-[10px] sm:text-xs font-bold text-yellow-600 dark:text-yellow-400 bg-yellow-500/15 border border-yellow-500/20 px-2.5 py-1.5 rounded-lg shadow-sm">
+                      <Lightbulb className="h-4 w-4 text-yellow-500" />
                       <span>{hintsUsed}</span>
                     </div>
                   )}
@@ -1171,15 +1171,18 @@ export const MockInterviewMode = ({ selectedHistorySession, onHistoryUpdate }: M
               </div>
             </div>
             <Progress value={(questionNumber / totalQuestions) * 100} className="h-1.5 sm:h-2" />
-            {progressData && (
-              <div className="mt-2.5 flex items-center gap-3 text-[10px] text-muted-foreground overflow-x-auto whitespace-nowrap scrollbar-hide">
-                <span className="flex items-center gap-1"><Award className="h-3 w-3" /> Avg: {progressData.average_score.toFixed(1)}</span>
+            <div className="mt-2.5 flex items-center justify-between text-[10px] text-muted-foreground">
+              <div className="flex items-center gap-3 overflow-x-auto whitespace-nowrap scrollbar-hide">
+                <span className="flex items-center gap-1 font-medium"><Award className="h-3 w-3 text-primary" /> Avg: {progressData?.average_score?.toFixed(1) || "--"}</span>
                 <span>•</span>
-                <span className="flex items-center gap-1"><Clock className="h-3 w-3" /> {formatTimeSafe(progressData.total_time_seconds)}</span>
+                <span className="flex items-center gap-1"><Clock className="h-3 w-3" /> {formatTimeSafe(progressData?.total_time_seconds)}</span>
                 <span>•</span>
-                <span className="flex items-center gap-1"><Lightbulb className="h-3 w-3" /> Hints: {progressData.hints_used_total || 0}</span>
+                <span className="flex items-center gap-1"><Lightbulb className="h-3 w-3" /> Hints: {progressData?.hints_used_total || 0}</span>
               </div>
-            )}
+              <div className="hidden sm:block font-medium">
+                {Math.round((questionNumber / totalQuestions) * 100)}% Complete
+              </div>
+            </div>
           </CardContent>
         </Card>
 
@@ -2098,80 +2101,248 @@ export const MockInterviewMode = ({ selectedHistorySession, onHistoryUpdate }: M
     );
   }
 
-  // Download Report as HTML/PDF
+  // Download Report as detailed HTML
   const handleDownloadReport = (summaryData: SessionSummaryResponse, bestScore: number, worstScore: number, consistencyScore: number) => {
+    // Determine the extra stats from summary data (backend returns these) or fall back to progress data
+    const totalTime = (summaryData as any).total_time_seconds ?? (summaryData as any).progress?.total_time_seconds ?? progressData?.total_time_seconds ?? (elapsedTime > 0 ? elapsedTime : 0);
+    const hintsUsedNum = (summaryData as any).total_hints_used ?? (summaryData as any).hints_used_total ?? (summaryData as any).progress?.hints_used_total ?? progressData?.hints_used_total ?? hintsUsed ?? 0;
+    const avgScore = summaryData.average_score;
+    const efficiency = (summaryData as any).performance_insights?.efficiency || (hintsUsedNum === 0 ? "Perfect" : hintsUsedNum < 3 ? "Excellent" : hintsUsedNum < 6 ? "Good" : "Needs Work");
+    const trajectoryNote = (summaryData as any).trajectory?.note || "";
+    const strongestArea = (summaryData as any).performance_insights?.strongest_area || "N/A";
+    const weakestArea = (summaryData as any).performance_insights?.weakest_area || "N/A";
+    const consistencyLabel = (summaryData as any).performance_insights?.consistency || (consistencyScore >= 8 ? "Very Consistent" : consistencyScore >= 5 ? "Consistent" : "Variable");
+
+    // Compute average criteria scores across all evaluations
+    const criteriaKeys = ["correctness", "completeness", "clarity", "confidence", "technical_depth"];
+    const criteriaAvgs: Record<string, number> = {};
+    criteriaKeys.forEach(k => {
+      const vals = summaryData.evaluations.map(e => (e as any).criteria_scores?.[k] ?? 0).filter((v: number) => v > 0);
+      criteriaAvgs[k] = vals.length > 0 ? vals.reduce((a: number, b: number) => a + b, 0) / vals.length : 0;
+    });
+
+    // Escape HTML in user text to prevent XSS in the generated report
+    const esc = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+
     const html = `<!DOCTYPE html>
 <html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Interview Report - ${new Date().toLocaleDateString()}</title>
+<title>Mock Interview Report - ${new Date().toLocaleDateString()}</title>
 <style>
-*{margin:0;padding:0;box-sizing:border-box}
-body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;color:#1a1a2e;background:#fff;padding:40px;line-height:1.7}
-.header{text-align:center;margin-bottom:32px;padding-bottom:24px;border-bottom:2px solid #e8e8f0}
-.header h1{font-size:28px;font-weight:700;color:#1a1a2e;margin-bottom:4px}
-.header p{color:#666;font-size:14px}
-.score-hero{text-align:center;margin:24px 0;padding:24px;background:linear-gradient(135deg,#f0f4ff,#e8f0ff);border-radius:16px}
-.score-hero .score{font-size:56px;font-weight:800;color:#4f46e5}
-.score-hero .label{font-size:14px;color:#666;margin-top:4px}
-.stats-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin:20px 0}
-.stat-tile{background:#f8f9fc;border-radius:12px;padding:14px;text-align:center}
-.stat-tile .val{font-size:20px;font-weight:700;color:#1a1a2e}
-.stat-tile .lbl{font-size:11px;color:#888;text-transform:uppercase;letter-spacing:.5px;margin-top:2px}
-.section{margin:24px 0}
-.section h2{font-size:18px;font-weight:700;margin-bottom:12px;padding-bottom:8px;border-bottom:1px solid #eee}
-.insights{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin:16px 0}
-.insight-card{padding:16px;border-radius:12px}
-.insight-card.green{background:#f0fdf4}
-.insight-card.orange{background:#fff7ed}
-.insight-card h3{font-size:14px;font-weight:600;margin-bottom:8px}
-.insight-card .row{display:flex;justify-content:space-between;font-size:13px;padding:3px 0;color:#555}
-.insight-card .row .val{font-weight:600;color:#1a1a2e}
-.q-card{background:#f8f9fc;border-radius:12px;padding:16px;margin:10px 0;page-break-inside:avoid}
-.q-card .q-header{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:8px}
-.q-card .q-score{font-size:24px;font-weight:700;color:#4f46e5}
-.q-card .q-rating{display:inline-block;font-size:11px;padding:2px 8px;border-radius:20px;background:#e8e8f0;color:#555;font-weight:500}
-.q-card .q-text{font-size:13px;color:#444;margin:8px 0}
-.q-card .q-summary{font-size:12px;color:#666;background:#f0f0f8;padding:10px;border-radius:8px;margin-top:8px}
-.footer{text-align:center;margin-top:40px;padding-top:20px;border-top:1px solid #eee;font-size:12px;color:#999}
-@media print{body{padding:20px}@page{margin:15mm}}
+:root{--primary:#4f46e5;--primary-light:#eef2ff;--success:#22c55e;--warning:#f59e0b;--danger:#ef4444;--bg:#f8fafc;--card:#fff;--text:#1e293b;--text-light:#64748b;--border:#e2e8f0;}
+*{margin:0;padding:0;box-sizing:border-box;}
+body{font-family:'Inter',-apple-system,sans-serif;color:var(--text);background:var(--bg);padding:32px;line-height:1.6;}
+.container{max-width:960px;margin:0 auto;background:var(--card);padding:40px;border-radius:24px;box-shadow:0 10px 25px -5px rgba(0,0,0,.08);border:1px solid var(--border);}
+.header{margin-bottom:32px;border-bottom:2px solid var(--border);padding-bottom:20px;display:flex;justify-content:space-between;align-items:flex-end;}
+.header-info h1{font-size:28px;font-weight:800;letter-spacing:-.025em;color:#0f172a;margin-bottom:4px;}
+.header-info p{color:var(--text-light);font-size:13px;font-weight:500;}
+.date-badge{background:var(--primary-light);color:var(--primary);padding:6px 14px;border-radius:8px;font-size:12px;font-weight:600;}
+.score-hero{background:linear-gradient(135deg,#4f46e5,#7c3aed);color:#fff;padding:36px;border-radius:20px;text-align:center;margin-bottom:28px;box-shadow:0 16px 20px -5px rgba(79,70,229,.2);}
+.score-hero .score-val{font-size:64px;font-weight:900;line-height:1;}
+.score-hero .score-label{font-size:15px;opacity:.9;font-weight:600;margin-top:6px;}
+.score-hero .score-badge{display:inline-block;margin-top:10px;padding:4px 16px;border-radius:20px;background:rgba(255,255,255,.2);font-size:13px;font-weight:700;}
+.stats-grid{display:grid;grid-template-columns:repeat(5,1fr);gap:12px;margin-bottom:32px;}
+.stat-tile{background:var(--card);border:1px solid var(--border);border-radius:14px;padding:16px;text-align:center;}
+.stat-tile .val{font-size:20px;font-weight:700;color:#0f172a;display:block;}
+.stat-tile .lbl{font-size:11px;color:var(--text-light);text-transform:uppercase;letter-spacing:.05em;font-weight:700;margin-top:4px;display:block;}
+.section{margin-bottom:36px;}
+.section-title{font-size:18px;font-weight:700;margin-bottom:16px;display:flex;align-items:center;gap:10px;color:#0f172a;}
+.section-title::before{content:"";display:block;width:4px;height:22px;background:var(--primary);border-radius:2px;}
+.insights-grid{display:grid;grid-template-columns:1fr 1fr;gap:16px;}
+.insight-card{padding:20px;border-radius:14px;border:1px solid var(--border);}
+.insight-card.success{background:#f0fdf4;border-color:#dcfce7;}
+.insight-card.warning{background:#fff7ed;border-color:#ffedd5;}
+.insight-card h3{font-size:14px;font-weight:700;margin-bottom:12px;}
+.insight-row{display:flex;justify-content:space-between;margin-bottom:8px;font-size:13px;}
+.insight-row span:first-child{color:var(--text-light);}
+.insight-row .val{font-weight:700;color:#0f172a;}
+.criteria-grid{display:grid;grid-template-columns:repeat(5,1fr);gap:12px;margin-bottom:32px;}
+.criteria-tile{text-align:center;padding:14px 8px;border:1px solid var(--border);border-radius:14px;background:#fafbfc;}
+.criteria-tile .c-name{font-size:10px;font-weight:700;text-transform:uppercase;color:var(--text-light);letter-spacing:.04em;margin-bottom:6px;display:block;}
+.criteria-tile .c-val{font-size:22px;font-weight:800;color:var(--primary);display:block;}
+.criteria-bar{height:6px;border-radius:3px;background:#e2e8f0;margin-top:8px;overflow:hidden;}
+.criteria-bar-fill{height:100%;border-radius:3px;background:var(--primary);}
+.q-list{display:flex;flex-direction:column;gap:24px;}
+.q-card{background:#fff;border:1px solid var(--border);border-radius:16px;padding:0;page-break-inside:avoid;overflow:hidden;}
+.q-card-header{display:flex;justify-content:space-between;align-items:center;padding:16px 20px;border-bottom:1px solid var(--border);background:#fafbfc;}
+.q-card-header .q-tag{font-size:10px;font-weight:800;color:var(--text-light);background:var(--border);padding:3px 10px;border-radius:6px;text-transform:uppercase;}
+.q-card-header .q-badge{font-size:10px;font-weight:700;padding:3px 10px;border-radius:6px;background:var(--primary-light);color:var(--primary);text-transform:uppercase;margin-left:6px;}
+.q-card-header .q-score-pill{font-size:16px;font-weight:800;color:var(--primary);background:var(--primary-light);padding:4px 14px;border-radius:20px;}
+.q-card-body{padding:20px;}
+.q-title{font-size:15px;font-weight:700;color:#0f172a;margin-bottom:12px;line-height:1.5;}
+.q-mini-criteria{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:14px;}
+.q-mini-criteria span{font-size:10px;font-weight:600;padding:2px 8px;border-radius:4px;background:#f1f5f9;color:var(--text-light);}
+.q-feedback-text{font-size:13px;color:var(--text);margin-bottom:16px;padding:12px;background:#f8fafc;border-radius:10px;border:1px dashed var(--border);line-height:1.7;}
+.q-answers{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:16px;}
+.q-answer-box{border-radius:10px;padding:14px;font-size:12px;line-height:1.6;}
+.q-answer-box.user{background:#eff6ff;border:1px solid #bfdbfe;}
+.q-answer-box.model{background:#f0fdf4;border:1px solid #bbf7d0;}
+.q-answer-box h5{font-size:11px;font-weight:700;text-transform:uppercase;margin-bottom:8px;letter-spacing:.04em;}
+.q-answer-box.user h5{color:#3b82f6;}
+.q-answer-box.model h5{color:#22c55e;}
+.q-answer-box pre{white-space:pre-wrap;word-break:break-word;font-family:inherit;font-size:12px;color:var(--text);max-height:200px;overflow-y:auto;}
+.q-points{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:12px;}
+.q-point-col h4{font-size:11px;font-weight:700;text-transform:uppercase;margin-bottom:6px;display:flex;align-items:center;gap:4px;}
+.q-point-col.strengths h4{color:var(--success);}
+.q-point-col.weaknesses h4{color:var(--danger);}
+.q-point-list{list-style:none;font-size:12px;color:var(--text-light);}
+.q-point-list li{margin-bottom:3px;padding-left:10px;position:relative;}
+.q-point-list li::before{content:"•";position:absolute;left:0;color:currentColor;}
+.q-suggestions{margin-top:10px;}
+.q-suggestions h4{font-size:11px;font-weight:700;text-transform:uppercase;margin-bottom:6px;color:var(--warning);}
+.q-suggestions li{font-size:12px;color:var(--text-light);margin-bottom:3px;padding-left:10px;position:relative;list-style:none;}
+.q-suggestions li::before{content:"→";position:absolute;left:0;color:var(--warning);}
+.trajectory-note{background:var(--primary-light);border:1px solid #c7d2fe;border-radius:12px;padding:14px 18px;font-size:13px;color:var(--primary);font-weight:600;margin-bottom:28px;}
+.footer{text-align:center;margin-top:48px;padding-top:24px;border-top:1px solid var(--border);color:var(--text-light);font-size:12px;font-weight:500;}
+@media print{body{padding:0;background:#fff;}.container{border:none;padding:20px;max-width:100%;box-shadow:none;}.score-hero{box-shadow:none;-webkit-print-color-adjust:exact;print-color-adjust:exact;}.q-card{break-inside:avoid;}}
 </style></head><body>
-<div class="header">
-  <h1>Mock Interview Report</h1>
-  <p>${summaryData.interview_type?.replace('_',' ')} \u2022 ${summaryData.difficulty} \u2022 ${new Date().toLocaleDateString('en-US',{year:'numeric',month:'long',day:'numeric'})}</p>
-</div>
-<div class="score-hero">
-  <div class="score">${summaryData.average_score.toFixed(1)}</div>
-  <div class="label">Overall Score out of 10</div>
-</div>
-<div class="stats-grid">
-  <div class="stat-tile"><div class="val">${summaryData.questions_answered}</div><div class="lbl">Questions</div></div>
-  <div class="stat-tile"><div class="val">${summaryData.difficulty}</div><div class="lbl">Difficulty</div></div>
-  <div class="stat-tile"><div class="val">${consistencyScore.toFixed(1)}/10</div><div class="lbl">Consistency</div></div>
-  <div class="stat-tile"><div class="val">${summaryData.interview_type}</div><div class="lbl">Type</div></div>
-</div>
-<div class="insights">
-  <div class="insight-card green">
-    <h3>\u2713 Strongest Performance</h3>
-    <div class="row"><span>Best Score</span><span class="val">${bestScore.toFixed(1)}</span></div>
-  </div>
-  <div class="insight-card orange">
-    <h3>\u2191 Areas to Improve</h3>
-    <div class="row"><span>Lowest Score</span><span class="val">${worstScore.toFixed(1)}</span></div>
-    <div class="row"><span>Score Range</span><span class="val">${(bestScore - worstScore).toFixed(1)} pts</span></div>
-  </div>
-</div>
-<div class="section">
-  <h2>Question Performance</h2>
-  ${summaryData.evaluations.map((e, i) => `
-  <div class="q-card">
-    <div class="q-header">
-      <div><strong>Question ${i+1}</strong> <span class="q-rating">${e.rating}</span></div>
-      <div class="q-score">${e.score.toFixed(1)}</div>
+<div class="container">
+  <div class="header">
+    <div class="header-info">
+      <h1>Mock Interview Report</h1>
+      <p>${esc((summaryData.interview_type || '').replace('_',' '))} • ${esc(summaryData.difficulty || '')} Round • ${summaryData.questions_answered}/${summaryData.total_questions} Questions</p>
     </div>
-    <div class="q-text">${e.question}</div>
-    ${e.summary ? `<div class="q-summary">${e.summary}</div>` : ''}
-  </div>`).join('')}
+    <div class="date-badge">${new Date().toLocaleDateString('en-US',{year:'numeric',month:'long',day:'numeric'})}</div>
+  </div>
+
+  <div class="score-hero">
+    <div class="score-val">${avgScore.toFixed(1)}</div>
+    <div class="score-label">Overall Performance Score (out of 10)</div>
+    <div class="score-badge">${avgScore >= 8 ? "Excellent" : avgScore >= 6 ? "Good" : avgScore >= 4 ? "Fair" : "Needs Work"}</div>
+  </div>
+
+  ${trajectoryNote ? `<div class="trajectory-note">📈 Session Trajectory: ${esc(trajectoryNote)}</div>` : ''}
+
+  <div class="stats-grid">
+    <div class="stat-tile">
+      <span class="val">${summaryData.questions_answered}/${summaryData.total_questions}</span>
+      <span class="lbl">Progress</span>
+    </div>
+    <div class="stat-tile">
+      <span class="val">${formatTimeSafe(totalTime)}</span>
+      <span class="lbl">Total Duration</span>
+    </div>
+    <div class="stat-tile">
+      <span class="val">${hintsUsedNum}</span>
+      <span class="lbl">Hints Used</span>
+    </div>
+    <div class="stat-tile">
+      <span class="val">${consistencyScore.toFixed(1)}/10</span>
+      <span class="lbl">Consistency</span>
+    </div>
+    <div class="stat-tile">
+      <span class="val">${esc(consistencyLabel)}</span>
+      <span class="lbl">Stability</span>
+    </div>
+  </div>
+
+  <div class="section">
+    <h2 class="section-title">Average Criteria Scores</h2>
+    <div class="criteria-grid">
+      ${criteriaKeys.map(k => `
+      <div class="criteria-tile">
+        <span class="c-name">${k.replace('_',' ')}</span>
+        <span class="c-val">${criteriaAvgs[k].toFixed(1)}</span>
+        <div class="criteria-bar"><div class="criteria-bar-fill" style="width:${Math.min(100, criteriaAvgs[k]*10)}%"></div></div>
+      </div>`).join('')}
+    </div>
+  </div>
+
+  <div class="section">
+    <h2 class="section-title">Performance Insights</h2>
+    <div class="insights-grid">
+      <div class="insight-card success">
+        <h3>✨ Key Strengths</h3>
+        <div class="insight-row"><span>Strongest Area</span><span class="val">${esc(strongestArea)}</span></div>
+        <div class="insight-row"><span>Best Score</span><span class="val">${bestScore.toFixed(1)}/10</span></div>
+        <div class="insight-row"><span>Efficiency</span><span class="val">${esc(efficiency)}</span></div>
+      </div>
+      <div class="insight-card warning">
+        <h3>🚀 Growth Opportunities</h3>
+        <div class="insight-row"><span>Weakest Area</span><span class="val">${esc(weakestArea)}</span></div>
+        <div class="insight-row"><span>Lowest Score</span><span class="val">${worstScore.toFixed(1)}/10</span></div>
+        <div class="insight-row"><span>Score Range</span><span class="val">${(bestScore - worstScore).toFixed(1)} pts</span></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="section">
+    <h2 class="section-title">Detailed Question Breakdown</h2>
+    <div class="q-list">
+      ${summaryData.evaluations.map((e: any, i: number) => {
+        const histItem = questionHistory[i];
+        const userAns = histItem?.answer || (e as any).user_answer || "";
+        const modelAns = histItem?.feedback?.model_answer || (e as any).model_answer || "";
+        const critScores = (e as any).criteria_scores || {};
+        const timeSpent = (e as any).time_spent_seconds;
+        const qHints = (e as any).hints_used;
+        const improveSuggestions = (e as any).improvement_suggestions || histItem?.feedback?.improvement_suggestions || [];
+
+        return `
+      <div class="q-card">
+        <div class="q-card-header">
+          <div>
+            <span class="q-tag">Q${i+1}</span>
+            <span class="q-badge">${esc(e.rating || '')}</span>
+            ${timeSpent ? `<span class="q-badge">⏱ ${formatTimeSafe(timeSpent)}</span>` : ''}
+            ${qHints ? `<span class="q-badge">💡 ${qHints} hint${qHints > 1 ? 's' : ''}</span>` : ''}
+          </div>
+          <span class="q-score-pill">${e.score.toFixed(1)} / 10</span>
+        </div>
+        <div class="q-card-body">
+          <div class="q-title">${esc(e.question || '')}</div>
+
+          ${Object.keys(critScores).length > 0 ? `
+          <div class="q-mini-criteria">
+            ${Object.entries(critScores).map(([k, v]) => `<span>${k.replace('_',' ')}: ${typeof v === 'number' ? (v as number).toFixed(1) : v}</span>`).join('')}
+          </div>` : ''}
+
+          <div class="q-feedback-text">${esc(e.summary || e.detailed_feedback || '')}</div>
+
+          ${(userAns || modelAns) ? `
+          <div class="q-answers">
+            <div class="q-answer-box user">
+              <h5>📝 Your Answer</h5>
+              <pre>${userAns === "[Skipped]" ? "<em>Question was skipped</em>" : esc(userAns).substring(0, 1500)}${userAns.length > 1500 ? '...' : ''}</pre>
+            </div>
+            <div class="q-answer-box model">
+              <h5>✅ Model Answer</h5>
+              <pre>${modelAns ? esc(modelAns).substring(0, 1500) + (modelAns.length > 1500 ? '...' : '') : '<em>Not available</em>'}</pre>
+            </div>
+          </div>` : ''}
+
+          <div class="q-points">
+            <div class="q-point-col strengths">
+              <h4>✓ Strengths</h4>
+              <ul class="q-point-list">
+                ${(e.strengths || []).map((s: string) => `<li>${esc(s)}</li>`).join('') || '<li>N/A</li>'}
+              </ul>
+            </div>
+            <div class="q-point-col weaknesses">
+              <h4>✗ Areas to Improve</h4>
+              <ul class="q-point-list">
+                ${(e.weaknesses || []).map((w: string) => `<li>${esc(w)}</li>`).join('') || '<li>N/A</li>'}
+              </ul>
+            </div>
+          </div>
+
+          ${improveSuggestions.length > 0 ? `
+          <div class="q-suggestions">
+            <h4>→ Improvement Suggestions</h4>
+            <ul>
+              ${improveSuggestions.map((s: string) => `<li>${esc(s)}</li>`).join('')}
+            </ul>
+          </div>` : ''}
+        </div>
+      </div>`;
+      }).join('')}
+    </div>
+  </div>
+
+  <div class="footer">
+    Generated with Stratax AI Interview Intelligence &bull; ${new Date().toLocaleString()}<br/>
+    <strong>Total Time:</strong> ${formatTimeSafe(totalTime)} &bull; <strong>Hints Used:</strong> ${hintsUsedNum} &bull; <strong>Average Score:</strong> ${avgScore.toFixed(1)}/10
+  </div>
 </div>
-<div class="footer">Generated by Stratax AI \u2022 ${new Date().toLocaleString()}</div>
 </body></html>`;
 
     const blob = new Blob([html], { type: 'text/html' });
@@ -2183,19 +2354,20 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;c
     a.click();
     document.body.removeChild(a);
     URL.revokeObjectURL(url);
-    toast({ title: "Report Downloaded", description: "Open the HTML file in your browser and print to PDF for best results." });
+    toast({ title: "Report Downloaded", description: "Your detailed report has been saved. Open the HTML file in your browser and print to PDF." });
   };
 
   // Summary Phase
   if (phase === "summary" && summary) {
     // Calculate performance insights
     const scores = summary.evaluations.map(e => e.score);
-    const bestScore = Math.max(...scores);
-    const worstScore = Math.min(...scores);
+    const bestScore = Math.max(...scores, 0);
+    const worstScore = Math.min(...scores, bestScore);
+    const avgScore = summary.average_score;
     const scoreVariance = scores.length > 1
-      ? Math.sqrt(scores.reduce((sum, score) => sum + Math.pow(score - summary.average_score, 2), 0) / scores.length)
+      ? Math.sqrt(scores.reduce((sum, score) => sum + Math.pow(score - avgScore, 2), 0) / scores.length)
       : 0;
-    const consistencyScore = Math.max(0, 10 - scoreVariance);
+    const consistencyScore = Math.max(0, 10 - (scoreVariance * 2)); // Dynamic consistency score
 
     // If a question is selected, show side-by-side comparison
     if (selectedQuestionIndex !== null && questionHistory[selectedQuestionIndex]) {
@@ -2436,18 +2608,14 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;c
                       <span className="text-xs text-muted-foreground">Best Score</span>
                       <span className="text-base font-bold text-green-500">{bestScore.toFixed(1)}</span>
                     </div>
-                    {progressData && (
-                      <>
-                        <div className="flex justify-between items-center">
-                          <span className="text-xs text-muted-foreground">Total Time</span>
-                          <span className="text-xs font-mono">{formatTimeSafe(progressData.total_time_seconds)}</span>
-                        </div>
-                        <div className="flex justify-between items-center">
-                          <span className="text-xs text-muted-foreground">Hints Used</span>
-                          <span className="text-xs">{progressData.hints_used_total}</span>
-                        </div>
-                      </>
-                    )}
+                    <div className="flex justify-between items-center">
+                      <span className="text-xs text-muted-foreground">Total Time</span>
+                      <span className="text-xs font-mono">{formatTimeSafe((summary as any).total_time_seconds ?? (summary as any).progress?.total_time_seconds ?? progressData?.total_time_seconds ?? (elapsedTime > 0 ? elapsedTime : undefined))}</span>
+                    </div>
+                    <div className="flex justify-between items-center">
+                      <span className="text-xs text-muted-foreground">Hints Used</span>
+                      <span className="text-xs">{(summary as any).total_hints_used ?? (summary as any).hints_used_total ?? (summary as any).progress?.hints_used_total ?? progressData?.hints_used_total ?? hintsUsed ?? 0}</span>
+                    </div>
                   </div>
                 </div>
 
@@ -2465,15 +2633,13 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;c
                       <span className="text-xs text-muted-foreground">Score Range</span>
                       <span className="text-xs">{(bestScore - worstScore).toFixed(1)} points</span>
                     </div>
-                    {progressData && progressData.hints_used_total > 0 && (
-                      <div className="flex justify-between items-center">
+                    <div className="flex justify-between items-center">
                         <span className="text-xs text-muted-foreground">Efficiency Rating</span>
                         <span className="text-xs">
-                          {progressData.hints_used_total < 3 ? "Excellent" :
-                            progressData.hints_used_total < 6 ? "Good" : "Needs Work"}
+                          {((summary as any).total_hints_used ?? progressData?.hints_used_total ?? hintsUsed ?? 0) < 3 ? "Excellent" :
+                            ((summary as any).total_hints_used ?? progressData?.hints_used_total ?? hintsUsed ?? 0) < 6 ? "Good" : "Needs Work"}
                         </span>
-                      </div>
-                    )}
+                    </div>
                   </div>
                 </div>
               </div>

@@ -6,7 +6,27 @@
       "**/.*",
       "**/node_modules/**"
     ],
+    "trailingSlash": false,
+    "redirects": [
+      {
+        "source": "/",
+        "destination": "/docs/",
+        "type": 302
+      }
+    ],
     "rewrites": [
+      {
+        "source": "/docs",
+        "destination": "/docs/index.html"
+      },
+      {
+        "source": "/docs/",
+        "destination": "/docs/index.html"
+      },
+      {
+        "source": "/docs/**",
+        "destination": "/docs/index.html"
+      },
       {
         "source": "**",
         "destination": "/index.html"

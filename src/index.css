@@ -63,10 +63,10 @@ html {
 
   html,
   body {
-    overflow-x: hidden !important;
+    /* Do NOT use overflow-x: hidden here — on iOS Safari it prevents vertical scrolling.
+       Horizontal overflow is already contained by max-width. */
     overflow-y: auto !important;
     overscroll-behavior-x: none !important;
-    position: relative;
     width: 100%;
     max-width: 100vw;
     /* This ensures vertical scroll is always possible on mobile, even if overlays misbehave */

@@ -77,10 +77,10 @@ const coerceProgressSummary = (
   const average_overall_score =
     asNumberOrNull(
       payload.average_overall_score ??
-        payload.avg_overall_score ??
-        payload.avg_score ??
-        payload.average_score ??
-        payload.overall_avg
+      payload.avg_overall_score ??
+      payload.avg_score ??
+      payload.average_score ??
+      payload.overall_avg
     ) ?? null;
 
   const last_completed_at =
@@ -195,12 +195,15 @@ export async function getProgressSummary(
   if (domain) {
     params.set('domain', domain);
   }
-  // Cache-bust to ensure fresh data after a new session
-  params.set('_t', String(Date.now()));
-
   const raw = (await strataxFetchJson(
     `${API_BASE_URL}/api/practice/progress/summary?${params.toString()}`,
-    { method: 'GET' }
+    {
+      method: 'GET',
+      headers: {
+        'Cache-Control': 'no-cache',
+        'Pragma': 'no-cache'
+      }
+    }
   )) as unknown;
 
   console.log('📊 [Progress API] Summary raw response:', raw);
@@ -226,15 +229,28 @@ export async function getProgressHeatmap(
 
   const response = (await strataxFetchJson(
     `${API_BASE_URL}/api/practice/progress/heatmap?${params.toString()}`,
-    { method: 'GET' }
+    {
+      method: 'GET',
+      headers: {
+        'Cache-Control': 'no-cache',
+        'Pragma': 'no-cache'
+      }
+    }
   )) as unknown;
 
   console.log('📊 [Progress API] Heatmap raw response:', response);
 
-  // Backend may return either `{ points: [...] }` or the points array directly.
-  const pointsRaw = Array.isArray(response)
-    ? response
-    : ((response as { points?: unknown[] } | null)?.points ?? []);
+  // Backend may return either `{ points: [...] }` or the points array directly, or under data/heatmap.
+  let pointsRaw: unknown[] = [];
+  if (Array.isArray(response)) {
+    pointsRaw = response;
+  } else if (response && typeof response === 'object') {
+    const obj = response as Record<string, unknown>;
+    pointsRaw = Array.isArray(obj.points) ? obj.points :
+      Array.isArray(obj.heatmap) ? obj.heatmap :
+        Array.isArray(obj.data) ? obj.data :
+          Array.isArray(obj.items) ? obj.items : [];
+  }
 
   if (!Array.isArray(pointsRaw)) return [];
 
@@ -244,14 +260,18 @@ export async function getProgressHeatmap(
       const obj = p as Record<string, unknown>;
       const week_start = typeof obj.week_start === 'string'
         ? obj.week_start
-        : (typeof obj.week === 'string' ? obj.week : '');
+        : (typeof obj.week === 'string' ? obj.week : (typeof obj.date === 'string' ? obj.date : ''));
       const dimension = typeof obj.dimension === 'string'
         ? obj.dimension
-        : (typeof obj.metric === 'string' ? obj.metric : '');
-      const avg_score = asNumber(obj.avg_score ?? obj.score ?? obj.average, NaN);
-      const attempts = asNumber(obj.attempts ?? obj.count ?? obj.attempt_count, 0);
+        : (typeof obj.metric === 'string' ? obj.metric : (typeof obj.name === 'string' ? obj.name : ''));
+      const avg_score = asNumber(obj.avg_score ?? obj.score ?? obj.average ?? obj.avg_overall_score ?? obj.average_score, NaN);
+      const attempts = asNumber(obj.attempts ?? obj.count ?? obj.attempt_count ?? obj.sessions, 0);
 
-      if (!week_start || !dimension || Number.isNaN(avg_score)) return null;
+      // If missing critical data, skip this point
+      if (!week_start || !dimension || Number.isNaN(avg_score)) {
+        console.warn('📊 [Progress API] Dropped heatmap point due to missing/invalid fields:', obj);
+        return null;
+      }
       return { week_start, dimension, avg_score, attempts };
     })
     .filter((x): x is HeatmapPoint => x !== null);
@@ -273,7 +293,13 @@ export async function getNextSessionPlan(
 
   const response = (await strataxFetchJson(
     `${API_BASE_URL}/api/practice/progress/next-session?${params.toString()}`,
-    { method: 'GET' }
+    {
+      method: 'GET',
+      headers: {
+        'Cache-Control': 'no-cache',
+        'Pragma': 'no-cache'
+      }
+    }
   )) as unknown;
 
   console.log('📊 [Progress API] Next-session raw response:', response);
