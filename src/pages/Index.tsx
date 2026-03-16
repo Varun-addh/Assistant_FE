@@ -16,7 +16,6 @@ import {
   BookOpen
 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
-import { isDevelopmentMode } from "@/lib/devUtils";
 import { UserProfile } from "@/components/UserProfile";
 import { useAuth } from "@/context/AuthContext";
 
@@ -44,15 +43,6 @@ const Index = () => {
       // ignore
     }
   }, []);
-
-  // In dev mode, bypass and go straight to app
-  useEffect(() => {
-    if (isDevelopmentMode()) {
-      console.log('🔧 [Dev Mode] Bypassing landing page and redirecting to app');
-      navigate("/app");
-      return;
-    }
-  }, [navigate]);
 
   // World-class futuristic design - no particle animations needed
 
@@ -178,17 +168,17 @@ const Index = () => {
                   disabled={loading}
                   className="bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700 text-white shadow-xl shadow-purple-500/20 dark:shadow-purple-500/50 px-8 py-6 text-lg group border-none"
                 >
-                  {loading ? "Loading…" : "Get Started Free"}
+                  {loading ? "Loading…" : "Try Stratax AI"}
                   <ChevronRight className="w-5 h-5 ml-2 group-hover:translate-x-1 transition-transform" />
                 </Button>
                 <Button
                   size="lg"
                   variant="outline"
-                  onClick={() => navigate("/run")}
+                  onClick={() => navigate("/docs")}
                   className="border-input hover:bg-accent hover:text-accent-foreground dark:border-white/20 dark:hover:bg-white/10 dark:text-white backdrop-blur-sm px-8 py-6 text-lg"
                 >
-                  <Code2 className="w-5 h-5 mr-2" />
-                  Code Studio
+                  <BookOpen className="w-5 h-5 mr-2" />
+                  Explore Platform
                 </Button>
               </div>
             </div>

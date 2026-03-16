@@ -4,47 +4,48 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Documentation — Stratax AI | Interview Intelligence Platform</title>
+  <title>Stratax AI | Interview Intelligence Platform</title>
   <meta name="description"
-    content="Complete technical documentation for Stratax AI. Learn about the architecture, features, API reference, multi-agent interview system, and deployment guides.">
-  <link rel="canonical" href="https://strataxai.in/docs" />
-  <meta name="author" content="Varun Bikkumalla" />
+    content="Explore Stratax AI — an interview simulation and evaluation platform. Learn product workflows, architecture, AI systems, API reference, and deployment notes.">
+  <link rel="canonical" href="https://www.strataxai.in/docs" />
+  <meta name="robots" content="index,follow" />
+  <meta name="author" content="Stratax AI" />
 
   <!-- Open Graph -->
-  <meta property="og:url" content="https://strataxai.in/docs" />
-  <meta property="og:title" content="Documentation — Stratax AI" />
+  <meta property="og:url" content="https://www.strataxai.in/docs" />
+  <meta property="og:title" content="Stratax AI | Interview Intelligence Platform" />
   <meta property="og:description"
-    content="Complete technical documentation for Stratax AI. Architecture, features, API reference, and deployment guides." />
+    content="Explore the Stratax AI platform, product architecture, AI systems, API reference, and deployment notes." />
   <meta property="og:type" content="website" />
   <meta property="og:site_name" content="Stratax AI" />
-  <meta property="og:image" content="https://strataxai.in/icons/stratax-ai-512.png" />
+  <meta property="og:image" content="https://www.strataxai.in/icons/stratax-ai-512.png" />
 
   <!-- Twitter -->
   <meta name="twitter:card" content="summary" />
-  <meta name="twitter:title" content="Documentation — Stratax AI" />
+  <meta name="twitter:title" content="Stratax AI | Interview Intelligence Platform" />
   <meta name="twitter:description"
-    content="Complete technical documentation for Stratax AI. Architecture, features, API reference, and deployment guides." />
+    content="Explore the Stratax AI platform, product architecture, AI systems, API reference, and deployment notes." />
 
   <!-- JSON-LD Structured Data -->
   <script type="application/ld+json">
   {
     "@context": "https://schema.org",
-    "@type": "TechArticle",
-    "name": "Stratax AI Documentation",
-    "headline": "Stratax AI — Technical Documentation",
-    "description": "Complete technical documentation for Stratax AI interview intelligence platform.",
-    "url": "https://strataxai.in/docs",
-    "author": { "@type": "Person", "name": "Varun Bikkumalla" },
-    "publisher": { "@type": "Organization", "name": "Stratax AI", "url": "https://strataxai.in" },
-    "mainEntityOfPage": "https://strataxai.in/docs",
-    "dateModified": "2026-03-10"
+    "@type": "WebPage",
+    "name": "Stratax AI",
+    "headline": "Stratax AI",
+    "description": "Interactive guide to the Stratax AI interview intelligence platform.",
+    "url": "https://www.strataxai.in/docs",
+    "author": { "@type": "Organization", "name": "Stratax AI", "url": "https://www.strataxai.in" },
+    "publisher": { "@type": "Organization", "name": "Stratax AI", "url": "https://www.strataxai.in" },
+    "mainEntityOfPage": "https://www.strataxai.in/docs",
+    "dateModified": "2026-03-16"
   }
   </script>
 
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link
-    href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap"
+    href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:ital,wght@0,100..800;1,100..800&family=Outfit:wght@100..900&display=swap"
     rel="stylesheet">
   <style>
     /* ─── Design Tokens — Matched to App's Dark Theme ─── */
@@ -70,7 +71,7 @@
       --sidebar-w: 260px;
       --header-h: 56px;
       --radius: 8px;
-      --font-sans: 'Inter', -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
+      --font-sans: 'Outfit', -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
       --font-mono: 'JetBrains Mono', 'Fira Code', monospace;
     }
 
@@ -1355,17 +1356,42 @@
       white-space: pre-wrap;
     }
 
+    /* Code token colors — aligned with in-app syntax highlighting */
     .code-comment {
-      color: var(--text-muted);
+      color: #6a9955;
       font-style: italic;
     }
 
-    .code-keyword {
-      color: hsl(207, 82%, 66%);
+    .code-string {
+      color: #ce9178;
     }
 
-    .code-fn {
-      color: hsl(210, 65%, 80%);
+    .code-number {
+      color: #b5cea8;
+    }
+
+    .code-keyword {
+      color: #569cd6;
+      font-weight: 700;
+    }
+
+    /* Back-compat: docs used .code-fn; app uses .code-function */
+    .code-fn,
+    .code-function {
+      color: #dcdcaa;
+    }
+
+    .code-builtin {
+      color: #4fc3f7;
+    }
+
+    .code-class {
+      color: #4ec9b0;
+    }
+
+    .code-print {
+      color: #ffd700;
+      font-weight: 600;
     }
 
     .code-verdict {
@@ -2018,6 +2044,7 @@
       line-height: 1.65;
       margin: 0;
       display: -webkit-box;
+      line-clamp: 3;
       -webkit-line-clamp: 3;
       -webkit-box-orient: vertical;
       overflow: hidden;
@@ -2189,14 +2216,14 @@
       font-size: 12px;
       font-weight: 600;
       background: rgba(255, 255, 255, 0.03);
-      color: #475569;
+      color: var(--text-secondary);
       border: 1px solid rgba(255, 255, 255, 0.07);
       transition: all 0.18s;
     }
 
     .ts-filter-btn.active {
       background: rgba(255, 255, 255, 0.1);
-      color: #f1f5f9;
+      color: var(--text);
       border-color: rgba(255, 255, 255, 0.15);
     }
 
@@ -2253,12 +2280,12 @@
       <a href="/docs/index.html" class="header-logo">
         <svg viewBox="0 0 24 24" fill="none">
           <rect width="24" height="24" rx="6" fill="hsl(217,91%,65%)" /><text x="12" y="17" text-anchor="middle"
-            font-family="Inter" font-weight="800" font-size="14" fill="#fff">S</text>
+            font-family="Outfit" font-weight="800" font-size="14" fill="#fff">S</text>
         </svg>
         Stratax AI
       </a>
       <div class="header-sep"></div>
-      <span class="header-label">Docs</span>
+      <span class="header-label">Guide</span>
     </div>
     <div class="header-right">
       <div class="header-search" tabindex="0">
@@ -2266,7 +2293,7 @@
           <circle cx="11" cy="11" r="8" />
           <path d="m21 21-4.35-4.35" />
         </svg>
-        <span>Search docs...</span>
+        <span>Search product overview...</span>
         <kbd>⌘K</kbd>
       </div>
     </div>
@@ -2291,7 +2318,7 @@
       </div>
       <div class="sidebar-group">
         <div class="sidebar-label">Modules</div>
-        <a class="sidebar-link" data-route="qa-engine" href="/docs/qa-engine">Q&A Engine</a>
+        <a class="sidebar-link" data-route="ai-copilot" href="/docs/ai-copilot">AI Copilot</a>
         <a class="sidebar-link" data-route="practice-mode" href="/docs/practice-mode">Practice Mode</a>
         <a class="sidebar-link" data-route="mock-interview" href="/docs/mock-interview">Mock Interview</a>
         <a class="sidebar-link" data-route="interview-intel" href="/docs/interview-intel">Interview Intelligence</a>
@@ -2321,11 +2348,12 @@
                   <path
                     d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253" />
                 </svg>
-                Documentation
+                Product Overview
               </div>
               <h1 class="page-title">Stratax AI</h1>
-              <p class="page-desc">Interview Simulation & Evaluation Engine — practice interviews, get real
-                interviewer-style feedback, and track your progress with structured, explainable scoring.</p>
+              <p class="page-desc">An interview intelligence platform to practice realistic rounds — behavioral,
+                technical, and system design — with structured feedback, explainable scoring, and progress tracking
+                across sessions.</p>
               <a href="/app" class="hero-cta">
                 <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor"
                   stroke-width="2">
@@ -2388,12 +2416,12 @@
                   stroke="currentColor" stroke-width="2.5">
                   <path stroke-linecap="round" stroke-linejoin="round" d="M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4" />
                 </svg>
-                Developed independently
+                Built end-to-end
               </div>
-              <p>Stratax AI is an individually developed interview simulation and evaluation platform. Unlike typical
-                tools focusing purely on code syntax or static Q&A banks, Stratax evaluates <strong>reasoning
-                  depth</strong>, <strong>communication clarity</strong>, and <strong>decision-making</strong>. It
-                replicates the nuanced, session-level assessment of a real human interviewer.</p>
+              <p>Stratax AI is an end-to-end interview simulation and evaluation platform. Instead of optimizing for
+                trivia or one-off answers, it evaluates <strong>reasoning depth</strong>, <strong>communication
+                  clarity</strong>, and <strong>decision-making</strong> across multi-turn sessions — and explains
+                exactly what drove each score.</p>
             </div>
           </div>
 
@@ -2412,8 +2440,8 @@
                 </svg>
               </div>
               <h4>Session-level evaluation</h4>
-              <p>We grade your entire session's consistency and depth, moving beyond simple per-question gamification.
-                Your ability to maintain context over a 45-minute span is what gets measured.</p>
+              <p>We evaluate consistency and depth across an entire session, not just isolated questions. It measures
+                how you maintain context, justify trade-offs, and improve as the interview progresses.</p>
             </div>
 
             <div class="overview-feature">
@@ -2425,8 +2453,8 @@
                 </svg>
               </div>
               <h4>Conversational follow-ups</h4>
-              <p>Dynamic, AI-driven probing questions that act like a real human. If you mention a trade-off, the agent
-                will pivot to ask you to justify it based on scale.</p>
+              <p>Follow-ups adapt to what you say. Mention a constraint or a trade-off and the interviewer probes the
+                “why”, alternatives, and failure modes — like a real panel would.</p>
             </div>
 
             <div class="overview-feature">
@@ -2438,8 +2466,8 @@
                 </svg>
               </div>
               <h4>Explainable scoring</h4>
-              <p>Scores are meaningless without "why". You get exact strengths, gaps, and red flags mapped to rubrics.
-              </p>
+              <p>Every score comes with reasoning. You see strengths, gaps, and red flags mapped to a clear rubric — so
+                you know what to change next time.</p>
             </div>
 
             <div class="overview-feature">
@@ -2451,7 +2479,8 @@
                 </svg>
               </div>
               <h4>Communication signals</h4>
-              <p>Granular tracking of speech pace and filler words using intelligent audio processing.</p>
+              <p>Optional voice mode tracks delivery signals like pace, filler words, and pauses, so you can improve how
+                you communicate — not just what you say.</p>
             </div>
 
             <div class="overview-feature">
@@ -2463,7 +2492,8 @@
                 </svg>
               </div>
               <h4>Claim-based probing</h4>
-              <p>Questions strictly target your specific resume claims ensuring tailored rigor.</p>
+              <p>Resume-aware questions target your own projects and claims, creating practice that feels specific and
+                interview-real — not generic.</p>
             </div>
 
             <div class="overview-feature">
@@ -2477,8 +2507,8 @@
               </div>
               <div>
                 <h4>Unified scoring engine</h4>
-                <p>One powerful analysis pipeline backing your practice runs and interviews for a consistent standard
-                  across all interactions.</p>
+                <p>A consistent rubric powers practice, mock rounds, and module feedback — so your progress is measured
+                  against the same standard everywhere.</p>
               </div>
             </div>
           </div>
@@ -2507,11 +2537,12 @@
               <h1
                 style="font-size: clamp(32px, 4vw, 42px); font-weight: 800; color: var(--text); margin: 0 0 14px; line-height: 1.15; letter-spacing: -0.02em;">
                 Built for the way <span
-                  style="background: linear-gradient(135deg, #3b82f6, #8b5cf6); -webkit-background-clip: text; -webkit-text-fill-color: transparent;">interviews
+                  style="background: linear-gradient(135deg, #3b82f6, #8b5cf6); background-clip: text; -webkit-background-clip: text; -webkit-text-fill-color: transparent;">interviews
                   actually work</span>
               </h1>
               <p style="font-size: 17px; color: var(--text-secondary); max-width: 560px; line-height: 1.6; margin: 0;">
-                Eight modules. One evaluation standard. Every feature targets a signal real interviewers score you on.
+                Eight modules. One scoring standard. Each module targets signals real interviewers evaluate — from
+                correctness and structure to communication and trade-offs.
               </p>
             </div>
 
@@ -2526,7 +2557,7 @@
                 <div class="lbl">AI Agents</div>
               </div>
               <div class="feat-stat-box">
-                <div class="val">45min</div>
+                <div class="val">Multi-turn</div>
                 <div class="lbl">Session Depth</div>
               </div>
               <div class="feat-stat-box">
@@ -2593,7 +2624,8 @@
                   insight</span>
               </h1>
               <p style="font-size: 17px; color: var(--text-secondary); max-width: 520px; line-height: 1.6; margin: 0;">
-                Six stages. Every one designed to replicate the rigor of a real technical interview panel.
+                Six stages that mirror a real interview loop — setup, question selection, response capture,
+                evaluation, follow-ups, and session summary.
               </p>
             </div>
 
@@ -2623,8 +2655,8 @@
                   KEY DIFFERENTIATOR</div>
                 <p style="font-size: 14.5px; color: var(--text-secondary); line-height: 1.7; margin: 0;">
                   Stratax evaluates at the <span style="color: var(--text); font-weight: 700;">session level</span>, not
-                  just per-question. It tracks reasoning patterns, communication improvement, and confidence progression
-                  across your entire practice history — the same lens a real interviewer uses after 45 minutes with you.
+                  just per-question. It tracks reasoning patterns, communication signals, and improvement over time — so
+                  you can see both single-answer quality and session-level consistency.
                 </p>
               </div>
             </div>
@@ -2638,10 +2670,10 @@
                 <line x1="12" y1="9" x2="12" y2="13" />
                 <line x1="12" y1="17" x2="12.01" y2="17" />
               </svg>
-              <p style="font-size: 13px; color: #78716c; line-height: 1.6; margin: 0;">
+              <p style="font-size: 13px; color: var(--text-secondary); line-height: 1.6; margin: 0;">
                 <span style="color: #a78bfa; font-weight: 600;">Advisory Note — </span>
-                AI evaluation is advisory and should not be considered a definitive assessment of technical ability.
-                Scores are designed to highlight areas for improvement, not replace professional human judgment.
+                AI feedback is guidance, not a hiring decision. Use the scores to find improvement areas, validate
+                progress over time, and complement with real interviews and peer review.
               </p>
             </div>
           </div>
@@ -2673,10 +2705,11 @@
               <h1
                 style="font-size: clamp(28px,3.5vw,44px); font-weight: 800; color: var(--text); margin: 0 0 12px; line-height: 1.15; letter-spacing: -0.02em;">
                 System <span
-                  style="background: linear-gradient(135deg,#10b981,#3b82f6); -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent;">Architecture</span>
+                  style="background: linear-gradient(135deg,#10b981,#3b82f6); -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent;">Design</span>
               </h1>
-              <p style="font-size: 16px; color: var(--text-secondary); max-width: 500px; line-height: 1.6; margin: 0;">A
-                monolithic FastAPI service with modular, independently toggleable subsystems.</p>
+              <p style="font-size: 16px; color: var(--text-secondary); max-width: 540px; line-height: 1.6; margin: 0;">
+                A modular, async-first architecture with a single API boundary and independently toggleable subsystems.
+              </p>
             </div>
 
             <!-- Main grid -->
@@ -2684,7 +2717,7 @@
               <!-- Left layer stack -->
               <div>
                 <p
-                  style="font-size: 10px; font-weight: 700; color: #334155; letter-spacing: 0.1em; font-family: monospace; margin-bottom: 12px;">
+                  style="font-size: 10px; font-weight: 700; color: var(--text-muted); letter-spacing: 0.1em; font-family: var(--font-mono); margin-bottom: 12px;">
                   SYSTEM LAYERS</p>
                 <div id="archLayerList"></div>
               </div>
@@ -2725,7 +2758,7 @@
                     Technology Stack</h1>
                   <p id="tsDesc"
                     style="font-size: 16px; color: var(--text-secondary); line-height: 1.65; margin: 0; max-width: 480px;">
-                    Every layer purpose-selected for the demands of real-time AI interview evaluation.</p>
+                    A pragmatic stack optimized for low-latency UX, type safety, and modular AI-powered evaluation.</p>
                 </div>
                 <div style="display: flex; gap: 6px; flex-wrap: wrap;" id="tsFilters"></div>
               </div>
@@ -2768,304 +2801,1482 @@
         <div class="divider"></div>
 
         <!-- ─── Multi-Agent ─── -->
-        <section class="section" id="agents">
-          <h2>Multi-Agent Architecture</h2>
-          <p>Practice Mode uses 6 specialized AI agents that collaborate to deliver realistic interview simulation.</p>
+        <section class="section" id="agents" style="position: relative; margin-bottom: 60px;">
+          <div
+            style="position: absolute; top: 15%; left: 10%; width: 480px; height: 420px; background: radial-gradient(ellipse, rgba(59,130,246,0.04) 0%, transparent 70%); pointer-events: none;">
+          </div>
+          <div
+            style="position: absolute; bottom: 10%; right: 6%; width: 420px; height: 420px; background: radial-gradient(ellipse, rgba(236,72,153,0.035) 0%, transparent 70%); pointer-events: none;">
+          </div>
 
-          <table class="doc-table">
-            <thead>
-              <tr>
-                <th>Agent</th>
-                <th>Role</th>
-                <th>Technology</th>
-              </tr>
-            </thead>
-            <tbody>
-              <tr>
-                <td><strong>InterviewerAgent</strong></td>
-                <td>Question sequencing & micro-feedback</td>
-                <td>Rule-based + LLM</td>
-              </tr>
-              <tr>
-                <td><strong>SpeechAnalyticsAgent</strong></td>
-                <td>WPM, fillers, pauses, pitch variance</td>
-                <td>DSP (no LLM)</td>
-              </tr>
-              <tr>
-                <td><strong>AdaptiveInterviewerAgent</strong></td>
-                <td>LLM-driven answer evaluation</td>
-                <td>Gemini / Groq</td>
-              </tr>
-              <tr>
-                <td><strong>ConversationalAgent</strong></td>
-                <td>Profile inference from natural language</td>
-                <td>LLM</td>
-              </tr>
-              <tr>
-                <td><strong>EvaluationAgent</strong></td>
-                <td>End-of-interview coaching reports</td>
-                <td>LLM</td>
-              </tr>
-              <tr>
-                <td><strong>LocalSTTService</strong></td>
-                <td>Offline speech-to-text transcription</td>
-                <td>faster-whisper</td>
-              </tr>
-            </tbody>
-          </table>
+          <div style="position: relative; z-index: 10;">
+            <div style="margin-bottom: 42px;">
+              <div
+                style="display: inline-flex; align-items: center; gap: 8px; background: rgba(59,130,246,0.08); border: 1px solid rgba(59,130,246,0.22); border-radius: 20px; padding: 5px 14px; margin-bottom: 18px;">
+                <div
+                  style="width: 6px; height: 6px; border-radius: 50%; background: #3b82f6; box-shadow: 0 0 8px #3b82f6;">
+                </div>
+                <span
+                  style="font-size: 11px; font-weight: 700; color: #3b82f6; letter-spacing: 0.1em; text-transform: uppercase;">Multi-Agent
+                  System</span>
+              </div>
+              <h1
+                style="font-size: clamp(28px,3.5vw,44px); font-weight: 800; color: var(--text); margin: 0 0 12px; line-height: 1.15; letter-spacing: -0.02em;">
+                Multi-Agent <span
+                  style="background: linear-gradient(135deg,#3b82f6,#ec4899); -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent;">Architecture</span>
+              </h1>
+              <p style="font-size: 16px; color: var(--text-secondary); max-width: 640px; line-height: 1.7; margin: 0;">
+                Practice Mode is orchestrated by specialized agents that run in parallel and merge their signals into a
+                single, explainable evaluation — content quality, delivery, and session-level consistency.
+              </p>
+            </div>
+
+            <ul>
+              <li><strong>Parallel signal extraction:</strong> content + delivery metrics are computed side-by-side</li>
+              <li><strong>Unified rubric:</strong> outputs are merged into consistent scoring dimensions</li>
+              <li><strong>Actionable coaching:</strong> feedback is turned into next-step improvements and drills</li>
+            </ul>
+
+            <table class="doc-table">
+              <thead>
+                <tr>
+                  <th>Agent</th>
+                  <th>Responsibility</th>
+                  <th>Technology</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td><strong>InterviewerAgent</strong></td>
+                  <td>Orchestrates question flow, follow-ups, and micro-feedback</td>
+                  <td>Rules + LLM</td>
+                </tr>
+                <tr>
+                  <td><strong>SpeechAnalyticsAgent</strong></td>
+                  <td>Delivery signals: pace, fillers, pauses, and consistency</td>
+                  <td>Signal processing + analytics</td>
+                </tr>
+                <tr>
+                  <td><strong>AdaptiveInterviewerAgent</strong></td>
+                  <td>Evaluates answer quality, depth, and trade-offs</td>
+                  <td>Gemini / Groq</td>
+                </tr>
+                <tr>
+                  <td><strong>ConversationalAgent</strong></td>
+                  <td>Maintains context and probes assumptions conversationally</td>
+                  <td>LLM + session memory</td>
+                </tr>
+                <tr>
+                  <td><strong>EvaluationAgent</strong></td>
+                  <td>Generates structured summaries and coaching recommendations</td>
+                  <td>LLM</td>
+                </tr>
+                <tr>
+                  <td><strong>TranscriptionService</strong></td>
+                  <td>Speech-to-text transcription for voice sessions</td>
+                  <td>Web Speech API (SpeechRecognition)</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
         </section>
 
         <div class="divider"></div>
 
-        <!-- ─── Q&A Engine ─── -->
-        <section class="section" id="qa-engine">
-          <h2>Q&A Engine</h2>
-          <p>Context-aware conversational assistant with session persistence, streaming support, and identity
-            protection.</p>
-
-          <div class="stat-tiles">
-            <div class="stat-tile">
-              <div class="stat-tile-val">&infin;</div>
-              <div class="stat-tile-label">Turn Context</div>
+        <!--  AI Copilot  -->
+        <style>
+          .aic-stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-bottom: 48px; }
+          .aic-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 28px; margin-bottom: 40px; }
+          @media (max-width: 900px) { .aic-stats { grid-template-columns: repeat(2, 1fr); } .aic-grid { grid-template-columns: 1fr; } }
+          .aic-stat-card { background: rgba(255,255,255,0.02); border: 1px solid rgba(255,255,255,0.06); border-radius: 14px; padding: 22px 20px; position: relative; overflow: hidden; transition: all 0.22s ease; }
+          .aic-step { display: flex; align-items: center; gap: 14px; padding: 16px 18px; border-radius: 12px; cursor: pointer; background: transparent; border: 1px solid transparent; transition: all 0.2s ease; }
+          .aic-step:hover { background: rgba(255,255,255,0.03); }
+          @keyframes blink { 0%, 100% { opacity: 1; } 50% { opacity: 0; } }
+          .aic-cursor { display: inline-block; width: 2px; height: 14px; background: #10b981; margin-left: 2px; vertical-align: text-bottom; animation: blink 1s infinite; }
+        </style>
+        <section class="section" id="ai-copilot" style="position: relative; overflow: hidden;">
+          <div style="position: absolute; top: 10%; left: 30%; width: 700px; height: 400px; background: radial-gradient(ellipse, rgba(59,130,246,0.05) 0%, transparent 65%); pointer-events: none; border-radius: 50%;"></div>
+          <div style="position: absolute; bottom: 15%; right: 5%; width: 400px; height: 400px; background: radial-gradient(ellipse, rgba(139,92,246,0.04) 0%, transparent 70%); pointer-events: none; border-radius: 50%;"></div>
+          <div style="position: relative; z-index: 10;">
+            <div style="margin-bottom: 48px;">
+              <div style="display: inline-flex; align-items: center; gap: 8px; background: rgba(59,130,246,0.1); border: 1px solid rgba(59,130,246,0.2); border-radius: 20px; padding: 5px 14px; margin-bottom: 18px;">
+                <div style="width: 5px; height: 5px; border-radius: 50%; background: #3b82f6; box-shadow: 0 0 6px #3b82f6;"></div>
+                <span style="font-size: 11px; font-weight: 700; color: #3b82f6; letter-spacing: 0.1em; font-family: monospace;">MODULE  AI COPILOT</span>
+              </div>
+              <h1 style="font-size: clamp(30px, 3.5vw, 44px); font-weight: 800; color: var(--text); margin: 0 0 12px; line-height: 1.15; letter-spacing: -0.02em;">AI Copilot</h1>
+              <p style="font-size: 16px; color: var(--text-secondary); max-width: 540px; line-height: 1.65; margin: 0;">Context-aware conversational assistant with session persistence, SSE streaming, dual-provider routing, and identity protection.</p>
             </div>
-            <div class="stat-tile">
-              <div class="stat-tile-val">2</div>
-              <div class="stat-tile-label">LLM Providers</div>
+            <div class="aic-stats">
+              <div class="aic-stat-card" onmouseenter="this.style.background='#3b82f612'; this.style.borderColor='#3b82f640'" onmouseleave="this.style.background='rgba(255,255,255,0.02)'; this.style.borderColor='rgba(255,255,255,0.06)'">
+                <div style="color: #3b82f6; opacity: 0.6; margin-bottom: 12px;"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21.5 2v6h-6M2.5 22v-6h6M2 11.5a10 10 0 0 1 18.8-4.3M22 12.5a10 10 0 0 1-18.8 4.2"/></svg></div>
+                <div style="font-size: clamp(28px, 3vw, 38px); font-weight: 900; color: #3b82f6; letter-spacing: -0.03em; line-height: 1; margin-bottom: 6px; font-family: monospace;"></div>
+                <div style="font-size: 10px; font-weight: 700; color: #3b82f6; letter-spacing: 0.1em; opacity: 0.8; font-family: monospace; margin-bottom: 3px;">TURN CONTEXT</div>
+                <div style="font-size: 11px; color: #475569;">Persistent memory</div>
+                <div style="position: absolute; top: 0; right: 0; width: 60px; height: 60px; background: radial-gradient(circle at top right, #3b82f620, transparent); pointer-events: none;"></div>
+              </div>
+              <div class="aic-stat-card" onmouseenter="this.style.background='#8b5cf612'; this.style.borderColor='#8b5cf640'" onmouseleave="this.style.background='rgba(255,255,255,0.02)'; this.style.borderColor='rgba(255,255,255,0.06)'">
+                <div style="color: #8b5cf6; opacity: 0.6; margin-bottom: 12px;"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg></div>
+                <div style="font-size: clamp(28px, 3vw, 38px); font-weight: 900; color: #8b5cf6; letter-spacing: -0.03em; line-height: 1; margin-bottom: 6px; font-family: monospace;">2</div>
+                <div style="font-size: 10px; font-weight: 700; color: #8b5cf6; letter-spacing: 0.1em; opacity: 0.8; font-family: monospace; margin-bottom: 3px;">LLM PROVIDERS</div>
+                <div style="font-size: 11px; color: #475569;">Groq + Gemini</div>
+                <div style="position: absolute; top: 0; right: 0; width: 60px; height: 60px; background: radial-gradient(circle at top right, #8b5cf620, transparent); pointer-events: none;"></div>
+              </div>
+              <div class="aic-stat-card" onmouseenter="this.style.background='#10b98112'; this.style.borderColor='#10b98140'" onmouseleave="this.style.background='rgba(255,255,255,0.02)'; this.style.borderColor='rgba(255,255,255,0.06)'">
+                <div style="color: #10b981; opacity: 0.6; margin-bottom: 12px;"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg></div>
+                <div style="font-size: clamp(28px, 3vw, 38px); font-weight: 900; color: #10b981; letter-spacing: -0.03em; line-height: 1; margin-bottom: 6px; font-family: monospace;">SSE</div>
+                <div style="font-size: 10px; font-weight: 700; color: #10b981; letter-spacing: 0.1em; opacity: 0.8; font-family: monospace; margin-bottom: 3px;">STREAMING</div>
+                <div style="font-size: 11px; color: #475569;">Server-sent events</div>
+                <div style="position: absolute; top: 0; right: 0; width: 60px; height: 60px; background: radial-gradient(circle at top right, #10b98120, transparent); pointer-events: none;"></div>
+              </div>
+              <div class="aic-stat-card" onmouseenter="this.style.background='#ec489912'; this.style.borderColor='#ec489940'" onmouseleave="this.style.background='rgba(255,255,255,0.02)'; this.style.borderColor='rgba(255,255,255,0.06)'">
+                <div style="color: #ec4899; opacity: 0.6; margin-bottom: 12px;"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><line x1="9" y1="12" x2="15" y2="12" opacity="0.5"/><line x1="9" y1="12" x2="15" y2="12"/><polyline points="9 12 11 14 15 10"/></svg></div>
+                <div style="font-size: clamp(28px, 3vw, 38px); font-weight: 900; color: #ec4899; letter-spacing: -0.03em; line-height: 1; margin-bottom: 6px; font-family: monospace;">0</div>
+                <div style="font-size: 10px; font-weight: 700; color: #ec4899; letter-spacing: 0.1em; opacity: 0.8; font-family: monospace; margin-bottom: 3px;">IMPERSONATION</div>
+                <div style="font-size: 11px; color: #475569;">Identity guard enforced</div>
+                <div style="position: absolute; top: 0; right: 0; width: 60px; height: 60px; background: radial-gradient(circle at top right, #ec489920, transparent); pointer-events: none;"></div>
+              </div>
             </div>
-            <div class="stat-tile">
-              <div class="stat-tile-val">SSE</div>
-              <div class="stat-tile-label">Streaming</div>
+            <div class="aic-grid">
+              <!-- Left -->
+              <div>
+                <div style="font-size: 11px; color: #475569; font-weight: 700; letter-spacing: 0.08em; margin-bottom: 14px; font-family: monospace;">REQUEST LIFECYCLE</div>
+                <div style="display: flex; flex-direction: column; gap: 4px;" id="aicFlowList"></div>
+                <div id="aicStepDetailWrapper"></div>
+              </div>
+              <!-- Right -->
+              <div>
+                <div style="font-size: 11px; color: #475569; font-weight: 700; letter-spacing: 0.08em; margin-bottom: 14px; font-family: monospace;">LIVE DEMO — SSE STREAM</div>
+                <div style="background: rgba(13,17,23,0.9); border: 1px solid rgba(255,255,255,0.08); border-radius: 14px; overflow: hidden;">
+                  <div style="display: flex; align-items: center; gap: 8px; padding: 12px 16px; border-bottom: 1px solid rgba(255,255,255,0.06); background: rgba(255,255,255,0.02);">
+                    <div style="width: 8px; height: 8px; border-radius: 50%; background: #ef4444;"></div>
+                    <div style="width: 8px; height: 8px; border-radius: 50%; background: #f59e0b;"></div>
+                    <div style="width: 8px; height: 8px; border-radius: 50%; background: #10b981;"></div>
+                    <span style="font-size: 11px; color: #475569; font-family: monospace; margin-left: 8px;">ai-copilot  session_a3f9</span>
+                    <div style="margin-left: auto; display: flex; align-items: center; gap: 5px;">
+                      <div style="width: 6px; height: 6px; border-radius: 50%; background: #10b981; box-shadow: 0 0 6px #10b981;"></div>
+                      <span style="font-size: 10px; color: #10b981; font-family: monospace;">LIVE</span>
+                    </div>
+                  </div>
+                  <div style="padding: 20px; display: flex; flex-direction: column; gap: 16px; min-height: 280px;">
+                    <div style="display: flex; justify-content: center;">
+                      <div style="font-size: 10px; color: #475569; background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.08); padding: 3px 10px; border-radius: 20px; font-family: monospace;">Provider: Groq  Gemini fallback ready</div>
+                    </div>
+                    <div style="display: flex; justify-content: flex-end;">
+                      <div style="max-width: 85%; background: rgba(59,130,246,0.12); border: 1px solid rgba(59,130,246,0.2); border-radius: 12px 12px 2px 12px; padding: 12px 14px;">
+                        <p style="font-size: 13px; color: #cbd5e1; margin: 0; line-height: 1.6;">Walk me through how you'd design a rate limiter at scale.</p>
+                      </div>
+                    </div>
+                    <div style="display: flex; gap: 10px; align-items: flex-start;">
+                      <div style="width: 30px; height: 30px; border-radius: 8px; background: rgba(139,92,246,0.15); border: 1px solid rgba(139,92,246,0.3); display: flex; align-items: center; justify-content: center; flex-shrink: 0; font-size: 14px;"></div>
+                      <div style="flex: 1; background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.07); border-radius: 2px 12px 12px 12px; padding: 12px 14px;">
+                        <div style="display: flex; align-items: center; gap: 6px; margin-bottom: 8px;">
+                          <span style="font-size: 10px; color: #8b5cf6; font-weight: 700; font-family: monospace;">GROQ  STREAMING</span>
+                          <span style="display: inline-flex; gap: 3px; vertical-align: middle;">
+                            <span class="aic-dot" style="width: 4px; height: 4px; border-radius: 50%; background: #10b981; transition: opacity 0.3s; opacity: 0.25;"></span>
+                            <span class="aic-dot" style="width: 4px; height: 4px; border-radius: 50%; background: #10b981; transition: opacity 0.3s; opacity: 0.25;"></span>
+                            <span class="aic-dot" style="width: 4px; height: 4px; border-radius: 50%; background: #10b981; transition: opacity 0.3s; opacity: 0.25;"></span>
+                          </span>
+                        </div>
+                        <p style="font-size: 13px; color: #94a3b8; margin: 0; line-height: 1.7;" id="aicTypedText"></p>
+                      </div>
+                    </div>
+                    <div style="display: flex; align-items: center; gap: 8px; padding: 8px 12px; background: rgba(16,185,129,0.06); border: 1px solid rgba(16,185,129,0.15); border-radius: 8px;">
+                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#10b981" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+                      <span style="font-size: 11px; color: #10b981; font-family: monospace; font-weight: 600;">Identity guard — no impersonation detected</span>
+                      <span style="margin-left: auto; font-size: 10px; color: #10b981; opacity: 0.6;"> PASS</span>
+                    </div>
+                  </div>
+                </div>
+                <div style="margin-top: 14px; background: rgba(255,255,255,0.02); border: 1px solid rgba(255,255,255,0.07); border-radius: 12px; padding: 16px 18px;">
+                  <div style="font-size: 11px; color: #475569; font-weight: 700; letter-spacing: 0.08em; margin-bottom: 12px; font-family: monospace;">PROVIDER ROUTING</div>
+                  <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
+                    <span style="color: #2d3a47; font-size: 14px;">Request</span>
+                    <span style="color: #334155; font-size: 14px;"></span>
+                    <div style="display: flex; flex-direction: column; align-items: center; gap: 3px;">
+                      <span style="font-size: 12px; color: #f59e0b; font-family: monospace; font-weight: 600; background: rgba(245,158,11,0.1); padding: 3px 9px; border-radius: 6px; border: 1px solid rgba(245,158,11,0.25);">Groq</span>
+                      <span style="font-size: 8px; color: #f59e0b; opacity: 0.6; letter-spacing: 0.06em;">PRIMARY</span>
+                    </div>
+                    <span style="color: #334155; font-size: 14px;"></span>
+                    <div style="display: flex; flex-direction: column; align-items: center; gap: 3px;">
+                      <span style="font-size: 12px; color: #8b5cf6; font-family: monospace; font-weight: 600; background: rgba(139,92,246,0.1); padding: 3px 9px; border-radius: 6px; border: 1px solid rgba(139,92,246,0.25);">Gemini</span>
+                      <span style="font-size: 8px; color: #8b5cf6; opacity: 0.6; letter-spacing: 0.06em;">FALLBACK</span>
+                    </div>
+                    <span style="color: #334155; font-size: 14px;"></span>
+                    <span style="color: #2d3a47; font-size: 14px;">SSE Stream</span>
+                  </div>
+                </div>
+              </div>
             </div>
-            <div class="stat-tile">
-              <div class="stat-tile-val">0</div>
-              <div class="stat-tile-label">Impersonation</div>
+            <div>
+              <div style="font-size: 11px; color: #475569; font-weight: 700; letter-spacing: 0.08em; margin-bottom: 14px; font-family: monospace;">ALL CAPABILITIES</div>
+              <div style="display: flex; flex-wrap: wrap; gap: 9px;">
+                <div style="display: flex; align-items: center; gap: 7px; background: rgba(255,255,255,0.02); border: 1px solid rgba(255,255,255,0.07); border-radius: 8px; padding: 7px 14px; transition: all 0.2s;" onmouseenter="this.style.background='#3b82f60e'; this.style.borderColor='#3b82f635'" onmouseleave="this.style.background='rgba(255,255,255,0.02)'; this.style.borderColor='rgba(255,255,255,0.07)'">
+                  <span style="font-size: 13px;"></span>
+                  <span style="font-size: 12.5px; color: var(--text-secondary); font-weight: 500;">Session persistence</span>
+                </div>
+                <div style="display: flex; align-items: center; gap: 7px; background: rgba(255,255,255,0.02); border: 1px solid rgba(255,255,255,0.07); border-radius: 8px; padding: 7px 14px; transition: all 0.2s;" onmouseenter="this.style.background='#8b5cf60e'; this.style.borderColor='#8b5cf635'" onmouseleave="this.style.background='rgba(255,255,255,0.02)'; this.style.borderColor='rgba(255,255,255,0.07)'">
+                  <span style="font-size: 13px;"></span>
+                  <span style="font-size: 12.5px; color: var(--text-secondary); font-weight: 500;">Multi-turn context</span>
+                </div>
+                <div style="display: flex; align-items: center; gap: 7px; background: rgba(255,255,255,0.02); border: 1px solid rgba(255,255,255,0.07); border-radius: 8px; padding: 7px 14px; transition: all 0.2s;" onmouseenter="this.style.background='#10b9810e'; this.style.borderColor='#10b98135'" onmouseleave="this.style.background='rgba(255,255,255,0.02)'; this.style.borderColor='rgba(255,255,255,0.07)'">
+                  <span style="font-size: 13px;"></span>
+                  <span style="font-size: 12.5px; color: var(--text-secondary); font-weight: 500;">Resume injection</span>
+                </div>
+                <div style="display: flex; align-items: center; gap: 7px; background: rgba(255,255,255,0.02); border: 1px solid rgba(255,255,255,0.07); border-radius: 8px; padding: 7px 14px; transition: all 0.2s;" onmouseenter="this.style.background='#f59e0b0e'; this.style.borderColor='#f59e0b35'" onmouseleave="this.style.background='rgba(255,255,255,0.02)'; this.style.borderColor='rgba(255,255,255,0.07)'">
+                  <span style="font-size: 13px;"></span>
+                  <span style="font-size: 12.5px; color: var(--text-secondary); font-weight: 500;">Groq + Gemini dual LLM</span>
+                </div>
+                <div style="display: flex; align-items: center; gap: 7px; background: rgba(255,255,255,0.02); border: 1px solid rgba(255,255,255,0.07); border-radius: 8px; padding: 7px 14px; transition: all 0.2s;" onmouseenter="this.style.background='#06b6d40e'; this.style.borderColor='#06b6d435'" onmouseleave="this.style.background='rgba(255,255,255,0.02)'; this.style.borderColor='rgba(255,255,255,0.07)'">
+                  <span style="font-size: 13px;"></span>
+                  <span style="font-size: 12.5px; color: var(--text-secondary); font-weight: 500;">SSE streaming</span>
+                </div>
+                <div style="display: flex; align-items: center; gap: 7px; background: rgba(255,255,255,0.02); border: 1px solid rgba(255,255,255,0.07); border-radius: 8px; padding: 7px 14px; transition: all 0.2s;" onmouseenter="this.style.background='#ec48990e'; this.style.borderColor='#ec489935'" onmouseleave="this.style.background='rgba(255,255,255,0.02)'; this.style.borderColor='rgba(255,255,255,0.07)'">
+                  <span style="font-size: 13px;"></span>
+                  <span style="font-size: 12.5px; color: var(--text-secondary); font-weight: 500;">Identity guard</span>
+                </div>
+                <div style="display: flex; align-items: center; gap: 7px; background: rgba(255,255,255,0.02); border: 1px solid rgba(255,255,255,0.07); border-radius: 8px; padding: 7px 14px; transition: all 0.2s;" onmouseenter="this.style.background='#8b5cf60e'; this.style.borderColor='#8b5cf635'" onmouseleave="this.style.background='rgba(255,255,255,0.02)'; this.style.borderColor='rgba(255,255,255,0.07)'">
+                  <span style="font-size: 13px;"></span>
+                  <span style="font-size: 12.5px; color: var(--text-secondary); font-weight: 500;">Provider hot-swap</span>
+                </div>
+                <div style="display: flex; align-items: center; gap: 7px; background: rgba(255,255,255,0.02); border: 1px solid rgba(255,255,255,0.07); border-radius: 8px; padding: 7px 14px; transition: all 0.2s;" onmouseenter="this.style.background='#10b9810e'; this.style.borderColor='#10b98135'" onmouseleave="this.style.background='rgba(255,255,255,0.02)'; this.style.borderColor='rgba(255,255,255,0.07)'">
+                  <span style="font-size: 13px;"></span>
+                  <span style="font-size: 12.5px; color: var(--text-secondary); font-weight: 500;">Post-processing pipeline</span>
+                </div>
+              </div>
             </div>
           </div>
-
-          <div class="pipeline">
-            <div class="pipeline-step">
-              <div class="pipeline-idx">1</div>
-              <div class="pipeline-body">
-                <h4>User sends message</h4>
-                <p>Message + session history sent to LLM orchestration layer.</p>
-              </div>
-            </div>
-            <div class="pipeline-step">
-              <div class="pipeline-idx">2</div>
-              <div class="pipeline-body">
-                <h4>Provider routing</h4>
-                <p>Groq ↔ Gemini hot-swap with fallback. Resume context injected if uploaded.</p>
-              </div>
-            </div>
-            <div class="pipeline-step">
-              <div class="pipeline-idx">3</div>
-              <div class="pipeline-body">
-                <h4>Response streamed</h4>
-                <p>SSE stream with identity guard enforced. Post-processing applied in real time.</p>
-              </div>
-            </div>
-          </div>
+          <script>
+            const aicFlows = [{"number": "01", "tag": "INGESTION", "title": "User Sends Message", "subtitle": "Full context window passed", "description": "Every message carries the full session history to the LLM orchestration layer \u2014 not just the latest turn. Resume context is automatically injected if a resume was uploaded at session start.", "bullets": ["Full session history included in every call", "Resume claims injected as system context", "Session ID tracked for persistence", "Message sanitized before routing"], "accentColor": "#3b82f6"}, {"number": "02", "tag": "ROUTING", "title": "Provider Routing", "subtitle": "Hot-swap with fallback", "description": "Groq handles the primary path for low-latency inference. If Groq is unavailable or rate-limited, Gemini is automatically promoted as fallback \u2014 zero manual intervention, zero dropped sessions.", "bullets": ["Groq  Gemini hot-swap on failure", "Rate limit detection built in", "Resume context re-injected per route", "Provider latency logged per request"], "accentColor": "#8b5cf6"}, {"number": "03", "tag": "STREAMING", "title": "Response Streamed", "subtitle": "SSE with identity guard", "description": "Responses are streamed token-by-token via Server-Sent Events. An identity guard runs inline during streaming \u2014 it intercepts and blocks any attempt to claim a different persona or role in real time.", "bullets": ["Token-by-token SSE streaming", "Identity guard runs inline", "Post-processing applied in real time", "Session state updated on completion"], "accentColor": "#10b981"}];
+            let aicActiveStep = 0;
+            function aicRenderFlowList() {
+              const list = document.getElementById("aicFlowList");
+              if(!list) return;
+              list.innerHTML = "";
+              aicFlows.forEach((s, i) => {
+                const isActive = aicActiveStep === i;
+                list.innerHTML += `
+                  <div class="aic-step ${isActive ? "active" : ""}" onclick="aicSetStep(${i})" style="background: ${isActive ? s.accentColor + "0e" : "transparent"}; border-color: ${isActive ? s.accentColor + "40" : "transparent"}">
+                    <div style="width: 38px; height: 38px; border-radius: 50%; flex-shrink: 0; background: ${isActive ? s.accentColor : "rgba(255,255,255,0.05)"}; border: 1px solid ${isActive ? s.accentColor : "rgba(255,255,255,0.1)"}; display: flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 800; color: ${isActive ? "#fff" : "#475569"}; font-family: monospace; box-shadow: ${isActive ? "0 0 14px " + s.accentColor + "50" : "none"}; transition: all 0.2s;">${s.number}</div>
+                    <div style="flex: 1;">
+                      <div style="display: flex; align-items: center; gap: 7px; margin-bottom: 2px;">
+                        <span style="font-size: 13.5px; font-weight: 700; color: ${isActive ? "#f1f5f9" : "#64748b"}; transition: color 0.2s;">${s.title}</span>
+                        <span style="font-size: 9px; font-weight: 700; color: ${s.accentColor}; background: ${s.accentColor}15; border: 1px solid ${s.accentColor}25; padding: 1px 6px; border-radius: 8px; letter-spacing: 0.07em; font-family: monospace; opacity: ${isActive ? 1 : 0.5};">${s.tag}</span>
+                      </div>
+                      <div style="font-size: 11.5px; color: ${isActive ? "#64748b" : "#2d3a47"}; transition: color 0.2s;">${s.subtitle}</div>
+                    </div>
+                    ${isActive ? `<div style="width: 3px; height: 22px; border-radius: 2px; border-color: ${s.accentColor}; background: ${s.accentColor}; box-shadow: 0 0 8px ${s.accentColor}80"></div>` : ""}
+                  </div>
+                `;
+              });
+            }
+            function aicRenderStepDetail() {
+              const w = document.getElementById("aicStepDetailWrapper");
+              if(!w) return;
+              const s = aicFlows[aicActiveStep];
+              w.innerHTML = `
+                <div style="margin-top: 16px; background: linear-gradient(135deg, ${s.accentColor}0a, rgba(13,17,23,0.9)); border: 1px solid ${s.accentColor}28; border-radius: 14px; padding: 22px; transition: all 0.3s ease;">
+                  <p style="font-size: 13.5px; color: #94a3b8; line-height: 1.75; margin-bottom: 16px;">${s.description}</p>
+                  <div style="display: flex; flex-direction: column; gap: 7px;">
+                    ${s.bullets.map(b => `
+                      <div style="display: flex; align-items: center; gap: 9px;">
+                        <div style="width: 5px; height: 5px; border-radius: 50%; background: ${s.accentColor}; opacity: 0.7; flex-shrink: 0;"></div>
+                        <span style="font-size: 12.5px; color: #64748b;">${b}</span>
+                      </div>
+                    `).join("")}
+                  </div>
+                </div>
+              `;
+            }
+            window.aicSetStep = function(i) {
+              if(i === aicActiveStep) return;
+              aicActiveStep = i;
+              aicRenderFlowList();
+              aicRenderStepDetail();
+            };
+            setTimeout(() => { aicRenderFlowList(); aicRenderStepDetail(); }, 100);
+            
+            // Typing effect
+            const aicFullText = "Great question. I'd start with a token bucket algorithm at the edge — it handles burst traffic gracefully while enforcing average rates...";
+            let aicCharIdx = 0;
+            function typeAicDemo() {
+              const p = document.getElementById("aicTypedText");
+              if(!p) return;
+              if(aicCharIdx < aicFullText.length) {
+                aicCharIdx++;
+                p.innerHTML = aicFullText.substring(0, aicCharIdx) + '<span class="aic-cursor"></span>';
+                setTimeout(typeAicDemo, 22);
+              } else {
+                p.innerHTML = aicFullText;
+              }
+            }
+            // Dots effect
+            let aicDotPhase = 0;
+            setInterval(() => {
+              const dots = document.querySelectorAll(".aic-dot");
+              if(dots.length === 0) return;
+              dots.forEach((d, i) => {
+                d.style.opacity = (i === aicDotPhase) ? "1" : "0.25";
+              });
+              aicDotPhase = (aicDotPhase + 1) % 3;
+            }, 400);
+            
+            // Start typer when section comes into view
+            const aicObserver = new IntersectionObserver((entries) => {
+              entries.forEach(e => {
+                if(e.isIntersecting) {
+                  aicCharIdx = 0;
+                  typeAicDemo();
+                  aicObserver.disconnect();
+                }
+              });
+            }, { threshold: 0.1 });
+            setTimeout(() => {
+               const sec = document.getElementById("ai-copilot");
+               if(sec) aicObserver.observe(sec);
+            }, 500);
+          </script>
         </section>
+
+        <style>
+          /* ─── Module sections — matched to app/landing visuals ─── */
+          .module-shell {
+            position: relative;
+            overflow: hidden;
+            background: #0a0d12;
+            border: 1px solid rgba(255, 255, 255, 0.07);
+            border-radius: 16px;
+            padding: 44px 40px 40px;
+          }
+
+          @media (max-width: 900px) {
+            .module-shell { padding: 34px 18px 22px; }
+          }
+
+          .module-orb {
+            position: absolute;
+            width: 650px;
+            height: 420px;
+            border-radius: 999px;
+            pointer-events: none;
+            background: radial-gradient(ellipse, var(--orb) 0%, transparent 65%);
+          }
+
+          .module-inner { position: relative; z-index: 2; }
+
+          .module-chip {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            border-radius: 20px;
+            padding: 5px 14px;
+            margin-bottom: 18px;
+            border: 1px solid var(--chip-border);
+            background: var(--chip-bg);
+          }
+
+          .module-chip-dot {
+            width: 5px;
+            height: 5px;
+            border-radius: 999px;
+            background: var(--chip-color);
+            box-shadow: 0 0 6px var(--chip-color);
+          }
+
+          .module-chip-text {
+            font-size: 11px;
+            font-weight: 700;
+            color: var(--chip-color);
+            letter-spacing: 0.1em;
+            font-family: var(--font-mono);
+          }
+
+          .module-title {
+            font-size: clamp(28px, 3.2vw, 42px);
+            font-weight: 800;
+            color: var(--text);
+            margin: 0 0 12px;
+            line-height: 1.15;
+            letter-spacing: -0.02em;
+          }
+
+          .module-lead {
+            font-size: 15px;
+            color: var(--text-secondary);
+            max-width: 560px;
+            line-height: 1.7;
+            margin: 0;
+          }
+
+          .module-stats {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 12px;
+            margin: 34px 0 32px;
+          }
+
+          @media (max-width: 900px) {
+            .module-stats { grid-template-columns: repeat(2, 1fr); }
+          }
+
+          .module-stat {
+            position: relative;
+            overflow: hidden;
+            border-radius: 14px;
+            padding: 22px 20px;
+            transition: all 0.22s ease;
+          }
+
+          .module-stat-ico { font-size: 18px; margin-bottom: 10px; }
+
+          .module-stat-val {
+            font-size: clamp(22px, 2.8vw, 34px);
+            font-weight: 900;
+            letter-spacing: -0.03em;
+            line-height: 1;
+            margin-bottom: 6px;
+            font-family: var(--font-mono);
+            color: var(--c);
+          }
+
+          .module-stat-label {
+            font-size: 10px;
+            font-weight: 700;
+            letter-spacing: 0.1em;
+            font-family: var(--font-mono);
+            opacity: 0.85;
+            margin-bottom: 3px;
+            color: var(--c);
+          }
+
+          .module-stat-sub { font-size: 11px; color: #475569; }
+
+          .module-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 28px;
+          }
+
+          @media (max-width: 900px) {
+            .module-grid { grid-template-columns: 1fr; }
+          }
+
+          .module-panel {
+            background: rgba(255, 255, 255, 0.02);
+            border: 1px solid rgba(255, 255, 255, 0.07);
+            border-radius: 16px;
+            padding: 26px;
+          }
+
+          .module-kicker {
+            font-size: 11px;
+            color: #475569;
+            font-weight: 700;
+            letter-spacing: 0.08em;
+            margin-bottom: 14px;
+            font-family: var(--font-mono);
+          }
+
+          .module-meter-row { margin-bottom: 18px; }
+          .module-meter-row:last-child { margin-bottom: 0; }
+
+          .module-meter-head {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            gap: 12px;
+            margin-bottom: 8px;
+          }
+
+          .module-meter-name { font-size: 13.5px; font-weight: 600; color: #cbd5e1; }
+          .module-meter-desc { font-size: 11px; color: #475569; margin-top: 1px; }
+
+          .module-meter-score {
+            font-size: 20px;
+            font-weight: 800;
+            font-family: var(--font-mono);
+            letter-spacing: -0.02em;
+            color: var(--c);
+          }
+
+          .module-bar-wrap {
+            height: 6px;
+            background: rgba(255, 255, 255, 0.06);
+            border-radius: 6px;
+            overflow: hidden;
+          }
+
+          .module-bar {
+            height: 100%;
+            width: var(--w);
+            background: linear-gradient(90deg, var(--c), var(--c));
+            border-radius: 6px;
+            box-shadow: 0 0 8px rgba(255,255,255,0.06);
+          }
+
+          .module-list {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+          }
+
+          .module-item {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            padding: 12px 16px;
+            border-radius: 10px;
+            cursor: pointer;
+            background: rgba(255, 255, 255, 0.02);
+            border: 1px solid rgba(255, 255, 255, 0.07);
+            transition: all 0.2s ease;
+            user-select: none;
+          }
+
+          .module-item:hover { background: rgba(255, 255, 255, 0.03); }
+
+          .module-item.active {
+            background: rgba(255, 255, 255, 0.03);
+            border-color: rgba(255, 255, 255, 0.12);
+          }
+
+          .module-item-icon {
+            width: 34px;
+            height: 34px;
+            border-radius: 8px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 16px;
+            flex-shrink: 0;
+          }
+
+          .module-item-title { font-size: 13px; font-weight: 700; color: #94a3b8; }
+          .module-item.active .module-item-title { color: #f1f5f9; }
+          .module-item-sub { font-size: 11.5px; color: #475569; }
+
+          .module-item-badge {
+            font-size: 9px;
+            font-family: var(--font-mono);
+            font-weight: 700;
+            color: var(--c);
+            background: rgba(255,255,255,0.03);
+            border: 1px solid rgba(255,255,255,0.07);
+            padding: 2px 7px;
+            border-radius: 6px;
+          }
+
+          .module-chips {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+          }
+
+          .module-chip-pill {
+            font-size: 12px;
+            color: #64748b;
+            background: rgba(255, 255, 255, 0.03);
+            border: 1px solid rgba(255, 255, 255, 0.07);
+            padding: 5px 12px;
+            border-radius: 8px;
+            font-weight: 500;
+          }
+
+          .module-btn {
+            padding: 5px 12px;
+            border-radius: 8px;
+            border: 1px solid rgba(255, 255, 255, 0.07);
+            background: rgba(255, 255, 255, 0.03);
+            color: #475569;
+            font-size: 11px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.18s ease;
+          }
+
+          .module-btn.active {
+            border-color: rgba(59,130,246,0.35);
+            background: rgba(59,130,246,0.12);
+            color: #3b82f6;
+          }
+
+          .terminal {
+            background: #0d1117;
+            border: 1px solid rgba(255, 255, 255, 0.08);
+            border-radius: 12px;
+            overflow: hidden;
+          }
+
+          .terminal-head {
+            display: flex;
+            align-items: center;
+            gap: 7px;
+            padding: 10px 14px;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+            background: rgba(255, 255, 255, 0.02);
+          }
+
+          .term-dot { width: 7px; height: 7px; border-radius: 999px; }
+          .term-title { font-size: 11px; color: #475569; font-family: var(--font-mono); margin-left: 6px; }
+          .term-tag { margin-left: auto; font-size: 10px; font-family: var(--font-mono); background: rgba(59, 130, 246, 0.1); padding: 1px 7px; border-radius: 6px; color: #3b82f6; }
+          .term-body { padding: 18px; }
+          .term-prompt { font-size: 13px; color: #475569; font-family: var(--font-mono); margin-bottom: 10px; }
+          .term-q { font-size: 13.5px; color: #10b981; font-family: var(--font-mono); line-height: 1.6; margin: 0 0 4px; }
+          .term-cursor { display: inline-block; width: 2px; height: 13px; background: #10b981; margin-left: 1px; vertical-align: text-bottom; animation: blink 1s infinite; }
+          @keyframes blink { 0%, 100% { opacity: 1; } 50% { opacity: 0; } }
+        </style>
+
+        <script>
+          // Lightweight interactivity for module demos.
+          function toggleActiveWithin(container, itemSelector, activeClass, idx) {
+            if (!container) return;
+            const items = Array.from(container.querySelectorAll(itemSelector));
+            items.forEach((el, i) => el.classList.toggle(activeClass, i === idx));
+          }
+
+          // Practice: agent list toggle
+          document.addEventListener('click', (e) => {
+            const target = e.target;
+            if (!(target instanceof HTMLElement)) return;
+            const item = target.closest('[data-module="practice-agents"] .module-item');
+            if (!item) return;
+            const wrap = item.closest('[data-module="practice-agents"]');
+            if (!wrap) return;
+            const currentlyActive = item.classList.contains('active');
+            const items = Array.from(wrap.querySelectorAll('.module-item'));
+            items.forEach((el) => el.classList.remove('active'));
+            if (!currentlyActive) item.classList.add('active');
+          });
+
+          // Mock Interview: criterion selector updates detail card
+          const mockCriteria = [
+            { label: 'Correctness', color: '#3b82f6', desc: 'Factual and technical accuracy of your answer', score: '0–10' },
+            { label: 'Completeness', color: '#8b5cf6', desc: 'Coverage of all key points expected', score: '0–10' },
+            { label: 'Clarity', color: '#10b981', desc: 'How clearly ideas are communicated', score: '0–10' },
+            { label: 'Confidence', color: '#f59e0b', desc: 'Assertiveness and tone of delivery', score: '0–10' },
+            { label: 'Technical Depth', color: '#ec4899', desc: 'Depth of domain knowledge demonstrated', score: '0–10' },
+          ];
+
+          function renderMockCriterion(idx) {
+            const active = mockCriteria[idx] || mockCriteria[0];
+            const detail = document.getElementById('mockCriterionDetail');
+            if (!detail) return;
+            detail.style.borderColor = active.color + '25';
+            detail.style.background = `linear-gradient(135deg, ${active.color}0a, rgba(13,17,23,0.9))`;
+            const lbl = detail.querySelector('[data-criterion-label]');
+            const desc = detail.querySelector('[data-criterion-desc]');
+            const score = detail.querySelector('[data-criterion-score]');
+            if (lbl) { lbl.textContent = active.label; lbl.style.color = active.color; }
+            if (desc) desc.textContent = active.desc;
+            if (score) { score.textContent = active.score; score.style.color = active.color; }
+          }
+
+          document.addEventListener('click', (e) => {
+            const target = e.target;
+            if (!(target instanceof HTMLElement)) return;
+            const item = target.closest('[data-module="mock-criteria"] .module-item');
+            if (!item) return;
+            const idx = Number(item.getAttribute('data-idx') || '0');
+            toggleActiveWithin(item.closest('[data-module="mock-criteria"]'), '.module-item', 'active', idx);
+            renderMockCriterion(idx);
+          });
+
+          // Intelligence: query selector + typing
+          const intelQueries = [
+            { query: 'Design a distributed rate limiter at Google scale', company: 'Google', type: 'System Design' },
+            { query: 'How does Meta handle 3B daily active users on feed ranking?', company: 'Meta', type: 'System Design' },
+            { query: "Walk me through Amazon's leadership principles in conflict resolution", company: 'Amazon', type: 'Behavioral' },
+          ];
+
+          let intelTypingTimer = null;
+          function startIntelTyping(idx) {
+            const q = intelQueries[idx] || intelQueries[0];
+            const company = document.getElementById('intelCompany');
+            const typeTag = document.getElementById('intelType');
+            const typed = document.getElementById('intelTyped');
+            if (!company || !typeTag || !typed) return;
+            company.textContent = q.company.toLowerCase();
+            typeTag.textContent = q.type;
+
+            if (intelTypingTimer) window.clearInterval(intelTypingTimer);
+            typed.textContent = '';
+            let i = 0;
+            intelTypingTimer = window.setInterval(() => {
+              i++;
+              typed.textContent = q.query.slice(0, i);
+              const cursor = document.getElementById('intelCursor');
+              if (cursor) cursor.style.display = i < q.query.length ? 'inline-block' : 'none';
+              if (i >= q.query.length) window.clearInterval(intelTypingTimer);
+            }, 28);
+          }
+
+          document.addEventListener('click', (e) => {
+            const target = e.target;
+            if (!(target instanceof HTMLElement)) return;
+            const btn = target.closest('[data-module="intel-queries"] .module-btn');
+            if (!btn) return;
+            const idx = Number(btn.getAttribute('data-idx') || '0');
+            toggleActiveWithin(btn.closest('[data-module="intel-queries"]'), '.module-btn', 'active', idx);
+            startIntelTyping(idx);
+          });
+
+          // Resume: claim selector updates probe
+          const resumeClaims = [
+            { claim: 'Led a team of 8 engineers to deliver…', strength: 'Strong', color: '#10b981', probe: 'How did you handle underperforming team members?' },
+            { claim: 'Improved API latency by 40%', strength: 'Strong', color: '#10b981', probe: 'What was the baseline and how did you measure it?' },
+            { claim: 'Worked with machine learning models', strength: 'Weak', color: '#f59e0b', probe: 'Which models specifically, and what was your contribution?' },
+          ];
+
+          function renderResumeClaim(idx) {
+            const active = resumeClaims[idx] || resumeClaims[0];
+            const probe = document.getElementById('resumeProbe');
+            const probeLabel = document.getElementById('resumeProbeLabel');
+            const probeWrap = document.getElementById('resumeProbeWrap');
+            if (!probe || !probeLabel || !probeWrap) return;
+            probe.textContent = active.probe;
+            probeLabel.style.color = active.color;
+            probeWrap.style.borderColor = active.color + '25';
+            probeWrap.style.background = `linear-gradient(135deg, ${active.color}0a, rgba(13,17,23,0.9))`;
+          }
+
+          document.addEventListener('click', (e) => {
+            const target = e.target;
+            if (!(target instanceof HTMLElement)) return;
+            const item = target.closest('[data-module="resume-claims"] .module-item');
+            if (!item) return;
+            const idx = Number(item.getAttribute('data-idx') || '0');
+            toggleActiveWithin(item.closest('[data-module="resume-claims"]'), '.module-item', 'active', idx);
+            renderResumeClaim(idx);
+          });
+
+          window.addEventListener('load', () => {
+            renderMockCriterion(0);
+            startIntelTyping(0);
+            renderResumeClaim(0);
+          });
+        </script>
 
         <!-- ─── Practice Mode ─── -->
         <section class="section" id="practice-mode">
-          <h2>Practice Mode</h2>
-          <p>Real-time audio-based interview simulator with speech analytics and micro-feedback.</p>
+          <div class="module-shell">
+            <div class="module-orb" style="--orb: rgba(139,92,246,0.05); top: 14%; left: 34%;"></div>
+            <div class="module-inner">
+              <div style="margin-bottom: 40px;">
+                <div class="module-chip" style="--chip-bg: rgba(139,92,246,0.10); --chip-border: rgba(139,92,246,0.20); --chip-color: #8b5cf6;">
+                  <div class="module-chip-dot"></div>
+                  <span class="module-chip-text">MODULE · PRACTICE MODE</span>
+                </div>
+                <h2 class="module-title">Practice Mode</h2>
+                <p class="module-lead">Real-time audio-based interview simulator with speech analytics and micro-feedback — powered by 6 parallel AI agents.</p>
+              </div>
 
-          <div class="stat-tiles">
-            <div class="stat-tile">
-              <div class="stat-tile-val">6</div>
-              <div class="stat-tile-label">AI Agents</div>
-            </div>
-            <div class="stat-tile">
-              <div class="stat-tile-val">3</div>
-              <div class="stat-tile-label">Round Types</div>
-            </div>
-            <div class="stat-tile">
-              <div class="stat-tile-val">WPM</div>
-              <div class="stat-tile-label">Speech Metric</div>
-            </div>
-            <div class="stat-tile">
-              <div class="stat-tile-val">0ms</div>
-              <div class="stat-tile-label">Cloud STT</div>
-            </div>
-          </div>
+              <div class="module-stats">
+                <div class="module-stat" style="--c:#3b82f6; background: rgba(59,130,246,0.08); border: 1px solid rgba(59,130,246,0.25);"
+                  onmouseenter="this.style.background='rgba(59,130,246,0.12)'; this.style.transform='translateY(-2px)';"
+                  onmouseleave="this.style.background='rgba(59,130,246,0.08)'; this.style.transform='none';">
+                  <div class="module-stat-ico">🤖</div>
+                  <div class="module-stat-val">6</div>
+                  <div class="module-stat-label">AI AGENTS</div>
+                  <div class="module-stat-sub">Parallel evaluation</div>
+                  <div style="position:absolute; top:0; right:0; width:60px; height:60px; background: radial-gradient(circle at top right, rgba(59,130,246,0.18), transparent);"></div>
+                </div>
 
-          <h3>Live Evaluation Criteria</h3>
-          <div class="score-meter">
-            <div class="score-row"><span class="score-lbl">Correctness</span>
-              <div class="score-bar-wrap">
-                <div class="score-bar" style="width:92%"></div>
-              </div><span class="score-pct">92</span>
-            </div>
-            <div class="score-row"><span class="score-lbl">Delivery</span>
-              <div class="score-bar-wrap">
-                <div class="score-bar" style="width:78%"></div>
-              </div><span class="score-pct">78</span>
-            </div>
-            <div class="score-row"><span class="score-lbl">Clarity</span>
-              <div class="score-bar-wrap">
-                <div class="score-bar" style="width:85%"></div>
-              </div><span class="score-pct">85</span>
-            </div>
-            <div class="score-row"><span class="score-lbl">Structure</span>
-              <div class="score-bar-wrap">
-                <div class="score-bar" style="width:70%"></div>
-              </div><span class="score-pct">70</span>
+                <div class="module-stat" style="--c:#8b5cf6; background: rgba(139,92,246,0.08); border: 1px solid rgba(139,92,246,0.25);"
+                  onmouseenter="this.style.background='rgba(139,92,246,0.12)'; this.style.transform='translateY(-2px)';"
+                  onmouseleave="this.style.background='rgba(139,92,246,0.08)'; this.style.transform='none';">
+                  <div class="module-stat-ico">🎯</div>
+                  <div class="module-stat-val">3</div>
+                  <div class="module-stat-label">ROUND TYPES</div>
+                  <div class="module-stat-sub">Behavioral · Technical · Mixed</div>
+                  <div style="position:absolute; top:0; right:0; width:60px; height:60px; background: radial-gradient(circle at top right, rgba(139,92,246,0.18), transparent);"></div>
+                </div>
+
+                <div class="module-stat" style="--c:#10b981; background: rgba(16,185,129,0.08); border: 1px solid rgba(16,185,129,0.25);"
+                  onmouseenter="this.style.background='rgba(16,185,129,0.12)'; this.style.transform='translateY(-2px)';"
+                  onmouseleave="this.style.background='rgba(16,185,129,0.08)'; this.style.transform='none';">
+                  <div class="module-stat-ico">🎙️</div>
+                  <div class="module-stat-val">WPM</div>
+                  <div class="module-stat-label">SPEECH METRIC</div>
+                  <div class="module-stat-sub">Words per minute tracked</div>
+                  <div style="position:absolute; top:0; right:0; width:60px; height:60px; background: radial-gradient(circle at top right, rgba(16,185,129,0.18), transparent);"></div>
+                </div>
+
+                <div class="module-stat" style="--c:#f59e0b; background: rgba(245,158,11,0.08); border: 1px solid rgba(245,158,11,0.25);"
+                  onmouseenter="this.style.background='rgba(245,158,11,0.12)'; this.style.transform='translateY(-2px)';"
+                  onmouseleave="this.style.background='rgba(245,158,11,0.08)'; this.style.transform='none';">
+                  <div class="module-stat-ico">⚡</div>
+                  <div class="module-stat-val">0ms</div>
+                  <div class="module-stat-label">CLOUD STT</div>
+                  <div class="module-stat-sub">Server-side processing</div>
+                  <div style="position:absolute; top:0; right:0; width:60px; height:60px; background: radial-gradient(circle at top right, rgba(245,158,11,0.18), transparent);"></div>
+                </div>
+              </div>
+
+              <div class="module-grid">
+                <div class="module-panel">
+                  <div class="module-kicker">LIVE EVALUATION CRITERIA</div>
+
+                  <div class="module-meter-row" style="--c:#3b82f6;">
+                    <div class="module-meter-head">
+                      <div>
+                        <div class="module-meter-name">Correctness</div>
+                        <div class="module-meter-desc">Technical accuracy of your answer</div>
+                      </div>
+                      <div class="module-meter-score">92</div>
+                    </div>
+                    <div class="module-bar-wrap"><div class="module-bar" style="--c:#3b82f6; --w:92%;"></div></div>
+                  </div>
+
+                  <div class="module-meter-row" style="--c:#8b5cf6;">
+                    <div class="module-meter-head">
+                      <div>
+                        <div class="module-meter-name">Delivery</div>
+                        <div class="module-meter-desc">Speech pace, clarity, and confidence</div>
+                      </div>
+                      <div class="module-meter-score" style="--c:#8b5cf6;">78</div>
+                    </div>
+                    <div class="module-bar-wrap"><div class="module-bar" style="--c:#8b5cf6; --w:78%;"></div></div>
+                  </div>
+
+                  <div class="module-meter-row" style="--c:#10b981;">
+                    <div class="module-meter-head">
+                      <div>
+                        <div class="module-meter-name">Clarity</div>
+                        <div class="module-meter-desc">Structure and logical flow</div>
+                      </div>
+                      <div class="module-meter-score" style="--c:#10b981;">85</div>
+                    </div>
+                    <div class="module-bar-wrap"><div class="module-bar" style="--c:#10b981; --w:85%;"></div></div>
+                  </div>
+
+                  <div class="module-meter-row" style="--c:#f59e0b;">
+                    <div class="module-meter-head">
+                      <div>
+                        <div class="module-meter-name">Structure</div>
+                        <div class="module-meter-desc">How well you organize your response</div>
+                      </div>
+                      <div class="module-meter-score" style="--c:#f59e0b;">70</div>
+                    </div>
+                    <div class="module-bar-wrap"><div class="module-bar" style="--c:#f59e0b; --w:70%;"></div></div>
+                  </div>
+                </div>
+
+                <div>
+                  <div class="module-kicker" style="margin-bottom: 14px;">6-AGENT PIPELINE</div>
+                  <div class="module-list" data-module="practice-agents">
+                    <div class="module-item active" style="--c:#3b82f6;" data-idx="0">
+                      <div class="module-item-icon">📝</div>
+                      <div style="flex:1;">
+                        <div class="module-item-title">Transcription Agent</div>
+                        <div class="module-item-sub">Converts audio to text in real time</div>
+                      </div>
+                      <span class="module-item-badge">A1</span>
+                    </div>
+
+                    <div class="module-item" style="--c:#8b5cf6;" data-idx="1">
+                      <div class="module-item-icon">📊</div>
+                      <div style="flex:1;">
+                        <div class="module-item-title">Speech Analytics Agent</div>
+                        <div class="module-item-sub">Tracks WPM, pauses, filler words</div>
+                      </div>
+                      <span class="module-item-badge">A2</span>
+                    </div>
+
+                    <div class="module-item" style="--c:#10b981;" data-idx="2">
+                      <div class="module-item-icon">✅</div>
+                      <div style="flex:1;">
+                        <div class="module-item-title">Evaluation Agent</div>
+                        <div class="module-item-sub">Scores answer across all criteria</div>
+                      </div>
+                      <span class="module-item-badge">A3</span>
+                    </div>
+
+                    <div class="module-item" style="--c:#f59e0b;" data-idx="3">
+                      <div class="module-item-icon">💬</div>
+                      <div style="flex:1;">
+                        <div class="module-item-title">Feedback Agent</div>
+                        <div class="module-item-sub">Generates coaching tips per response</div>
+                      </div>
+                      <span class="module-item-badge">A4</span>
+                    </div>
+
+                    <div class="module-item" style="--c:#ec4899;" data-idx="4">
+                      <div class="module-item-icon">🧠</div>
+                      <div style="flex:1;">
+                        <div class="module-item-title">Context Agent</div>
+                        <div class="module-item-sub">Maintains session + resume context</div>
+                      </div>
+                      <span class="module-item-badge">A5</span>
+                    </div>
+
+                    <div class="module-item" style="--c:#06b6d4;" data-idx="5">
+                      <div class="module-item-icon">⚙️</div>
+                      <div style="flex:1;">
+                        <div class="module-item-title">Orchestrator Agent</div>
+                        <div class="module-item-sub">Coordinates all agents in pipeline</div>
+                      </div>
+                      <span class="module-item-badge">A6</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
             </div>
           </div>
         </section>
 
         <!-- ─── Mock Interview ─── -->
         <section class="section" id="mock-interview">
-          <h2>Mock Interview</h2>
-          <p>Multi-question session simulator with progressive hints and 5-criteria LLM evaluation.</p>
+          <div class="module-shell">
+            <div class="module-orb" style="--orb: rgba(16,185,129,0.04); top: 18%; right: 8%;"></div>
+            <div class="module-inner">
+              <div style="margin-bottom: 40px;">
+                <div class="module-chip" style="--chip-bg: rgba(16,185,129,0.10); --chip-border: rgba(16,185,129,0.20); --chip-color: #10b981;">
+                  <div class="module-chip-dot"></div>
+                  <span class="module-chip-text">MODULE · MOCK INTERVIEW</span>
+                </div>
+                <h2 class="module-title">Mock Interview</h2>
+                <p class="module-lead">Multi-question session simulator with progressive hints and 5-criteria LLM evaluation — each answer scored across a full rubric.</p>
+              </div>
 
-          <div class="stat-tiles">
-            <div class="stat-tile">
-              <div class="stat-tile-val">4</div>
-              <div class="stat-tile-label">Interview Types</div>
-            </div>
-            <div class="stat-tile">
-              <div class="stat-tile-val">3</div>
-              <div class="stat-tile-label">Hint Levels</div>
-            </div>
-            <div class="stat-tile">
-              <div class="stat-tile-val">5</div>
-              <div class="stat-tile-label">Eval Criteria</div>
-            </div>
-            <div class="stat-tile">
-              <div class="stat-tile-val">HTML</div>
-              <div class="stat-tile-label">Export Report</div>
-            </div>
-          </div>
+              <div class="module-stats">
+                <div class="module-stat" style="--c:#3b82f6; background: rgba(59,130,246,0.08); border: 1px solid rgba(59,130,246,0.25);">
+                  <div class="module-stat-ico">🎤</div>
+                  <div class="module-stat-val">4</div>
+                  <div class="module-stat-label">INTERVIEW TYPES</div>
+                  <div class="module-stat-sub">Behavioral · Technical · System · Mixed</div>
+                </div>
+                <div class="module-stat" style="--c:#8b5cf6; background: rgba(139,92,246,0.08); border: 1px solid rgba(139,92,246,0.25);">
+                  <div class="module-stat-ico">💡</div>
+                  <div class="module-stat-val">3</div>
+                  <div class="module-stat-label">HINT LEVELS</div>
+                  <div class="module-stat-sub">Progressive scaffolding</div>
+                </div>
+                <div class="module-stat" style="--c:#10b981; background: rgba(16,185,129,0.08); border: 1px solid rgba(16,185,129,0.25);">
+                  <div class="module-stat-ico">📊</div>
+                  <div class="module-stat-val">5</div>
+                  <div class="module-stat-label">EVAL CRITERIA</div>
+                  <div class="module-stat-sub">Per-question rubric</div>
+                </div>
+                <div class="module-stat" style="--c:#f59e0b; background: rgba(245,158,11,0.08); border: 1px solid rgba(245,158,11,0.25);">
+                  <div class="module-stat-ico">📄</div>
+                  <div class="module-stat-val">HTML</div>
+                  <div class="module-stat-label">EXPORT REPORT</div>
+                  <div class="module-stat-sub">Downloadable session report</div>
+                </div>
+              </div>
 
-          <div class="callout info">
-            <strong>5-Criteria Evaluation</strong>
-            Each answer is graded on: <strong>Correctness</strong>, <strong>Completeness</strong>,
-            <strong>Clarity</strong>, <strong>Confidence</strong>, and <strong>Technical Depth</strong> — with
-            individual scores and a final 0–10 composite.
+              <div class="module-grid">
+                <div>
+                  <div class="module-kicker">5-CRITERIA EVALUATION</div>
+                  <div class="module-list" data-module="mock-criteria">
+                    <div class="module-item active" style="--c:#3b82f6;" data-idx="0">
+                      <div style="width:8px; height:8px; border-radius:999px; background:#3b82f6; box-shadow:0 0 8px #3b82f6;"></div>
+                      <div class="module-item-title" style="flex:1;">Correctness</div>
+                      <span class="module-item-badge" style="--c:#3b82f6;">0–10</span>
+                    </div>
+                    <div class="module-item" style="--c:#8b5cf6;" data-idx="1">
+                      <div style="width:8px; height:8px; border-radius:999px; background:#8b5cf6;"></div>
+                      <div class="module-item-title" style="flex:1;">Completeness</div>
+                      <span class="module-item-badge" style="--c:#8b5cf6;">0–10</span>
+                    </div>
+                    <div class="module-item" style="--c:#10b981;" data-idx="2">
+                      <div style="width:8px; height:8px; border-radius:999px; background:#10b981;"></div>
+                      <div class="module-item-title" style="flex:1;">Clarity</div>
+                      <span class="module-item-badge" style="--c:#10b981;">0–10</span>
+                    </div>
+                    <div class="module-item" style="--c:#f59e0b;" data-idx="3">
+                      <div style="width:8px; height:8px; border-radius:999px; background:#f59e0b;"></div>
+                      <div class="module-item-title" style="flex:1;">Confidence</div>
+                      <span class="module-item-badge" style="--c:#f59e0b;">0–10</span>
+                    </div>
+                    <div class="module-item" style="--c:#ec4899;" data-idx="4">
+                      <div style="width:8px; height:8px; border-radius:999px; background:#ec4899;"></div>
+                      <div class="module-item-title" style="flex:1;">Technical Depth</div>
+                      <span class="module-item-badge" style="--c:#ec4899;">0–10</span>
+                    </div>
+                  </div>
+
+                  <div id="mockCriterionDetail" style="margin-top: 14px; border: 1px solid rgba(255,255,255,0.07); border-radius: 12px; padding: 18px;">
+                    <div style="display:flex; justify-content:space-between; align-items:center; gap:12px;">
+                      <div data-criterion-label style="font-size: 14px; font-weight: 700;">Correctness</div>
+                      <div data-criterion-score style="font-size: 11px; font-family: var(--font-mono); font-weight: 700;">0–10</div>
+                    </div>
+                    <p data-criterion-desc style="font-size: 13px; color: #94a3b8; line-height: 1.7; margin: 10px 0 0;">Factual and technical accuracy of your answer</p>
+                    <div style="margin-top: 12px; display:flex; gap:6px;">
+                      <div style="flex:1; height:4px; border-radius: 4px; background: rgba(255,255,255,0.08);"></div>
+                      <div style="flex:1; height:4px; border-radius: 4px; background: rgba(255,255,255,0.08);"></div>
+                      <div style="flex:1; height:4px; border-radius: 4px; background: rgba(255,255,255,0.08);"></div>
+                      <div style="flex:1; height:4px; border-radius: 4px; background: rgba(255,255,255,0.08);"></div>
+                      <div style="flex:1; height:4px; border-radius: 4px; background: rgba(255,255,255,0.08);"></div>
+                    </div>
+                    <div style="display:flex; justify-content:space-between; margin-top: 4px;">
+                      <span style="font-size: 9px; color:#334155; font-family: var(--font-mono);">0</span>
+                      <span style="font-size: 9px; color:#334155; font-family: var(--font-mono);">10</span>
+                    </div>
+                  </div>
+                </div>
+
+                <div style="display:flex; flex-direction:column; gap:16px;">
+                  <div>
+                    <div class="module-kicker">PROGRESSIVE HINT SYSTEM</div>
+                    <div class="module-list">
+                      <div class="module-item" style="--c:#10b981; cursor: default;">
+                        <div class="module-item-icon" style="font-size: 11px; font-weight: 800;">L1</div>
+                        <div>
+                          <div class="module-item-title" style="color:#cbd5e1;">Nudge</div>
+                          <div class="module-item-sub">A directional hint toward the right concept.</div>
+                        </div>
+                      </div>
+                      <div class="module-item" style="--c:#f59e0b; cursor: default;">
+                        <div class="module-item-icon" style="font-size: 11px; font-weight: 800;">L2</div>
+                        <div>
+                          <div class="module-item-title" style="color:#cbd5e1;">Guided</div>
+                          <div class="module-item-sub">A partial breakdown of the expected answer structure.</div>
+                        </div>
+                      </div>
+                      <div class="module-item" style="--c:#ec4899; cursor: default;">
+                        <div class="module-item-icon" style="font-size: 11px; font-weight: 800;">L3</div>
+                        <div>
+                          <div class="module-item-title" style="color:#cbd5e1;">Full Scaffold</div>
+                          <div class="module-item-sub">A detailed walkthrough — shown only after two failed attempts.</div>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div class="module-panel" style="border-radius: 12px; padding: 18px;">
+                    <div class="module-kicker" style="margin-bottom: 12px;">SESSION FLOW</div>
+                    <div style="display:flex; flex-direction:column; gap:10px;">
+                      <div style="display:flex; align-items:center; gap:10px;">
+                        <div style="width:20px; height:20px; border-radius:999px; background: rgba(59,130,246,0.15); border: 1px solid rgba(59,130,246,0.25); display:flex; align-items:center; justify-content:center; font-size:10px; font-weight:800; color:#3b82f6; font-family: var(--font-mono);">1</div>
+                        <span style="font-size:12.5px; color:#64748b;">Configure session</span>
+                      </div>
+                      <div style="display:flex; align-items:center; gap:10px;">
+                        <div style="width:20px; height:20px; border-radius:999px; background: rgba(59,130,246,0.15); border: 1px solid rgba(59,130,246,0.25); display:flex; align-items:center; justify-content:center; font-size:10px; font-weight:800; color:#3b82f6; font-family: var(--font-mono);">2</div>
+                        <span style="font-size:12.5px; color:#64748b;">Answer questions</span>
+                      </div>
+                      <div style="display:flex; align-items:center; gap:10px;">
+                        <div style="width:20px; height:20px; border-radius:999px; background: rgba(59,130,246,0.15); border: 1px solid rgba(59,130,246,0.25); display:flex; align-items:center; justify-content:center; font-size:10px; font-weight:800; color:#3b82f6; font-family: var(--font-mono);">3</div>
+                        <span style="font-size:12.5px; color:#64748b;">Request hints (optional)</span>
+                      </div>
+                      <div style="display:flex; align-items:center; gap:10px;">
+                        <div style="width:20px; height:20px; border-radius:999px; background: rgba(59,130,246,0.15); border: 1px solid rgba(59,130,246,0.25); display:flex; align-items:center; justify-content:center; font-size:10px; font-weight:800; color:#3b82f6; font-family: var(--font-mono);">4</div>
+                        <span style="font-size:12.5px; color:#64748b;">Receive per-Q scores</span>
+                      </div>
+                      <div style="display:flex; align-items:center; gap:10px;">
+                        <div style="width:20px; height:20px; border-radius:999px; background: rgba(59,130,246,0.15); border: 1px solid rgba(59,130,246,0.25); display:flex; align-items:center; justify-content:center; font-size:10px; font-weight:800; color:#3b82f6; font-family: var(--font-mono);">5</div>
+                        <span style="font-size:12.5px; color:#64748b;">Download HTML report</span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
           </div>
         </section>
 
         <!-- ─── Interview Intelligence ─── -->
         <section class="section" id="interview-intel">
-          <h2>Interview Intelligence</h2>
-          <p>Hybrid semantic search + LLM-driven question generation engine targeting FAANG+ company prep.</p>
+          <div class="module-shell">
+            <div class="module-orb" style="--orb: rgba(59,130,246,0.05); top: 10%; left: 30%;"></div>
+            <div class="module-inner">
+              <div style="margin-bottom: 40px;">
+                <div class="module-chip" style="--chip-bg: rgba(59,130,246,0.10); --chip-border: rgba(59,130,246,0.20); --chip-color: #3b82f6;">
+                  <div class="module-chip-dot"></div>
+                  <span class="module-chip-text">MODULE · INTERVIEW INTELLIGENCE</span>
+                </div>
+                <h2 class="module-title">Interview Intelligence</h2>
+                <p class="module-lead">Hybrid retrieval + grounded question generation for company- and role-specific preparation.</p>
+              </div>
 
-          <div class="search-visual">
-            <div class="search-query">&gt; "Design a distributed rate limiter at Google scale"</div>
-            <div class="search-pipeline">
-              <div class="search-node active">BM25 Lexical</div>
-              <div class="search-arrow">+</div>
-              <div class="search-node active">Qdrant Vectors</div>
-              <div class="search-arrow">→</div>
-              <div class="search-node">LLM Expand</div>
-              <div class="search-arrow">→</div>
-              <div class="search-node">Cohere Rerank</div>
-              <div class="search-arrow">→</div>
-              <div class="search-node active">Top Results</div>
-            </div>
-          </div>
+              <div style="display:grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin-bottom: 32px;">
+                <div class="module-stat" style="--c:#3b82f6; background: rgba(59,130,246,0.08); border: 1px solid rgba(59,130,246,0.25);"
+                  onmouseenter="this.style.background='rgba(59,130,246,0.12)'; this.style.transform='translateY(-2px)';"
+                  onmouseleave="this.style.background='rgba(59,130,246,0.08)'; this.style.transform='none';">
+                  <div class="module-stat-ico" style="font-size:20px;">🔍</div>
+                  <div class="module-stat-val" style="font-size: clamp(22px, 2.4vw, 32px);">Hybrid</div>
+                  <div class="module-stat-label">RETRIEVAL</div>
+                  <div class="module-stat-sub">BM25 + vector fusion</div>
+                </div>
+                <div class="module-stat" style="--c:#8b5cf6; background: rgba(139,92,246,0.08); border: 1px solid rgba(139,92,246,0.25);"
+                  onmouseenter="this.style.background='rgba(139,92,246,0.12)'; this.style.transform='translateY(-2px)';"
+                  onmouseleave="this.style.background='rgba(139,92,246,0.08)'; this.style.transform='none';">
+                  <div class="module-stat-ico" style="font-size:20px;">🏢</div>
+                  <div class="module-stat-val" style="font-size: clamp(22px, 2.4vw, 32px);">FAANG+</div>
+                  <div class="module-stat-label">COMPANY PREP</div>
+                  <div class="module-stat-sub">50+ companies indexed</div>
+                </div>
+                <div class="module-stat" style="--c:#10b981; background: rgba(16,185,129,0.08); border: 1px solid rgba(16,185,129,0.25);"
+                  onmouseenter="this.style.background='rgba(16,185,129,0.12)'; this.style.transform='translateY(-2px)';"
+                  onmouseleave="this.style.background='rgba(16,185,129,0.08)'; this.style.transform='none';">
+                  <div class="module-stat-ico" style="font-size:20px;">🌐</div>
+                  <div class="module-stat-val" style="font-size: clamp(22px, 2.4vw, 32px);">Web+Vector</div>
+                  <div class="module-stat-label">GROUNDING</div>
+                  <div class="module-stat-sub">Live web + stored vectors</div>
+                </div>
+              </div>
 
-          <div class="stat-tiles">
-            <div class="stat-tile">
-              <div class="stat-tile-val">Hybrid</div>
-              <div class="stat-tile-label">Retrieval</div>
-            </div>
-            <div class="stat-tile">
-              <div class="stat-tile-val">FAANG+</div>
-              <div class="stat-tile-label">Company Prep</div>
-            </div>
-            <div class="stat-tile">
-              <div class="stat-tile-val">WS</div>
-              <div class="stat-tile-label">Live Streaming</div>
+              <div class="module-grid">
+                <div>
+                  <div class="module-kicker">QUERY DEMO</div>
+
+                  <div class="module-chips" data-module="intel-queries" style="margin-bottom: 14px;">
+                    <button class="module-btn active" style="--c:#3b82f6;" data-idx="0" type="button">Google</button>
+                    <button class="module-btn" style="--c:#3b82f6;" data-idx="1" type="button">Meta</button>
+                    <button class="module-btn" style="--c:#3b82f6;" data-idx="2" type="button">Amazon</button>
+                  </div>
+
+                  <div class="terminal" style="margin-bottom: 14px;">
+                    <div class="terminal-head">
+                      <div class="term-dot" style="background:#ef4444"></div>
+                      <div class="term-dot" style="background:#f59e0b"></div>
+                      <div class="term-dot" style="background:#10b981"></div>
+                      <span class="term-title">intelligence-engine · <span id="intelCompany">google</span></span>
+                      <span id="intelType" class="term-tag">System Design</span>
+                    </div>
+                    <div class="term-body">
+                      <div class="term-prompt">&gt;</div>
+                      <p class="term-q">"<span id="intelTyped"></span><span id="intelCursor" class="term-cursor"></span>"</p>
+                    </div>
+                  </div>
+
+                  <div class="module-panel" style="border-radius: 12px; padding: 16px 18px;">
+                    <div class="module-kicker" style="margin-bottom: 12px;">RETRIEVAL PIPELINE</div>
+                    <div style="display:flex; align-items:center; gap:6px; flex-wrap:wrap;">
+                      <div style="text-align:center;">
+                        <div style="font-size:11px; color:#3b82f6; background: rgba(59,130,246,0.15); border: 1px solid rgba(59,130,246,0.25); padding: 4px 10px; border-radius: 7px; font-family: var(--font-mono); font-weight: 600; margin-bottom: 2px;">Keyword Retrieval</div>
+                        <div style="font-size:9px; color:#334155;">BM25 sparse</div>
+                      </div>
+                      <span style="color:#2d3a47; font-size:12px;">→</span>
+                      <div style="text-align:center;">
+                        <div style="font-size:11px; color:#8b5cf6; background: rgba(139,92,246,0.15); border: 1px solid rgba(139,92,246,0.25); padding: 4px 10px; border-radius: 7px; font-family: var(--font-mono); font-weight: 600; margin-bottom: 2px;">Vector Retrieval</div>
+                        <div style="font-size:9px; color:#334155;">Dense embeddings</div>
+                      </div>
+                      <span style="color:#2d3a47; font-size:12px;">→</span>
+                      <div style="text-align:center;">
+                        <div style="font-size:11px; color:#10b981; background: rgba(16,185,129,0.15); border: 1px solid rgba(16,185,129,0.25); padding: 4px 10px; border-radius: 7px; font-family: var(--font-mono); font-weight: 600; margin-bottom: 2px;">Query Expand</div>
+                        <div style="font-size:9px; color:#334155;">LLM rewrite</div>
+                      </div>
+                      <span style="color:#2d3a47; font-size:12px;">→</span>
+                      <div style="text-align:center;">
+                        <div style="font-size:11px; color:#f59e0b; background: rgba(245,158,11,0.15); border: 1px solid rgba(245,158,11,0.25); padding: 4px 10px; border-radius: 7px; font-family: var(--font-mono); font-weight: 600; margin-bottom: 2px;">Rerank</div>
+                        <div style="font-size:9px; color:#334155;">Cohere (optional)</div>
+                      </div>
+                      <span style="color:#2d3a47; font-size:12px;">→</span>
+                      <div style="text-align:center;">
+                        <div style="font-size:11px; color:#ec4899; background: rgba(236,72,153,0.15); border: 1px solid rgba(236,72,153,0.25); padding: 4px 10px; border-radius: 7px; font-family: var(--font-mono); font-weight: 600; margin-bottom: 2px;">Top Results</div>
+                        <div style="font-size:9px; color:#334155;">Final questions</div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                <div>
+                  <div class="module-kicker">COMPANY INDEX (FAANG+)</div>
+                  <div class="module-chips" style="margin-bottom: 18px;">
+                    <span class="module-chip-pill">Google</span><span class="module-chip-pill">Meta</span><span class="module-chip-pill">Amazon</span><span class="module-chip-pill">Apple</span><span class="module-chip-pill">Netflix</span><span class="module-chip-pill">Microsoft</span><span class="module-chip-pill">Stripe</span><span class="module-chip-pill">Airbnb</span><span class="module-chip-pill">Uber</span><span class="module-chip-pill">OpenAI</span><span class="module-chip-pill">Anthropic</span><span class="module-chip-pill">Databricks</span>
+                  </div>
+
+                  <div style="background: linear-gradient(135deg, rgba(59,130,246,0.06), rgba(139,92,246,0.04)); border: 1px solid rgba(59,130,246,0.15); border-radius: 12px; padding: 18px;">
+                    <div style="font-size: 13px; font-weight: 700; color: #3b82f6; margin-bottom: 8px;">How It Works</div>
+                    <div style="display:flex; gap:8px; align-items:flex-start; margin-bottom: 8px;"><div style="width:5px; height:5px; border-radius:999px; background:#3b82f6; opacity:0.6; margin-top: 6px;"></div><span style="font-size:12.5px; color:#64748b; line-height:1.55;">BM25 keyword retrieval on company question corpus</span></div>
+                    <div style="display:flex; gap:8px; align-items:flex-start; margin-bottom: 8px;"><div style="width:5px; height:5px; border-radius:999px; background:#3b82f6; opacity:0.6; margin-top: 6px;"></div><span style="font-size:12.5px; color:#64748b; line-height:1.55;">Dense vector search via sentence-transformers</span></div>
+                    <div style="display:flex; gap:8px; align-items:flex-start; margin-bottom: 8px;"><div style="width:5px; height:5px; border-radius:999px; background:#3b82f6; opacity:0.6; margin-top: 6px;"></div><span style="font-size:12.5px; color:#64748b; line-height:1.55;">LLM query expansion for better recall</span></div>
+                    <div style="display:flex; gap:8px; align-items:flex-start; margin-bottom: 8px;"><div style="width:5px; height:5px; border-radius:999px; background:#3b82f6; opacity:0.6; margin-top: 6px;"></div><span style="font-size:12.5px; color:#64748b; line-height:1.55;">Cohere reranking for precision (optional)</span></div>
+                    <div style="display:flex; gap:8px; align-items:flex-start;"><div style="width:5px; height:5px; border-radius:999px; background:#3b82f6; opacity:0.6; margin-top: 6px;"></div><span style="font-size:12.5px; color:#64748b; line-height:1.55;">Final questions grounded in company-specific patterns</span></div>
+                  </div>
+                </div>
+              </div>
             </div>
           </div>
         </section>
 
         <!-- ─── Code Eval ─── -->
         <section class="section" id="code-eval">
-          <h2>Code Evaluation</h2>
-          <p>Hybrid static analysis + LLM critique pipeline for code submissions, sandboxed server-side.</p>
+          <div class="module-shell">
+            <div class="module-orb" style="--orb: rgba(59,130,246,0.05); top: 18%; right: 6%;"></div>
+            <div class="module-inner">
+              <div style="margin-bottom: 40px;">
+                <div class="module-chip" style="--chip-bg: rgba(16,185,129,0.10); --chip-border: rgba(16,185,129,0.20); --chip-color: #10b981;">
+                  <div class="module-chip-dot"></div>
+                  <span class="module-chip-text">MODULE · CODE EVALUATION</span>
+                </div>
+                <h2 class="module-title">Code Evaluation</h2>
+                <p class="module-lead">Hybrid static analysis + LLM critique pipeline for code submissions, executed server-side in an isolated Judge0 sandbox.</p>
+              </div>
 
-          <div class="code-panel">
-            <div class="code-panel-header">
-              <div class="code-panel-dot" style="background:#ff5f56"></div>
-              <div class="code-panel-dot" style="background:#ffbd2e"></div>
-              <div class="code-panel-dot" style="background:#27c93f"></div>
-              <div class="code-panel-title">solution.py · Judge0 Sandbox</div>
-            </div>
-            <div class="code-panel-body">
-              <span class="code-comment"># Two Sum — submitted by user</span>
-              <span class="code-keyword">def</span> <span class="code-fn">two_sum</span>(nums, target):
-              seen = {}
-              <span class="code-keyword">for</span> i, n <span class="code-keyword">in</span> enumerate(nums):
-              diff = target - n
-              <span class="code-keyword">if</span> diff <span class="code-keyword">in</span> seen:
-              <span class="code-keyword">return</span> [seen[diff], i]
-              seen[n] = i
-              <span class="code-comment"># ✓ O(n) time ✓ O(n) space ✓ All edge cases passed</span>
-              <span class="code-verdict">✓ PASSED · LLM Score: 9.2 / 10</span>
-            </div>
-          </div>
+              <div class="module-grid" style="margin-bottom: 22px;">
+                <div>
+                  <div class="terminal" style="border-radius: 14px;">
+                    <div class="terminal-head" style="padding: 11px 16px;">
+                      <div class="term-dot" style="background:#ef4444"></div>
+                      <div class="term-dot" style="background:#f59e0b"></div>
+                      <div class="term-dot" style="background:#10b981"></div>
+                      <span class="term-title" style="margin-left: 8px;">solution.py · Judge0 Sandbox</span>
+                      <span class="term-tag" style="background: rgba(139,92,246,0.1); color:#8b5cf6;">Two Sum · Medium</span>
+                    </div>
+                    <div class="term-body" style="padding: 20px;">
+                      <div class="code-panel-body" style="padding: 0;">
+                        <span class="code-comment"># Two Sum — submitted by user</span>
+                        <span class="code-keyword">def</span> <span class="code-fn">two_sum</span>(nums, target):
+                        seen = {}
+                        <span class="code-keyword">for</span> i, n <span class="code-keyword">in</span> enumerate(nums):
+                        diff = target - n
+                        <span class="code-keyword">if</span> diff <span class="code-keyword">in</span> seen:
+                        <span class="code-keyword">return</span> [seen[diff], i]
+                        seen[n] = i
+                        <span class="code-comment"># ✓ O(n) time  ✓ O(n) space  ✓ All edge cases passed</span>
+                        <span class="code-verdict">✓ PASSED · LLM Score: 9.2 / 10</span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
 
-          <div class="stat-tiles">
-            <div class="stat-tile">
-              <div class="stat-tile-val">Judge0</div>
-              <div class="stat-tile-label">Sandbox</div>
-            </div>
-            <div class="stat-tile">
-              <div class="stat-tile-val">10+</div>
-              <div class="stat-tile-label">Languages</div>
-            </div>
-            <div class="stat-tile">
-              <div class="stat-tile-val">O(n)</div>
-              <div class="stat-tile-label">Complexity Check</div>
+                <div style="display:flex; flex-direction:column; gap:12px;">
+                  <div class="module-item" style="--c:#3b82f6; cursor: default; background: rgba(59,130,246,0.08); border-color: rgba(59,130,246,0.25);"
+                    onmouseenter="this.style.background='rgba(59,130,246,0.12)'; this.style.transform='translateX(3px)';"
+                    onmouseleave="this.style.background='rgba(59,130,246,0.08)'; this.style.transform='none';">
+                    <div style="font-size:22px;">⚙️</div>
+                    <div style="flex:1;">
+                      <div style="font-size:11px; font-weight:700; color:#3b82f6; letter-spacing:0.08em; font-family: var(--font-mono); opacity:0.85;">SANDBOX</div>
+                      <div style="font-size:11px; color:#475569; margin-top:1px;">Server-side execution</div>
+                    </div>
+                    <div style="font-size: clamp(20px, 2vw, 28px); font-weight:900; color:#3b82f6; font-family: var(--font-mono);">Judge0</div>
+                  </div>
+
+                  <div class="module-item" style="--c:#10b981; cursor: default; background: rgba(16,185,129,0.08); border-color: rgba(16,185,129,0.25);"
+                    onmouseenter="this.style.background='rgba(16,185,129,0.12)'; this.style.transform='translateX(3px)';"
+                    onmouseleave="this.style.background='rgba(16,185,129,0.08)'; this.style.transform='none';">
+                    <div style="font-size:22px;">💻</div>
+                    <div style="flex:1;">
+                      <div style="font-size:11px; font-weight:700; color:#10b981; letter-spacing:0.08em; font-family: var(--font-mono); opacity:0.85;">LANGUAGES</div>
+                      <div style="font-size:11px; color:#475569; margin-top:1px;">Python, JS, Go, Java…</div>
+                    </div>
+                    <div style="font-size: clamp(20px, 2vw, 28px); font-weight:900; color:#10b981; font-family: var(--font-mono);">10+</div>
+                  </div>
+
+                  <div class="module-item" style="--c:#f59e0b; cursor: default; background: rgba(245,158,11,0.08); border-color: rgba(245,158,11,0.25);"
+                    onmouseenter="this.style.background='rgba(245,158,11,0.12)'; this.style.transform='translateX(3px)';"
+                    onmouseleave="this.style.background='rgba(245,158,11,0.08)'; this.style.transform='none';">
+                    <div style="font-size:22px;">📈</div>
+                    <div style="flex:1;">
+                      <div style="font-size:11px; font-weight:700; color:#f59e0b; letter-spacing:0.08em; font-family: var(--font-mono); opacity:0.85;">COMPLEXITY CHECK</div>
+                      <div style="font-size:11px; color:#475569; margin-top:1px;">Time &amp; space analysis</div>
+                    </div>
+                    <div style="font-size: clamp(20px, 2vw, 28px); font-weight:900; color:#f59e0b; font-family: var(--font-mono);">O(n)</div>
+                  </div>
+
+                  <div class="module-item" style="--c:#8b5cf6; cursor: default; background: rgba(139,92,246,0.08); border-color: rgba(139,92,246,0.25);"
+                    onmouseenter="this.style.background='rgba(139,92,246,0.12)'; this.style.transform='translateX(3px)';"
+                    onmouseleave="this.style.background='rgba(139,92,246,0.08)'; this.style.transform='none';">
+                    <div style="font-size:22px;">✨</div>
+                    <div style="flex:1;">
+                      <div style="font-size:11px; font-weight:700; color:#8b5cf6; letter-spacing:0.08em; font-family: var(--font-mono); opacity:0.85;">LLM SCORE (DEMO)</div>
+                      <div style="font-size:11px; color:#475569; margin-top:1px;">Out of 10 per submission</div>
+                    </div>
+                    <div style="font-size: clamp(20px, 2vw, 28px); font-weight:900; color:#8b5cf6; font-family: var(--font-mono);">9.2</div>
+                  </div>
+                </div>
+              </div>
+
+              <div class="module-panel" style="border-radius: 14px; padding: 22px 24px; margin-bottom: 18px;">
+                <div class="module-kicker" style="margin-bottom: 16px;">EVALUATION PIPELINE</div>
+                <div style="display:flex; align-items:flex-start; gap:8px; flex-wrap:wrap;">
+                  <div style="text-align:center;">
+                    <div style="font-size:12px; color:#3b82f6; background: rgba(59,130,246,0.15); border: 1px solid rgba(59,130,246,0.25); padding: 5px 12px; border-radius: 8px; font-family: var(--font-mono); font-weight: 600; margin-bottom: 3px; white-space: nowrap;">Submit</div>
+                    <div style="font-size:10px; color:#334155; white-space:nowrap;">Code + question sent</div>
+                  </div>
+                  <span style="color:#2d3a47; font-size:14px; margin-bottom: 14px;">→</span>
+                  <div style="text-align:center;">
+                    <div style="font-size:12px; color:#8b5cf6; background: rgba(139,92,246,0.15); border: 1px solid rgba(139,92,246,0.25); padding: 5px 12px; border-radius: 8px; font-family: var(--font-mono); font-weight: 600; margin-bottom: 3px; white-space: nowrap;">Execute</div>
+                    <div style="font-size:10px; color:#334155; white-space:nowrap;">Judge0 sandbox runs it</div>
+                  </div>
+                  <span style="color:#2d3a47; font-size:14px; margin-bottom: 14px;">→</span>
+                  <div style="text-align:center;">
+                    <div style="font-size:12px; color:#10b981; background: rgba(16,185,129,0.15); border: 1px solid rgba(16,185,129,0.25); padding: 5px 12px; border-radius: 8px; font-family: var(--font-mono); font-weight: 600; margin-bottom: 3px; white-space: nowrap;">Static Analysis</div>
+                    <div style="font-size:10px; color:#334155; white-space:nowrap;">Complexity + style check</div>
+                  </div>
+                  <span style="color:#2d3a47; font-size:14px; margin-bottom: 14px;">→</span>
+                  <div style="text-align:center;">
+                    <div style="font-size:12px; color:#f59e0b; background: rgba(245,158,11,0.15); border: 1px solid rgba(245,158,11,0.25); padding: 5px 12px; border-radius: 8px; font-family: var(--font-mono); font-weight: 600; margin-bottom: 3px; white-space: nowrap;">LLM Critique</div>
+                    <div style="font-size:10px; color:#334155; white-space:nowrap;">Deep code review</div>
+                  </div>
+                  <span style="color:#2d3a47; font-size:14px; margin-bottom: 14px;">→</span>
+                  <div style="text-align:center;">
+                    <div style="font-size:12px; color:#ec4899; background: rgba(236,72,153,0.15); border: 1px solid rgba(236,72,153,0.25); padding: 5px 12px; border-radius: 8px; font-family: var(--font-mono); font-weight: 600; margin-bottom: 3px; white-space: nowrap;">Score</div>
+                    <div style="font-size:10px; color:#334155; white-space:nowrap;">0–10 + feedback</div>
+                  </div>
+                </div>
+              </div>
+
+              <div>
+                <div class="module-kicker" style="margin-bottom: 12px;">SUPPORTED LANGUAGES</div>
+                <div class="module-chips">
+                  <span class="module-chip-pill">Python</span><span class="module-chip-pill">JavaScript</span><span class="module-chip-pill">TypeScript</span><span class="module-chip-pill">Go</span><span class="module-chip-pill">Java</span><span class="module-chip-pill">C++</span><span class="module-chip-pill">Rust</span><span class="module-chip-pill">Ruby</span><span class="module-chip-pill">Kotlin</span><span class="module-chip-pill">Swift</span>
+                </div>
+              </div>
             </div>
           </div>
         </section>
 
         <!-- ─── Resume ─── -->
         <section class="section" id="resume">
-          <h2>Resume &amp; Document Intelligence</h2>
-          <p>LLM-based resume parsing with claim extraction, ATS scoring, and document analysis.</p>
+          <div class="module-shell">
+            <div class="module-orb" style="--orb: rgba(236,72,153,0.04); top: 14%; left: 24%;"></div>
+            <div class="module-inner">
+              <div style="margin-bottom: 40px;">
+                <div class="module-chip" style="--chip-bg: rgba(236,72,153,0.10); --chip-border: rgba(236,72,153,0.20); --chip-color: #ec4899;">
+                  <div class="module-chip-dot"></div>
+                  <span class="module-chip-text">MODULE · RESUME INTELLIGENCE</span>
+                </div>
+                <h2 class="module-title">Resume &amp; Document Intelligence</h2>
+                <p class="module-lead">LLM-based resume parsing with claim extraction, ATS scoring, skills gap analysis, and tailored interview probing — all in-memory, nothing stored.</p>
+              </div>
 
-          <div class="resume-visual">
-            <div class="res-row"><span class="res-label">ATS Score</span>
-              <div class="res-bar-wrap">
-                <div class="res-bar" style="width:88%;background:var(--green)"></div>
-              </div><span class="res-score">88</span>
-            </div>
-            <div class="res-row"><span class="res-label">Skills Match</span>
-              <div class="res-bar-wrap">
-                <div class="res-bar" style="width:74%;background:var(--primary)"></div>
-              </div><span class="res-score">74</span>
-            </div>
-            <div class="res-row"><span class="res-label">Claim Strength</span>
-              <div class="res-bar-wrap">
-                <div class="res-bar" style="width:62%;background:var(--amber)"></div>
-              </div><span class="res-score">62</span>
-            </div>
-            <div class="res-row"><span class="res-label">Experience Fit</span>
-              <div class="res-bar-wrap">
-                <div class="res-bar" style="width:91%;background:var(--green)"></div>
-              </div><span class="res-score">91</span>
-            </div>
-          </div>
+              <div class="module-stats">
+                <div class="module-stat" style="--c:#3b82f6; background: rgba(59,130,246,0.08); border: 1px solid rgba(59,130,246,0.25);">
+                  <div class="module-stat-ico">📄</div>
+                  <div class="module-stat-val" style="font-size: clamp(22px, 2.4vw, 32px);">PDF</div>
+                  <div class="module-stat-label">DOCX · TXT</div>
+                  <div class="module-stat-sub">All major formats supported</div>
+                </div>
+                <div class="module-stat" style="--c:#8b5cf6; background: rgba(139,92,246,0.08); border: 1px solid rgba(139,92,246,0.25);">
+                  <div class="module-stat-ico">🔬</div>
+                  <div class="module-stat-val" style="font-size: clamp(22px, 2.4vw, 32px);">4</div>
+                  <div class="module-stat-label">ANALYSIS DEPTHS</div>
+                  <div class="module-stat-sub">Surface to deep claim extraction</div>
+                </div>
+                <div class="module-stat" style="--c:#10b981; background: rgba(16,185,129,0.08); border: 1px solid rgba(16,185,129,0.25);">
+                  <div class="module-stat-ico">🔒</div>
+                  <div class="module-stat-val" style="font-size: clamp(22px, 2.4vw, 32px);">0</div>
+                  <div class="module-stat-label">FILES STORED</div>
+                  <div class="module-stat-sub">Processed in memory, never persisted</div>
+                </div>
+                <div class="module-stat" style="--c:#ec4899; background: rgba(236,72,153,0.08); border: 1px solid rgba(236,72,153,0.25);">
+                  <div class="module-stat-ico">✅</div>
+                  <div class="module-stat-val" style="font-size: clamp(22px, 2.4vw, 32px);">ATS</div>
+                  <div class="module-stat-label">SCORING ENGINE</div>
+                  <div class="module-stat-sub">Recruiter-standard rubric</div>
+                </div>
+              </div>
 
-          <div class="stat-tiles">
-            <div class="stat-tile">
-              <div class="stat-tile-val">PDF</div>
-              <div class="stat-tile-label">DOCX · TXT</div>
-            </div>
-            <div class="stat-tile">
-              <div class="stat-tile-val">4</div>
-              <div class="stat-tile-label">Analysis Depths</div>
-            </div>
-            <div class="stat-tile">
-              <div class="stat-tile-val">0</div>
-              <div class="stat-tile-label">Files Stored</div>
+              <div class="module-grid">
+                <div class="module-panel">
+                  <div class="module-kicker">ANALYSIS OUTPUT (DEMO)</div>
+
+                  <div class="module-meter-row" style="--c:#10b981;">
+                    <div class="module-meter-head">
+                      <div>
+                        <div class="module-meter-name">ATS Score</div>
+                        <div class="module-meter-desc">How well resume passes automated screening</div>
+                      </div>
+                      <div class="module-meter-score" style="--c:#10b981;">88</div>
+                    </div>
+                    <div class="module-bar-wrap"><div class="module-bar" style="--c:#10b981; --w:88%;"></div></div>
+                  </div>
+
+                  <div class="module-meter-row" style="--c:#3b82f6;">
+                    <div class="module-meter-head">
+                      <div>
+                        <div class="module-meter-name">Skills Match</div>
+                        <div class="module-meter-desc">Alignment with target role requirements</div>
+                      </div>
+                      <div class="module-meter-score" style="--c:#3b82f6;">74</div>
+                    </div>
+                    <div class="module-bar-wrap"><div class="module-bar" style="--c:#3b82f6; --w:74%;"></div></div>
+                  </div>
+
+                  <div class="module-meter-row" style="--c:#f59e0b;">
+                    <div class="module-meter-head">
+                      <div>
+                        <div class="module-meter-name">Claim Strength</div>
+                        <div class="module-meter-desc">How verifiable and specific your claims are</div>
+                      </div>
+                      <div class="module-meter-score" style="--c:#f59e0b;">62</div>
+                    </div>
+                    <div class="module-bar-wrap"><div class="module-bar" style="--c:#f59e0b; --w:62%;"></div></div>
+                  </div>
+
+                  <div class="module-meter-row" style="--c:#8b5cf6;">
+                    <div class="module-meter-head">
+                      <div>
+                        <div class="module-meter-name">Experience Fit</div>
+                        <div class="module-meter-desc">Relevance of experience to the target role</div>
+                      </div>
+                      <div class="module-meter-score" style="--c:#8b5cf6;">91</div>
+                    </div>
+                    <div class="module-bar-wrap"><div class="module-bar" style="--c:#8b5cf6; --w:91%;"></div></div>
+                  </div>
+                </div>
+
+                <div style="display:flex; flex-direction:column; gap:16px;">
+                  <div>
+                    <div class="module-kicker">CLAIM-BASED PROBING</div>
+                    <div class="module-list" data-module="resume-claims" style="margin-bottom: 10px;">
+                      <div class="module-item active" style="--c:#10b981;" data-idx="0">
+                        <div style="width:6px; height:6px; border-radius:999px; background:#10b981;"></div>
+                        <div style="flex:1; font-size:12px; color:#cbd5e1;">&ldquo;Led a team of 8 engineers to deliver…&rdquo;</div>
+                        <span class="module-item-badge" style="--c:#10b981;">Strong</span>
+                      </div>
+                      <div class="module-item" style="--c:#10b981;" data-idx="1">
+                        <div style="width:6px; height:6px; border-radius:999px; background:#10b981;"></div>
+                        <div style="flex:1; font-size:12px; color:#64748b;">&ldquo;Improved API latency by 40%&rdquo;</div>
+                        <span class="module-item-badge" style="--c:#10b981;">Strong</span>
+                      </div>
+                      <div class="module-item" style="--c:#f59e0b;" data-idx="2">
+                        <div style="width:6px; height:6px; border-radius:999px; background:#f59e0b;"></div>
+                        <div style="flex:1; font-size:12px; color:#64748b;">&ldquo;Worked with machine learning models&rdquo;</div>
+                        <span class="module-item-badge" style="--c:#f59e0b;">Weak</span>
+                      </div>
+                    </div>
+
+                    <div id="resumeProbeWrap" style="border: 1px solid rgba(255,255,255,0.07); border-radius: 10px; padding: 14px 16px;">
+                      <div id="resumeProbeLabel" style="font-size: 10px; font-weight: 700; font-family: var(--font-mono); letter-spacing: 0.08em; margin-bottom: 6px;">GENERATED PROBE</div>
+                      <p style="font-size: 13px; color: #94a3b8; line-height: 1.6; margin: 0;">&ldquo;<span id="resumeProbe"></span>&rdquo;</p>
+                    </div>
+                  </div>
+
+                  <div class="module-panel" style="border-radius: 12px; padding: 18px;">
+                    <div class="module-kicker" style="margin-bottom: 14px;">ANALYSIS PIPELINE</div>
+                    <div style="display:flex; flex-direction:column; gap:12px;">
+                      <div style="display:flex; gap:12px;">
+                        <div style="width:24px; height:24px; border-radius:6px; background: rgba(59,130,246,0.15); border:1px solid rgba(59,130,246,0.25); display:flex; align-items:center; justify-content:center; font-size:10px; font-weight:800; color:#3b82f6; font-family: var(--font-mono);">01</div>
+                        <div>
+                          <div style="font-size:12.5px; font-weight:700; color:#cbd5e1;">Parse Document</div>
+                          <div style="font-size:11.5px; color:#475569;">PDF/DOCX/TXT extracted and cleaned</div>
+                        </div>
+                      </div>
+                      <div style="display:flex; gap:12px;">
+                        <div style="width:24px; height:24px; border-radius:6px; background: rgba(139,92,246,0.15); border:1px solid rgba(139,92,246,0.25); display:flex; align-items:center; justify-content:center; font-size:10px; font-weight:800; color:#8b5cf6; font-family: var(--font-mono);">02</div>
+                        <div>
+                          <div style="font-size:12.5px; font-weight:700; color:#cbd5e1;">Claim Extraction</div>
+                          <div style="font-size:11.5px; color:#475569;">LLM identifies all verifiable claims</div>
+                        </div>
+                      </div>
+                      <div style="display:flex; gap:12px;">
+                        <div style="width:24px; height:24px; border-radius:6px; background: rgba(16,185,129,0.15); border:1px solid rgba(16,185,129,0.25); display:flex; align-items:center; justify-content:center; font-size:10px; font-weight:800; color:#10b981; font-family: var(--font-mono);">03</div>
+                        <div>
+                          <div style="font-size:12.5px; font-weight:700; color:#cbd5e1;">ATS Scoring</div>
+                          <div style="font-size:11.5px; color:#475569;">Rubric-based recruiter simulation</div>
+                        </div>
+                      </div>
+                      <div style="display:flex; gap:12px;">
+                        <div style="width:24px; height:24px; border-radius:6px; background: rgba(245,158,11,0.15); border:1px solid rgba(245,158,11,0.25); display:flex; align-items:center; justify-content:center; font-size:10px; font-weight:800; color:#f59e0b; font-family: var(--font-mono);">04</div>
+                        <div>
+                          <div style="font-size:12.5px; font-weight:700; color:#cbd5e1;">Gap Analysis</div>
+                          <div style="font-size:11.5px; color:#475569;">Skills vs. target role compared</div>
+                        </div>
+                      </div>
+                      <div style="display:flex; gap:12px;">
+                        <div style="width:24px; height:24px; border-radius:6px; background: rgba(236,72,153,0.15); border:1px solid rgba(236,72,153,0.25); display:flex; align-items:center; justify-content:center; font-size:10px; font-weight:800; color:#ec4899; font-family: var(--font-mono);">05</div>
+                        <div>
+                          <div style="font-size:12.5px; font-weight:700; color:#cbd5e1;">Interview Probing</div>
+                          <div style="font-size:11.5px; color:#475569;">Questions targeting each claim</div>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
             </div>
           </div>
         </section>
@@ -3198,9 +4409,9 @@
                 <td>PostgreSQL connection string</td>
               </tr>
               <tr>
-                <td><code>QDRANT_URL</code></td>
+                <td><code>VECTOR_DB_URL</code></td>
                 <td>Optional</td>
-                <td>Qdrant vector DB endpoint</td>
+                <td>Vector database endpoint (implementation-dependent)</td>
               </tr>
               <tr>
                 <td><code>REDIS_URL</code></td>
@@ -3339,14 +4550,14 @@
 
     // ─── Features Reactivity Logic ───
     const fData = [
-      { id: "copilot", badge: "CORE", badgeColor: "#3b82f6", accentColor: "#3b82f6", title: "AI Copilot Chat", subtitle: "Context-Aware Intelligence", description: "Powered by Gemini & Groq with persistent session memory. Every follow-up is informed by what came before — no context resets, no repeated explanations. It reads the room like a seasoned interviewer.", stat: "Gemini + Groq", statLabel: "Dual-engine", icon: `<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/><circle cx="12" cy="10" r="1" fill="currentColor"/><circle cx="8" cy="10" r="1" fill="currentColor"/><circle cx="16" cy="10" r="1" fill="currentColor"/></svg>` },
-      { id: "practice", badge: "6 AI AGENTS", badgeColor: "#8b5cf6", accentColor: "#8b5cf6", title: "Live Practice Mode", subtitle: "Real-Time Audio Simulation", description: "Six specialized agents collaborate in real time — one listens, one tracks speech patterns, one measures pace, one flags filler words, one scores delivery, one synthesizes it all. It's a full panel, not a chatbot.", stat: "< 800ms", statLabel: "Avg. latency", icon: `<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg>` },
-      { id: "mock", badge: "LLM EVALUATED", badgeColor: "#10b981", accentColor: "#10b981", title: "Mock Interview", subtitle: "Progressive Depth Sessions", description: "Multi-question sessions with adaptive hint scaffolding, per-question scoring from 0–10, and model answers post-session. Difficulty calibrates to your response quality — easier questions don't stay easy.", stat: "0–10", statLabel: "Granular scoring", icon: `<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>` },
-      { id: "intelligence", badge: "HYBRID SEARCH", badgeColor: "#f59e0b", accentColor: "#f59e0b", title: "Interview Intelligence", subtitle: "Semantic + BM25 Hybrid Retrieval", description: "Company-specific prep powered by BM25 sparse retrieval fused with dense vector embeddings. Questions aren't generic — they're derived from actual patterns at your target company.", stat: "BM25 + Vector", statLabel: "Hybrid retrieval", icon: `<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/><line x1="11" y1="8" x2="11" y2="14"/><line x1="8" y1="11" x2="14" y2="11"/></svg>` },
-      { id: "code", badge: "SANDBOX", badgeColor: "#06b6d4", accentColor: "#06b6d4", title: "Code Studio", subtitle: "Judge0 Execution + LLM Critique", description: "LeetCode-style problems with server-side sandbox execution via Judge0, static analysis, trace visualization, and LLM critique that goes beyond pass/fail — it explains why your approach scales or breaks.", stat: "Judge0", statLabel: "Execution engine", icon: `<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/><line x1="12" y1="2" x2="12" y2="22" opacity="0.5"/></svg>` },
-      { id: "resume", badge: "NEW", badgeColor: "#ec4899", accentColor: "#ec4899", title: "Resume Intelligence", subtitle: "ATS Scoring + Claim-Based Probing", description: "Parses your resume with LLM-powered ATS simulation, identifies skill gaps against a target role, then generates interview questions that specifically probe every claim you've made — no softballs.", stat: "ATS + Gap", statLabel: "Dual analysis", icon: `<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M20 7H4a2 2 0 0 0-2 2v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2z"/><path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16"/></svg>` },
-      { id: "arch", badge: "EXPERIMENTAL", badgeColor: "#f97316", accentColor: "#f97316", title: "Architecture Generator", subtitle: "Diagrams from Code, Instantly", description: "Drop in a codebase and get component, deployment, sequence, and data flow diagrams auto-generated. Designed to help you explain system design in interviews without memorizing every edge.", stat: "4 views", statLabel: "Diagram types", icon: `<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg>` },
-      { id: "mirror", badge: "NEW", badgeColor: "#3b82f6", accentColor: "#3b82f6", title: "Mirror Mode", subtitle: "Ontology-Based Progress Tracking", description: "LLM-generated knowledge maps track not just scores, but understanding. Each attempt updates your ontology — you see exactly which concepts solidify and which remain fragile.", stat: "Cross-session", statLabel: "Memory", icon: `<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 6 13.5 15.5 8.5 10.5 1 18"/><polyline points="17 6 23 6 23 12"/></svg>` }
+      { id: "copilot", badge: "CORE", badgeColor: "#3b82f6", accentColor: "#3b82f6", title: "AI Copilot", subtitle: "Session-Aware Q&A", description: "A context-aware assistant that streams answers, keeps session continuity, and supports Groq/Gemini provider routing (BYOK). Built for interview-style back-and-forth — follow-ups inherit history so you can iterate faster.", stat: "Groq + Gemini", statLabel: "BYOK providers", icon: `<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/><circle cx="12" cy="10" r="1" fill="currentColor"/><circle cx="8" cy="10" r="1" fill="currentColor"/><circle cx="16" cy="10" r="1" fill="currentColor"/></svg>` },
+      { id: "practice", badge: "6 AI AGENTS", badgeColor: "#8b5cf6", accentColor: "#8b5cf6", title: "Live Practice Mode", subtitle: "Voice + Coaching Loop", description: "Practice speaking under pressure with live transcript, pacing and filler detection, and structured coaching. A multi-agent panel evaluates delivery signals and content quality in parallel, then merges them into a single scorecard.", stat: "Live", statLabel: "Speech analytics", icon: `<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg>` },
+      { id: "mock", badge: "LLM EVALUATED", badgeColor: "#10b981", accentColor: "#10b981", title: "Mock Interview", subtitle: "Multi-Question Sessions", description: "Run full interview sessions across behavioral, technical, coding, and system design. Each question is scored (0–10) with strengths, weaknesses, missing points, and a model answer — plus follow-ups when your response needs depth.", stat: "0–10", statLabel: "Scorecard", icon: `<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>` },
+      { id: "intelligence", badge: "HYBRID SEARCH", badgeColor: "#f59e0b", accentColor: "#f59e0b", title: "Interview Intelligence", subtitle: "Company + Role Prep", description: "Generate targeted practice questions using hybrid retrieval (keyword + semantic) plus company-pattern signals. Ideal for building a prep set that matches a specific role, seniority, and interview style.", stat: "Hybrid", statLabel: "Retrieval", icon: `<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/><line x1="11" y1="8" x2="11" y2="14"/><line x1="8" y1="11" x2="14" y2="11"/></svg>` },
+      { id: "code", badge: "SANDBOX", badgeColor: "#06b6d4", accentColor: "#06b6d4", title: "Code Studio", subtitle: "Backend Sandbox + Trace", description: "Solve coding problems with server-side execution and feedback that explains trade-offs — not just pass/fail. Includes optional tracing/visualization and structured critique to help you communicate your approach.", stat: "Trace", statLabel: "Visualize", icon: `<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/><line x1="12" y1="2" x2="12" y2="22" opacity="0.5"/></svg>` },
+      { id: "resume", badge: "NEW", badgeColor: "#ec4899", accentColor: "#ec4899", title: "Resume Intelligence", subtitle: "Resume-Aware Questions", description: "Upload a resume to extract skills, projects, and claims. Stratax uses that context to tailor questions and follow-ups that validate real experience and expose gaps — so practice maps to your profile.", stat: "Claims", statLabel: "Targeted probing", icon: `<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M20 7H4a2 2 0 0 0-2 2v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2z"/><path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16"/></svg>` },
+      { id: "arch", badge: "EXPERIMENTAL", badgeColor: "#f97316", accentColor: "#f97316", title: "Architecture Generator", subtitle: "Multi-View Diagrams", description: "Describe a system and generate interview-ready diagrams (overview, request flow, sequence, deployment, and more). Export as Markdown and use the views to structure clear system-design narratives.", stat: "Mermaid", statLabel: "Multi-view", icon: `<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg>` },
+      { id: "mirror", badge: "NEW", badgeColor: "#3b82f6", accentColor: "#3b82f6", title: "Mirror Mode", subtitle: "Draft → Critique → Rewrite", description: "Paste your draft answer and get a structured review: clarity, structure, completeness, and a stronger rewritten version. Use it to turn rough ideas into a confident, speakable response.", stat: "Rewrite", statLabel: "Feedback", icon: `<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 6 13.5 15.5 8.5 10.5 1 18"/><polyline points="17 6 23 6 23 12"/></svg>` }
     ];
 
     let activeFeatId = "practice";
@@ -3370,7 +4581,7 @@
               <div style="width: 44px; height: 44px; border-radius: 10px; background: ${f.accentColor}18; border: 1px solid ${f.accentColor}30; display: flex; align-items: center; justify-content: center; color: ${f.accentColor}; flex-shrink: 0;">
                 ${f.icon}
               </div>
-              <span style="font-size: 10px; font-weight: 700; letter-spacing: 0.08em; color: ${f.accentColor}; background: ${f.accentColor}15; border: 1px solid ${f.accentColor}30; padding: 3px 8px; border-radius: 20px; font-family: monospace;">
+              <span style="font-size: 10px; font-weight: 700; letter-spacing: 0.08em; color: ${f.accentColor}; background: ${f.accentColor}15; border: 1px solid ${f.accentColor}30; padding: 3px 8px; border-radius: 20px; font-family: var(--font-mono);">
                 ${f.badge}
               </span>
             </div>
@@ -3384,7 +4595,7 @@
             
             <!-- Stat -->
             <div style="display: flex; align-items: center; gap: 8px;">
-              <div style="font-size: 12px; font-weight: 700; color: ${f.accentColor}; font-family: monospace;">${f.stat}</div>
+              <div style="font-size: 12px; font-weight: 700; color: ${f.accentColor}; font-family: var(--font-mono);">${f.stat}</div>
               <div style="width: 3px; height: 3px; border-radius: 50%; background: rgba(255,255,255,0.2);"></div>
               <div style="font-size: 11px; color: var(--text-secondary);">${f.statLabel}</div>
             </div>
@@ -3413,14 +4624,14 @@
           <div style="flex: 1;">
             <div style="font-size: 20px; font-weight: 700; color: var(--text); margin-bottom: 6px;">
               ${activeF.title}
-              <span style="margin-left: 12px; font-size: 11px; font-weight: 700; color: ${activeF.accentColor}; background: ${activeF.accentColor}18; padding: 2px 8px; border-radius: 10px; letter-spacing: 0.06em; vertical-align: middle; font-family: monospace;">
+              <span style="margin-left: 12px; font-size: 11px; font-weight: 700; color: ${activeF.accentColor}; background: ${activeF.accentColor}18; padding: 2px 8px; border-radius: 10px; letter-spacing: 0.06em; vertical-align: middle; font-family: var(--font-mono);">
                 ${activeF.badge}
               </span>
             </div>
             <p style="font-size: 14.5px; color: var(--text-secondary); line-height: 1.7; margin: 0;">${activeF.description}</p>
           </div>
           <div class="text-right" style="text-align: right; flex-shrink: 0;">
-            <div style="font-size: 32px; font-weight: 800; color: ${activeF.accentColor}; letter-spacing: -0.03em;">${activeF.stat}</div>
+            <div style="font-size: 32px; font-weight: 800; color: ${activeF.accentColor}; letter-spacing: -0.03em; font-family: var(--font-mono);">${activeF.stat}</div>
             <div style="font-size: 12px; color: var(--text-secondary); margin-top: 2px;">${activeF.statLabel}</div>
           </div>
         </div>
@@ -3438,48 +4649,48 @@
     // ─── Architecture Section ───
     const archLayers = [
       {
-        id: "client", tag: "CLIENT", title: "Client Layer", subtitle: "Web UI (React + Vite) · Mobile", accentColor: "#3b82f6",
-        items: ["React + Vite", "Mobile PWA", "WebSocket", "Audio Capture"],
-        description: "The user-facing surface. React handles real-time UI updates during live sessions; the audio pipeline captures voice input and streams it to the STT layer with sub-200ms handoff.",
-        stats: [{ label: "Framework", value: "React + Vite" }, { label: "Protocol", value: "WebSocket" }],
+        id: "client", tag: "CLIENT", title: "Client Layer", subtitle: "Web UI (React + Vite) · PWA", accentColor: "#3b82f6",
+        items: ["React + Vite", "Installable PWA", "Streaming UI", "Voice input (Web Speech API)"],
+        description: "The user-facing layer: streaming answers, session navigation, and rich interactions across modes (practice, mock interviews, code studio, and more). Voice input is supported when available, with coaching signals surfaced in real time.",
+        stats: [{ label: "Framework", value: "React + Vite" }, { label: "Experience", value: "PWA + Streaming" }],
         icon: `<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="20" height="14" rx="2"/><path d="M8 21h8m-4-4v4"/></svg>`
       },
       {
         id: "gateway", tag: "API GATEWAY", title: "API Gateway", subtitle: "FastAPI · CORS · JWT Auth · Rate Limiting", accentColor: "#8b5cf6",
         items: ["FastAPI (async)", "CORS middleware", "JWT Auth", "Rate Limiting"],
-        description: "A monolithic FastAPI service with modular, independently toggleable subsystems. JWT guards every route; rate limiting prevents abuse during concurrent session spikes.",
-        stats: [{ label: "Runtime", value: "FastAPI async" }, { label: "Auth", value: "JWT" }],
+        description: "A single API boundary for auth and product endpoints. It enforces JWT, quotas/rate limits, and consistent schemas so the client can rely on stable contracts.",
+        stats: [{ label: "Runtime", value: "FastAPI (ASGI)" }, { label: "Auth", value: "JWT" }],
         icon: `<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M18 20V10"/><path d="M12 20V4"/><path d="M6 20v-6"/><path d="M3 10l9-7 9 7"/></svg>`
       },
       {
-        id: "core", tag: "CORE SERVICES", title: "Core Services", subtitle: "Q&A Engine · Practice Mode · Intelligence Engine", accentColor: "#10b981",
-        items: ["Q&A Engine", "Practice Mode", "Intelligence Engine", "Code Studio", "Resume Analysis", "Mirror Mode"],
-        description: "Six independently routed service modules each with its own evaluation pipeline. The Intelligence Engine coordinates cross-module context so session state persists across services.",
-        stats: [{ label: "Modules", value: "6 services" }, { label: "Routing", value: "Independent" }],
+        id: "core", tag: "CORE MODULES", title: "Core Services", subtitle: "Interview modes · Scoring pipelines · Exports", accentColor: "#10b981",
+        items: ["Answer Copilot", "Practice Mode", "Mock Interviews", "Code Studio", "Resume Context", "Architecture Generator"],
+        description: "Feature modules implement each mode and share a session model (history, resume context, evaluation artifacts). This keeps coaching consistent across chat, drills, and full sessions.",
+        stats: [{ label: "Modes", value: "Modular" }, { label: "State", value: "Session-based" }],
         icon: `<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14M4.93 4.93a10 10 0 0 0 0 14.14"/><path d="M15.54 8.46a5 5 0 0 1 0 7.07M8.46 8.46a5 5 0 0 0 0 7.07"/></svg>`
       },
       {
-        id: "ai", tag: "AI LAYER", title: "AI Layer", subtitle: "Google Gemini API / Groq · faster-whisper (STT)", accentColor: "#f59e0b",
-        items: ["Google Gemini API", "Groq SDK", "faster-whisper (STT)", "sentence-transformers", "6-Agent system"],
-        description: "Dual-engine LLM: Gemini for deep evaluation and structured scoring; Groq for latency-sensitive follow-up generation. faster-whisper runs server-side for real-time speech-to-text.",
-        stats: [{ label: "LLMs", value: "Gemini + Groq" }, { label: "STT", value: "faster-whisper" }],
+        id: "ai", tag: "AI LAYER", title: "AI Layer", subtitle: "Groq / Gemini · Routing · Structured scoring", accentColor: "#f59e0b",
+        items: ["Groq", "Gemini", "Provider routing", "Structured evaluation", "Streaming responses"],
+        description: "Dual-provider LLM orchestration with BYOK keys. Groq can be used for low-latency turns, while Gemini can handle deeper reasoning and structured scoring when needed.",
+        stats: [{ label: "Providers", value: "Groq + Gemini" }, { label: "Mode", value: "BYOK" }],
         icon: `<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 1 1 7.072 0l-.548.547A3.374 3.374 0 0 0 14 18.469V19a2 2 0 1 1-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z"/></svg>`
       },
       {
-        id: "storage", tag: "STORAGE", title: "Storage Layer", subtitle: "PostgreSQL · Qdrant Vector DB · Redis", accentColor: "#ec4899",
-        items: ["PostgreSQL / SQLite", "Qdrant Vector DB", "Redis (optional)", "BM25 + Cohere Reranker"],
-        description: "Hybrid storage: Postgres for structured session records; Qdrant for semantic vector retrieval; Redis for ephemeral session state; BM25 + Cohere powers the hybrid search pipeline.",
-        stats: [{ label: "Relational", value: "PostgreSQL" }, { label: "Vector", value: "Qdrant" }],
+        id: "storage", tag: "STORAGE", title: "Storage Layer", subtitle: "Session history · Search index · Caches", accentColor: "#ec4899",
+        items: ["PostgreSQL / SQLite", "Vector DB (optional)", "Web search (optional)", "localStorage cache"],
+        description: "Persists sessions, evaluations, and any retrieval indices. The client also maintains lightweight local caching for fast loading and offline-friendly UX.",
+        stats: [{ label: "Persistence", value: "Session history" }, { label: "Search", value: "Hybrid (optional)" }],
         icon: `<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3"/><path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"/></svg>`
       }
     ];
 
     const archFlows = [
-      { from: "CLIENT", to: "GATEWAY", label: "HTTPS / WS", color: "#3b82f6" },
-      { from: "GATEWAY", to: "CORE", label: "Async dispatch", color: "#8b5cf6" },
-      { from: "CORE", to: "AI LAYER", label: "LLM inference", color: "#10b981" },
-      { from: "CORE", to: "STORAGE", label: "Read / Write", color: "#f59e0b" },
-      { from: "AI LAYER", to: "STORAGE", label: "Embeddings", color: "#ec4899" }
+      { from: "CLIENT", to: "GATEWAY", label: "HTTPS + streaming", color: "#3b82f6" },
+      { from: "GATEWAY", to: "CORE", label: "Route + authorize", color: "#8b5cf6" },
+      { from: "CORE", to: "AI LAYER", label: "LLM calls", color: "#10b981" },
+      { from: "CORE", to: "STORAGE", label: "Sessions + results", color: "#f59e0b" },
+      { from: "AI LAYER", to: "STORAGE", label: "Index/update", color: "#ec4899" }
     ];
 
     let activeArchId = "core";
@@ -3499,10 +4710,10 @@
             <div style="display: flex; align-items: center; gap: 10px;">
               <div style="width: 30px; height: 30px; border-radius: 7px; background: ${c}18; border: 1px solid ${c}30; display: flex; align-items: center; justify-content: center; color: ${c}; flex-shrink: 0;">${l.icon}</div>
               <div style="flex: 1; min-width: 0;">
-                <div style="font-size: 12.5px; font-weight: 700; color: ${on ? '#f1f5f9' : '#64748b'}; margin-bottom: 2px; transition: color 0.2s;">${l.title}</div>
-                <div style="font-size: 10px; color: #334155; font-family: monospace; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${l.subtitle}</div>
+                <div style="font-size: 12.5px; font-weight: 700; color: ${on ? 'var(--text)' : 'var(--text-secondary)'}; margin-bottom: 2px; transition: color 0.2s;">${l.title}</div>
+                <div style="font-size: 10px; color: var(--text-muted); font-family: var(--font-mono); overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${l.subtitle}</div>
               </div>
-              <span style="font-size: 8.5px; font-weight: 700; color: ${c}; background: ${c}15; border: 1px solid ${c}25; padding: 2px 5px; border-radius: 6px; letter-spacing: 0.06em; font-family: monospace; flex-shrink: 0;">${l.tag}</span>
+              <span style="font-size: 8.5px; font-weight: 700; color: ${c}; background: ${c}15; border: 1px solid ${c}25; padding: 2px 5px; border-radius: 6px; letter-spacing: 0.06em; font-family: var(--font-mono); flex-shrink: 0;">${l.tag}</span>
             </div>
           </div>
           ${i < archLayers.length - 1 ? `<div style="display: flex; justify-content: center; height: 28px; align-items: center; position: relative;"><div style="width: 1px; height: 100%; background: linear-gradient(to bottom, ${c}80, ${c}10);"></div><div style="position: absolute; bottom: 0; width: 0; height: 0; border-left: 5px solid transparent; border-right: 5px solid transparent; border-top: 7px solid ${c}70;"></div></div>` : ''}
@@ -3520,21 +4731,21 @@
       const c = l.accentColor;
 
       const itemPills = l.items.map(item =>
-        `<span style="font-size: 11.5px; color: ${c}; background: ${c}10; border: 1px solid ${c}22; padding: 4px 10px; border-radius: 20px; font-family: monospace; font-weight: 600;">${item}</span>`
+        `<span style="font-size: 11.5px; color: ${c}; background: ${c}10; border: 1px solid ${c}22; padding: 4px 10px; border-radius: 20px; font-family: var(--font-mono); font-weight: 600;">${item}</span>`
       ).join('');
 
       const statsHtml = l.stats.map(s =>
-        `<div style="background: rgba(0,0,0,0.25); border-radius: 9px; padding: 10px 14px; border: 1px solid rgba(255,255,255,0.05);"><div style="font-size: 10px; color: #475569; margin-bottom: 3px;">${s.label}</div><div style="font-size: 13px; font-weight: 700; color: ${c}; font-family: monospace;">${s.value}</div></div>`
+        `<div style="background: rgba(0,0,0,0.25); border-radius: 9px; padding: 10px 14px; border: 1px solid rgba(255,255,255,0.05);"><div style="font-size: 10px; color: var(--text-muted); margin-bottom: 3px;">${s.label}</div><div style="font-size: 13px; font-weight: 700; color: ${c}; font-family: var(--font-mono);">${s.value}</div></div>`
       ).join('');
 
       const flowsHtml = archFlows.map(f =>
         `<div style="display: flex; align-items: center; gap: 8px;">
-          <span style="font-size: 10px; color: #475569; font-family: monospace; width: 68px; flex-shrink: 0;">${f.from}</span>
+          <span style="font-size: 10px; color: var(--text-muted); font-family: var(--font-mono); width: 68px; flex-shrink: 0;">${f.from}</span>
           <div style="flex: 1; height: 1px; background: linear-gradient(90deg,${f.color}55,${f.color}10); position: relative;">
             <div style="position: absolute; right: 0; top: -3px; width: 0; height: 0; border-top: 4px solid transparent; border-bottom: 4px solid transparent; border-left: 6px solid ${f.color}55;"></div>
           </div>
-          <span style="font-size: 10px; color: ${f.color}; background: ${f.color}14; padding: 2px 8px; border-radius: 10px; font-family: monospace; font-weight: 600; flex-shrink: 0;">${f.label}</span>
-          <span style="font-size: 10px; color: #475569; font-family: monospace; width: 68px; text-align: right; flex-shrink: 0;">${f.to}</span>
+          <span style="font-size: 10px; color: ${f.color}; background: ${f.color}14; padding: 2px 8px; border-radius: 10px; font-family: var(--font-mono); font-weight: 600; flex-shrink: 0;">${f.label}</span>
+          <span style="font-size: 10px; color: var(--text-muted); font-family: var(--font-mono); width: 68px; text-align: right; flex-shrink: 0;">${f.to}</span>
         </div>`
       ).join('');
 
@@ -3544,7 +4755,7 @@
             <div style="display: flex; align-items: center; gap: 12px; margin-bottom: 15px;">
               <div style="width: 44px; height: 44px; border-radius: 11px; background: ${c}1c; border: 1px solid ${c}38; display: flex; align-items: center; justify-content: center; color: ${c};">${l.icon}</div>
               <div>
-                <div style="font-size: 9.5px; color: ${c}; font-weight: 700; letter-spacing: 0.1em; font-family: monospace; margin-bottom: 2px;">${l.tag}</div>
+                <div style="font-size: 9.5px; color: ${c}; font-weight: 700; letter-spacing: 0.1em; font-family: var(--font-mono); margin-bottom: 2px;">${l.tag}</div>
                 <div style="font-size: 18px; font-weight: 800; color: var(--text); letter-spacing: -0.01em;">${l.title}</div>
               </div>
             </div>
@@ -3553,13 +4764,13 @@
             <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">${statsHtml}</div>
           </div>
           <div style="background: rgba(255,255,255,0.02); border: 1px solid rgba(255,255,255,0.06); border-radius: 12px; padding: 16px 20px;">
-            <p style="font-size: 10px; font-weight: 700; color: #334155; letter-spacing: 0.1em; font-family: monospace; margin-bottom: 11px;">DATA FLOW PATHS</p>
+            <p style="font-size: 10px; font-weight: 700; color: var(--text-muted); letter-spacing: 0.1em; font-family: var(--font-mono); margin-bottom: 11px;">DATA FLOW PATHS</p>
             <div style="display: flex; flex-direction: column; gap: 8px;">${flowsHtml}</div>
           </div>
           <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 10px;">
-            <div style="background: rgba(255,255,255,0.02); border: 1px solid rgba(255,255,255,0.06); border-radius: 10px; padding: 15px 13px;"><div style="font-size: 17px; margin-bottom:7px;">&#9889;</div><div style="font-size: 12px; font-weight: 700; color: #f59e0b; margin-bottom: 5px;">Async First</div><p style="font-size: 11px; color: #3d5166; line-height: 1.55; margin: 0;">All handlers are fully async — no blocking I/O during LLM calls.</p></div>
-            <div style="background: rgba(255,255,255,0.02); border: 1px solid rgba(255,255,255,0.06); border-radius: 10px; padding: 15px 13px;"><div style="font-size: 17px; margin-bottom:7px;">&#128268;</div><div style="font-size: 12px; font-weight: 700; color: #10b981; margin-bottom: 5px;">Modular Toggle</div><p style="font-size: 11px; color: #3d5166; line-height: 1.55; margin: 0;">Each subsystem exposes a feature flag for independent control.</p></div>
-            <div style="background: rgba(255,255,255,0.02); border: 1px solid rgba(255,255,255,0.06); border-radius: 10px; padding: 15px 13px;"><div style="font-size: 17px; margin-bottom:7px;">&#128274;</div><div style="font-size: 12px; font-weight: 700; color: #8b5cf6; margin-bottom: 5px;">JWT Scoped</div><p style="font-size: 11px; color: #3d5166; line-height: 1.55; margin: 0;">Session data is user-isolated at the gateway level.</p></div>
+            <div style="background: rgba(255,255,255,0.02); border: 1px solid rgba(255,255,255,0.06); border-radius: 10px; padding: 15px 13px;"><div style="font-size: 17px; margin-bottom:7px;">&#9889;</div><div style="font-size: 12px; font-weight: 700; color: #f59e0b; margin-bottom: 5px;">Async First</div><p style="font-size: 11px; color: var(--text-secondary); line-height: 1.55; margin: 0;">Non-blocking I/O keeps the experience responsive during model calls.</p></div>
+            <div style="background: rgba(255,255,255,0.02); border: 1px solid rgba(255,255,255,0.06); border-radius: 10px; padding: 15px 13px;"><div style="font-size: 17px; margin-bottom:7px;">&#128268;</div><div style="font-size: 12px; font-weight: 700; color: #10b981; margin-bottom: 5px;">Modular by Design</div><p style="font-size: 11px; color: var(--text-secondary); line-height: 1.55; margin: 0;">Each mode can evolve independently while sharing a consistent session model.</p></div>
+            <div style="background: rgba(255,255,255,0.02); border: 1px solid rgba(255,255,255,0.06); border-radius: 10px; padding: 15px 13px;"><div style="font-size: 17px; margin-bottom:7px;">&#128274;</div><div style="font-size: 12px; font-weight: 700; color: #8b5cf6; margin-bottom: 5px;">JWT Scoped</div><p style="font-size: 11px; color: var(--text-secondary); line-height: 1.55; margin: 0;">User/session boundaries are enforced at the API layer.</p></div>
           </div>
         </div>
       `;
@@ -3576,27 +4787,27 @@
     // ─── Tech Stack Section ───
     const tsGroups = [
       {
-        id: "platform", label: "CORE PLATFORM", color: "#8b5cf6", description: "The runtime and framework backbone of Stratax AI.", items: [
-          { name: "Python 3.11+", desc: "Runtime", detail: "Modern async-first Python with full type hint support.", icon: "&#x1F40D;", role: "Runtime" },
-          { name: "FastAPI", desc: "Web framework", detail: "High-performance ASGI framework with auto-generated OpenAPI docs.", icon: "&#x26A1;", role: "Framework" },
-          { name: "Uvicorn (ASGI)", desc: "Server", detail: "Lightning-fast ASGI server powering concurrent WebSocket sessions.", icon: "&#x1F680;", role: "Server" },
-          { name: "Pydantic v2", desc: "Validation", detail: "Rust-powered validation layer for all request/response schemas.", icon: "&#x1F537;", role: "Validation" }
+        id: "platform", label: "CORE PLATFORM", color: "#8b5cf6", description: "The backend runtime and API surface that powers auth, sessions, and scoring.", items: [
+          { name: "Python 3.11+", desc: "Runtime", detail: "Async-friendly runtime for API and evaluation services.", icon: "&#x1F40D;", role: "Runtime" },
+          { name: "FastAPI", desc: "Web framework", detail: "ASGI web framework for session, auth, and feature endpoints.", icon: "&#x26A1;", role: "Framework" },
+          { name: "Uvicorn (ASGI)", desc: "Server", detail: "ASGI server enabling streaming responses and concurrent requests.", icon: "&#x1F680;", role: "Server" },
+          { name: "Pydantic v2", desc: "Validation", detail: "Schema validation for all request/response payloads.", icon: "&#x1F537;", role: "Validation" }
         ]
       },
       {
-        id: "ai", label: "AI & MACHINE LEARNING", color: "#f59e0b", description: "The dual-engine intelligence layer behind every evaluation.", items: [
-          { name: "Google Gemini API", desc: "LLM evaluation", detail: "Deep structured scoring across all 5 criteria per response.", icon: "&#x2728;", role: "Evaluation" },
-          { name: "Groq SDK", desc: "Low-latency LLM", detail: "Sub-100ms follow-up question generation and probing.", icon: "&#x26A1;", role: "Inference" },
-          { name: "sentence-transformers", desc: "Embeddings", detail: "Dense vector embeddings powering semantic search in Intelligence Engine.", icon: "&#x1F9E0;", role: "Embeddings" },
-          { name: "faster-whisper", desc: "Speech-to-text", detail: "Server-side STT with WPM tracking, pause detection, and filler extraction.", icon: "&#x1F39A;", role: "STT" }
+        id: "ai", label: "AI & MACHINE LEARNING", color: "#f59e0b", description: "Provider routing and evaluation logic for interview-grade coaching.", items: [
+          { name: "Google Gemini", desc: "LLM evaluation", detail: "Structured reasoning, scoring, and model answers for deeper evaluation.", icon: "&#x2728;", role: "Evaluation" },
+          { name: "Groq", desc: "Low-latency LLM", detail: "Fast interactive turns and follow-up probing (BYOK).", icon: "&#x26A1;", role: "Inference" },
+          { name: "Hybrid retrieval", desc: "Grounding", detail: "Combines keyword + semantic signals to source relevant questions and follow-ups.", icon: "&#x1F9E0;", role: "Search" },
+          { name: "Streaming", desc: "UX pipeline", detail: "Token/chunk streaming for a responsive, real-time reading experience.", icon: "&#x1F4E1;", role: "Delivery" }
         ]
       },
       {
-        id: "storage", label: "STORAGE & SEARCH", color: "#ec4899", description: "Hybrid storage purpose-built for session-level retrieval.", items: [
-          { name: "PostgreSQL / SQLite", desc: "Relational DB", detail: "Structured session records, user data, and scoring history.", icon: "&#x1F5C4;", role: "Primary DB" },
-          { name: "Qdrant Vector DB", desc: "Semantic search", detail: "Dense vector storage powering company-specific interview retrieval.", icon: "&#x1F50D;", role: "Vector DB" },
-          { name: "Redis (optional)", desc: "Session cache", detail: "Ephemeral session state with sub-millisecond read latency.", icon: "&#x26A1;", role: "Cache" },
-          { name: "BM25 + Cohere Reranker", desc: "Hybrid search", detail: "Sparse BM25 fused with Cohere reranking for precision retrieval.", icon: "&#x1F3AF;", role: "Search" }
+        id: "storage", label: "STORAGE & SEARCH", color: "#ec4899", description: "Storage and retrieval optimized for session history and grounded prep.", items: [
+          { name: "PostgreSQL / SQLite", desc: "Relational store", detail: "Session records, user data, and scoring history.", icon: "&#x1F5C4;", role: "Primary DB" },
+          { name: "Vector DB", desc: "Semantic search", detail: "Semantic retrieval for company/role-specific question sets.", icon: "&#x1F50D;", role: "Vector" },
+          { name: "Web Search", desc: "External sources", detail: "Optional web grounding to broaden coverage and reduce hallucinations.", icon: "&#x1F310;", role: "Web" },
+          { name: "localStorage", desc: "Client cache", detail: "Lightweight caching for faster reloads and better resilience.", icon: "&#x26A1;", role: "Cache" }
         ]
       },
       {
@@ -3625,18 +4836,18 @@
       if (!el) return;
       const descEl = document.getElementById("tsDesc");
       const filtered = activeTsGroup ? tsGroups.filter(g => g.id === activeTsGroup) : tsGroups;
-      if (descEl) descEl.textContent = activeTsGroup ? tsGroups.find(g => g.id === activeTsGroup)?.description : 'Every layer purpose-selected for the demands of real-time AI interview evaluation.';
+      if (descEl) descEl.textContent = activeTsGroup ? tsGroups.find(g => g.id === activeTsGroup)?.description : 'A pragmatic stack optimized for low-latency UX, type safety, and modular AI-powered evaluation.';
       el.innerHTML = "";
       filtered.forEach(group => {
         let cardsHtml = group.items.map(item => `
           <div class="ts-card" style="--tc-gradient: linear-gradient(90deg,${group.color}60,transparent);" onmouseenter="this.style.background='${group.color}09'; this.style.borderColor='${group.color}35';" onmouseleave="this.style.background='rgba(255,255,255,0.02)'; this.style.borderColor='rgba(255,255,255,0.07)';" >
             <div style="display: flex; align-items: flex-start; justify-content: space-between; margin-bottom: 14px;">
               <div style="width: 42px; height: 42px; border-radius: 10px; background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.08); display: flex; align-items: center; justify-content: center; font-size: 20px;">${item.icon}</div>
-              <span style="font-size: 9px; font-weight: 700; letter-spacing: 0.07em; color: #334155; background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.06); padding: 2px 7px; border-radius: 6px; font-family: monospace;">${item.role}</span>
+              <span style="font-size: 9px; font-weight: 700; letter-spacing: 0.07em; color: var(--text-muted); background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.06); padding: 2px 7px; border-radius: 6px; font-family: var(--font-mono);">${item.role}</span>
             </div>
-            <div style="font-size: 13.5px; font-weight: 700; color: #94a3b8; margin-bottom: 4px; line-height: 1.3;">${item.name}</div>
-            <div style="font-size: 11.5px; color: #475569; margin-bottom: 8px;">${item.desc}</div>
-            <div style="font-size: 12px; color: #64748b; line-height: 1.6;">${item.detail}</div>
+            <div style="font-size: 13.5px; font-weight: 700; color: var(--text); margin-bottom: 4px; line-height: 1.3;">${item.name}</div>
+            <div style="font-size: 11.5px; color: var(--text-muted); margin-bottom: 8px;">${item.desc}</div>
+            <div style="font-size: 12px; color: var(--text-secondary); line-height: 1.6;">${item.detail}</div>
             <div class="ts-card-bar"></div>
           </div>
         `).join('');
@@ -3645,9 +4856,9 @@
           <div>
             <div style="display: flex; align-items: center; gap: 12px; margin-bottom: 18px;">
               <div style="width: 8px; height: 8px; border-radius: 50%; background: ${group.color}; box-shadow: 0 0 8px ${group.color};"></div>
-              <span style="font-size: 11px; font-weight: 700; color: ${group.color}; letter-spacing: 0.1em; font-family: monospace;">${group.label}</span>
+              <span style="font-size: 11px; font-weight: 700; color: ${group.color}; letter-spacing: 0.1em; font-family: var(--font-mono);">${group.label}</span>
               <div style="flex: 1; height: 1px; background: linear-gradient(90deg,${group.color}30,transparent);"></div>
-              <span style="font-size: 11px; color: #2d3a47; font-family: monospace;">${group.items.length} tools</span>
+              <span style="font-size: 11px; color: var(--text-muted); font-family: var(--font-mono);">${group.items.length} tools</span>
             </div>
             <div class="ts-tech-grid">${cardsHtml}</div>
           </div>
@@ -3666,12 +4877,12 @@
 
     // ─── How It Works Reactivity Logic ───
     const hiwData = [
-      { number: "01", tag: "SETUP", tagColor: "#3b82f6", accentColor: "#3b82f6", title: "Session Created", subtitle: "You configure the conditions", description: "Choose interview type (behavioral, technical, system design), set difficulty, and define question count. Optionally attach your resume — Stratax will extract claims and target them directly.", details: ["Interview type selection", "Difficulty calibration", "Resume ingestion (optional)", "Company-specific targeting"], icon: `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>` },
-      { number: "02", tag: "INTELLIGENCE", tagColor: "#8b5cf6", accentColor: "#8b5cf6", title: "Question Presented", subtitle: "Adaptive, not random", description: "The Intelligence Engine generates a question using semantic + BM25 hybrid retrieval. It factors in your resume claims, target company patterns, and session difficulty — nothing is filler.", details: ["Hybrid BM25 + vector retrieval", "Resume-claim targeting", "Company-specific patterns", "Adaptive difficulty"], icon: `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>` },
-      { number: "03", tag: "INPUT", tagColor: "#10b981", accentColor: "#10b981", title: "Answer Submitted", subtitle: "Text or voice — both tracked", description: "Respond via text or live audio. Speech mode extracts WPM, filler word frequency, confidence score, pacing consistency, and pause patterns in real time via six specialized agents.", details: ["WPM & pace tracking", "Filler word detection", "Confidence signal extraction", "Real-time audio processing"], icon: `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg>` },
-      { number: "04", tag: "EVALUATION", tagColor: "#f59e0b", accentColor: "#f59e0b", title: "AI Evaluation", subtitle: "5 criteria, zero ambiguity", description: "LLM scores your answer across correctness, completeness, clarity, confidence, and technical depth. Each criterion is scored 0–10 with reasoning — no black-box output.", details: ["Correctness (0–10)", "Completeness (0–10)", "Clarity (0–10)", "Confidence + Technical depth"], icon: `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>` },
-      { number: "05", tag: "FEEDBACK", tagColor: "#ec4899", accentColor: "#ec4899", title: "Structured Feedback", subtitle: "Actionable, not decorative", description: "Per-question: strengths, improvement gaps, red flags, a model answer, and coaching tips. Not a score — a coaching session. Follow-up probing questions are generated if your answer was shallow.", details: ["Strengths & gap analysis", "Model answer provided", "Coaching tips generated", "Dynamic follow-up probing"], icon: `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>` },
-      { number: "06", tag: "ANALYTICS", tagColor: "#06b6d4", accentColor: "#06b6d4", title: "Session Summary", subtitle: "The full picture", description: "Overall session score, improvement trajectory across questions, consistency analysis, and a downloadable HTML report. Mirror Mode updates your knowledge ontology for cross-session tracking.", details: ["Aggregate session score", "Improvement trajectory", "Consistency analysis", "Downloadable HTML report"], icon: `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>` }
+      { number: "01", tag: "SETUP", tagColor: "#3b82f6", accentColor: "#3b82f6", title: "Create a Session", subtitle: "Set the interview conditions", description: "Pick the interview type, difficulty, and number of questions. Optionally upload your resume so Stratax can ground questions and follow-ups against your real projects and claims.", details: ["Choose interview type", "Set difficulty + question count", "Optional resume context", "Topic/company focus (optional)"], icon: `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>` },
+      { number: "02", tag: "INTELLIGENCE", tagColor: "#8b5cf6", accentColor: "#8b5cf6", title: "Generate the Question", subtitle: "Grounded, not generic", description: "Questions are selected/generated using your session settings plus grounded signals (history, resume context, and optional retrieval). The goal: realistic prompts that match the round and seniority.", details: ["Session-aware generation", "Hybrid retrieval (keyword + semantic)", "Resume-claim targeting", "Adaptive follow-ups"], icon: `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>` },
+      { number: "03", tag: "INPUT", tagColor: "#10b981", accentColor: "#10b981", title: "Answer (Text or Voice)", subtitle: "Delivery signals included", description: "Respond via text, or practice speaking with voice input when available. Voice sessions capture transcript plus delivery signals such as pace, fillers, and pauses — designed to mimic real interview pressure.", details: ["Text and voice input", "Live transcript (when supported)", "Pace/fillers/pauses", "Practice-mode coaching loop"], icon: `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg>` },
+      { number: "04", tag: "EVALUATION", tagColor: "#f59e0b", accentColor: "#f59e0b", title: "Evaluate", subtitle: "Structured criteria + rationale", description: "Your answer is scored across key dimensions such as correctness, completeness, clarity, confidence, and technical depth. Each criterion comes with reasoning — so you know what to fix, not just what you got.", details: ["Correctness / Completeness", "Clarity + structure", "Confidence + delivery", "Technical depth + trade-offs"], icon: `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>` },
+      { number: "05", tag: "FEEDBACK", tagColor: "#ec4899", accentColor: "#ec4899", title: "Coach", subtitle: "Actionable improvements", description: "Per question you get strengths, weaknesses, missing points, and targeted suggestions — often with a model answer. When your response is shallow, Stratax pushes with follow-ups to simulate real interview depth.", details: ["Strengths + weaknesses", "Missing points surfaced", "Model answer (when available)", "Follow-up probing"], icon: `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>` },
+      { number: "06", tag: "PROGRESS", tagColor: "#06b6d4", accentColor: "#06b6d4", title: "Review & Iterate", subtitle: "Turn feedback into reps", description: "Get a session summary, track performance over time, and export a report when needed. Use Mirror Mode to refine draft answers, then repeat with focused drills until the pattern sticks.", details: ["Session summary + trajectory", "Exportable report", "History + quick review", "Mirror Mode refinements"], icon: `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>` }
     ];
 
     const criteriaData = [
@@ -3700,10 +4911,10 @@
             <div class="hiw-bubble">${s.number}</div>
             <div style="flex: 1; min-width: 0;">
               <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 2px;">
-                <span style="font-size: 14.5px; font-weight: 700; color: ${isActive ? '#f1f5f9' : '#94a3b8'}; transition: color 0.2s;">${s.title}</span>
-                <span style="font-size: 9px; font-weight: 700; color: ${color}; background: ${color}18; border: 1px solid ${color}30; padding: 1px 6px; border-radius: 10px; letter-spacing: 0.07em; font-family: monospace; opacity: ${isActive ? 1 : 0.6};">${s.tag}</span>
+                <span style="font-size: 14.5px; font-weight: 700; color: ${isActive ? 'var(--text)' : 'var(--text-secondary)'}; transition: color 0.2s;">${s.title}</span>
+                <span style="font-size: 9px; font-weight: 700; color: ${color}; background: ${color}18; border: 1px solid ${color}30; padding: 1px 6px; border-radius: 10px; letter-spacing: 0.07em; font-family: var(--font-mono); opacity: ${isActive ? 1 : 0.6};">${s.tag}</span>
               </div>
-              <div style="font-size: 12px; color: ${isActive ? '#64748b' : '#334155'}; transition: color 0.2s;">${s.subtitle}</div>
+                  <div style="font-size: 12px; color: ${isActive ? 'var(--text-secondary)' : 'var(--text-muted)'}; transition: color 0.2s;">${s.subtitle}</div>
             </div>
             ${activeGlow}
           </div>
@@ -3718,8 +4929,8 @@
       listEl.insertAdjacentHTML('beforeend', `
         <div style="margin-top: 16px; padding: 0 20px;">
           <div style="display: flex; justify-content: space-between; margin-bottom: 6px;">
-            <span style="font-size: 11px; color: #475569;">Session progress</span>
-            <span style="font-size: 11px; color: ${progColor}; font-family: monospace;">${activeHiwIdx + 1}/6</span>
+            <span style="font-size: 11px; color: var(--text-muted);">Session progress</span>
+            <span style="font-size: 11px; color: ${progColor}; font-family: var(--font-mono);">${activeHiwIdx + 1}/6</span>
           </div>
           <div style="height: 3px; background: rgba(255,255,255,0.06); border-radius: 3px; overflow: hidden;">
             <div style="height: 100%; width: ${pct}%; background: linear-gradient(90deg, ${progColor}, ${progColor}80); border-radius: 3px; transition: width 0.4s ease;"></div>
@@ -3739,7 +4950,7 @@
       let detailsHtml = s.details.map(d => `
         <div style="display: flex; align-items: center; gap: 10px;">
           <div style="width: 6px; height: 6px; border-radius: 50%; background: ${s.accentColor}; opacity: 0.7; flex-shrink: 0;"></div>
-          <span style="font-size: 13px; color: #64748b;">${d}</span>
+          <span style="font-size: 13px; color: var(--text-secondary);">${d}</span>
         </div>
       `).join('');
 
@@ -3747,13 +4958,13 @@
       if (activeHiwIdx === 3) {
         criteriaHtml = `
           <div style="background: rgba(0,0,0,0.3); border-radius: 12px; padding: 16px; border: 1px solid rgba(255,255,255,0.06); margin-bottom: 28px;">
-            <div style="font-size: 11px; color: #475569; font-weight: 700; letter-spacing: 0.08em; margin-bottom: 14px; font-family: monospace;">SCORING BREAKDOWN</div>
+            <div style="font-size: 11px; color: var(--text-muted); font-weight: 700; letter-spacing: 0.08em; margin-bottom: 14px; font-family: var(--font-mono);">SCORING BREAKDOWN</div>
             <div style="display: flex; flex-direction: column; gap: 10px;">
               ${criteriaData.map((c, i) => `
                 <div>
                   <div style="display: flex; justify-content: space-between; margin-bottom: 4px;">
-                    <span style="font-size: 12px; color: #64748b;">${c.label}</span>
-                    <span style="font-size: 12px; color: ${c.color}; font-family: monospace;">${c.pct}/100</span>
+                    <span style="font-size: 12px; color: var(--text-secondary);">${c.label}</span>
+                    <span style="font-size: 12px; color: ${c.color}; font-family: var(--font-mono);">${(c.pct / 10).toFixed(1)}/10</span>
                   </div>
                   <div style="height: 4px; background: rgba(255,255,255,0.06); border-radius: 4px; overflow: hidden;">
                     <div class="anim-bar" style="height: 100%; width: 0%; background: ${c.color}; border-radius: 4px; transition: width 0.8s cubic-bezier(0.4,0,0.2,1);" data-width="${c.pct}%"></div>
@@ -3780,7 +4991,7 @@
               ${s.icon}
             </div>
             <div>
-              <div style="font-size: 11px; color: ${s.accentColor}; font-weight: 700; letter-spacing: 0.1em; font-family: monospace; margin-bottom: 2px;">STEP ${s.number}</div>
+              <div style="font-size: 11px; color: ${s.accentColor}; font-weight: 700; letter-spacing: 0.1em; font-family: var(--font-mono); margin-bottom: 2px;">STEP ${s.number}</div>
               <div style="font-size: 19px; font-weight: 800; color: var(--text); letter-spacing: -0.01em;">${s.title}</div>
             </div>
           </div>
@@ -3794,10 +5005,10 @@
           ${criteriaHtml}
 
           <div style="display: flex; gap: 8px; margin-top: 24px;">
-            <button class="hiw-btn" onclick="setHiwStep(activeHiwIdx - 1)" ${isPrevDis ? 'disabled' : ''} style="background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.08); color: ${isPrevDis ? '#2d3748' : 'var(--text-secondary)'}; cursor: ${isPrevDis ? 'not-allowed' : 'pointer'};">
+            <button class="hiw-btn" onclick="setHiwStep(activeHiwIdx - 1)" ${isPrevDis ? 'disabled' : ''} style="background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.08); color: ${isPrevDis ? 'var(--text-muted)' : 'var(--text-secondary)'}; cursor: ${isPrevDis ? 'not-allowed' : 'pointer'};">
               ← Previous
             </button>
-            <button class="hiw-btn" onclick="setHiwStep(activeHiwIdx + 1)" ${isNextDis ? 'disabled' : ''} style="background: ${isNextDis ? 'rgba(255,255,255,0.04)' : s.accentColor + '20'}; border: 1px solid ${isNextDis ? 'rgba(255,255,255,0.08)' : s.accentColor + '40'}; color: ${isNextDis ? '#2d3748' : s.accentColor}; cursor: ${isNextDis ? 'not-allowed' : 'pointer'};">
+            <button class="hiw-btn" onclick="setHiwStep(activeHiwIdx + 1)" ${isNextDis ? 'disabled' : ''} style="background: ${isNextDis ? 'rgba(255,255,255,0.04)' : s.accentColor + '20'}; border: 1px solid ${isNextDis ? 'rgba(255,255,255,0.08)' : s.accentColor + '40'}; color: ${isNextDis ? 'var(--text-muted)' : s.accentColor}; cursor: ${isNextDis ? 'not-allowed' : 'pointer'};">
               Next →
             </button>
           </div>

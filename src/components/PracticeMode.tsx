@@ -83,7 +83,8 @@ import {
   Settings,
 } from 'lucide-react';
 import RoundSelection from './RoundSelection';
-import ResumeUpload, { loadSavedResumeContext } from './ResumeUpload';
+import ResumeUpload from './ResumeUpload';
+import { loadSavedResumeContext } from '@/lib/resumeContextStorage';
 import type { ResumeContext } from '../types/resume';
 import { Collapsible, CollapsibleTrigger, CollapsibleContent } from '@/components/ui/collapsible';
 import type { RoundConfig } from '@/lib/practiceModeApi';

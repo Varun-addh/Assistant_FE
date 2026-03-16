@@ -10,8 +10,8 @@
     "redirects": [
       {
         "source": "/",
-        "destination": "/docs/",
-        "type": 302
+        "destination": "/docs",
+        "type": 301
       }
     ],
     "rewrites": [

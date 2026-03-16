@@ -12,6 +12,7 @@ import {
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import type { ResumeContext, ResumeUploadResponse } from "../types/resume";
+import { RESUME_STORAGE_KEY } from "@/lib/resumeContextStorage";
 
 interface ResumeUploadProps {
   /** Which mode this upload is for */
@@ -26,7 +27,6 @@ interface ResumeUploadProps {
 
 const ALLOWED_EXTENSIONS = [".txt", ".md", ".pdf", ".docx"];
 const MAX_SIZE_MB = 5;
-const RESUME_STORAGE_KEY = "stratax_resume_context";
 
 export default function ResumeUpload({
   mode,
@@ -280,22 +280,4 @@ export default function ResumeUpload({
       )}
     </div>
   );
-}
-
-/**
- * Load persisted resume context from localStorage (if any).
- */
-export function loadSavedResumeContext(): ResumeContext | null {
-  try {
-    const saved = localStorage.getItem(RESUME_STORAGE_KEY);
-    if (!saved) return null;
-    const parsed = JSON.parse(saved);
-    // Basic shape check
-    if (parsed && Array.isArray(parsed.skills) && typeof parsed.primary_domain === "string") {
-      return parsed as ResumeContext;
-    }
-  } catch {
-    // corrupt data — ignore
-  }
-  return null;
 }

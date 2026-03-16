@@ -57,7 +57,8 @@ import {
 } from "lucide-react";
 import { Collapsible, CollapsibleTrigger, CollapsibleContent } from "@/components/ui/collapsible";
 import { MonacoEditor } from "@/components/MonacoEditor";
-import ResumeUpload, { loadSavedResumeContext } from "./ResumeUpload";
+import ResumeUpload from "./ResumeUpload";
+import { loadSavedResumeContext } from "@/lib/resumeContextStorage";
 import type { ResumeContext } from "../types/resume";
 
 type SessionPhase = "setup" | "interview" | "feedback" | "summary" | "history";

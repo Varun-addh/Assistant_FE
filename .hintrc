@@ -1,0 +1,20 @@
+{
+  "hints": {
+    "typescript-config": "off",
+    "no-inline-styles": "off",
+    "axe/forms": [
+      "warning",
+      {
+        "label": "off",
+        "label-title-only": "off"
+      }
+    ],
+    "axe/name-role-value": [
+      "warning",
+      {
+        "button-name": "off"
+      }
+    ],
+    "meta-theme-color": "off"
+  }
+}

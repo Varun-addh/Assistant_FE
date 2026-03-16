@@ -15,4 +15,4 @@ Allow: /
 
 # PWA offline resources can be cached by clients
 
-Sitemap: https://strataxai.in/sitemap.xml
+Sitemap: https://www.strataxai.in/sitemap.xml

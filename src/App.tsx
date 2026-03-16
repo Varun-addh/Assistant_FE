@@ -24,15 +24,17 @@ import { useEffect } from "react";
 const queryClient = new QueryClient();
 
 /**
- * Redirects to the static documentation page.
- * Used for both "/" and "/docs" routes so that
- * strataxai.in → Documentation homepage
- * strataxai.in/docs → Documentation (same page)
- * strataxai.in/app → Application
+ * Redirects `/` and `/docs` requests to the static docs entrypoint.
+ * In production, Firebase Hosting redirects `/` to `/docs` (docs/info opens first).
+ * Locally, Vite serves the SPA for `/docs`, so we force-load the static docs HTML.
  */
 const DocsRedirect = () => {
   useEffect(() => {
-    window.location.replace('/docs/');
+    // Locally, Vite serves the SPA for `/docs`, so force the browser to load the
+    // static docs file from `public/docs/index.html`.
+    if (window.location.pathname !== '/docs/index.html') {
+      window.location.replace('/docs/index.html');
+    }
   }, []);
   return null;
 };
@@ -65,9 +67,8 @@ const App = () => (
             <Route path="/auth/google/callback" element={<GoogleCallback />} />
             <Route path="/auth/verify-email" element={<VerifyEmail />} />
             <Route path="/auth/reset-password" element={<ResetPassword />} />
-            {/* Root "/" → Documentation (redirect to static docs page) */}
             <Route path="/" element={<DocsRedirect />} />
-            {/* Landing page is now accessible at /landing for direct access */}
+            {/* Legacy alias for the landing page. */}
             <Route path="/landing" element={<Index />} />
             <Route path="/app" element={
               <InterviewAssistant />
@@ -87,8 +88,7 @@ const App = () => (
                 <Progress />
               </ProtectedRoute>
             } />
-            {/* /docs → Also redirects to documentation */}
-            <Route path="/docs" element={<DocsRedirect />} />
+            <Route path="/docs/*" element={<DocsRedirect />} />
             {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
             <Route path="*" element={<NotFound />} />
           </Routes>
