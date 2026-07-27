@@ -22,6 +22,7 @@ import { MermaidEditor } from "@/components/MermaidEditor";
 import { downloadAnswerPdf, waitForSvgInDiagram, preloadHtml2Pdf } from "@/lib/utils";
 import { svgElementToPngImage } from "@/lib/utils";
 import { replaceDiagramSvgWithImg } from "@/lib/utils";
+import DOMPurify from "dompurify";
 
 // Robust code block parser to prevent split parity inversion bugs 
 // with unclosed code blocks or full-response markdown wrappers.
@@ -954,13 +955,29 @@ export const AnswerCard = ({ answer, question, mode, streaming = true, onEdit, o
 
   // Real-time formatting function for streaming text
   const sanitizeIncoming = (raw: string) => {
-    // Preserve inline emphasis tags; strip dangerous tags only
-    // Remove script/style tags and their content
-    let safe = raw.replace(/<script[\s\S]*?>[\s\S]*?<\/script>/gi, '')
-      .replace(/<style[\s\S]*?>[\s\S]*?<\/style>/gi, '');
-    // Disallow all tags except a safe allowlist (strong, b, em, i, code, pre, br, span)
-    // Replace disallowed tags with their text content
-    safe = safe.replace(/<\/?(?!strong\b|b\b|em\b|i\b|code\b|pre\b|br\b|span\b)[a-z0-9-]+(?:\s+[^>]*?)?>/gi, '');
+    // Sanitize with DOMPurify (real HTML parser) rather than regex.
+    //
+    // The previous implementation stripped tags outside an allowlist but left
+    // ALLOWED tags with every attribute intact, so these all survived and were
+    // then handed to dangerouslySetInnerHTML:
+    //
+    //   <span onmouseover="alert(1)">hover me</span>
+    //   <b onclick="fetch(...)">click</b>
+    //   <span style="position:fixed;inset:0;z-index:9999">overlay</span>
+    //
+    // Event handlers fired and absolutely-positioned overlays rendered. The
+    // content is model output, so this was reachable by prompt injection —
+    // asking the model to echo that markup, or poisoned resume / mirror-mode
+    // text. A regex cannot safely parse HTML; DOMPurify builds a real DOM and
+    // drops anything not explicitly permitted.
+    //
+    // ALLOWED_ATTR is deliberately empty: the inline tags kept here are for
+    // emphasis only and never need attributes.
+    let safe = DOMPurify.sanitize(raw, {
+      ALLOWED_TAGS: ['strong', 'b', 'em', 'i', 'code', 'pre', 'br', 'span'],
+      ALLOWED_ATTR: [],
+      KEEP_CONTENT: true,
+    });
     // Neutralize LaTeX-style math markers so they don't render as math
     // Convert $$...$$ and $...$ into inline code for safe display
     const neutralizeLatexMath = (input: string): string => {
