@@ -7,6 +7,7 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import { Separator } from '@/components/ui/separator';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { Checkbox } from '@/components/ui/checkbox';
 import { Switch } from '@/components/ui/switch';
 import { Textarea } from '@/components/ui/textarea';
 import { useToast } from '@/hooks/use-toast';
@@ -39,6 +40,7 @@ import {
   type EvaluationTrace,
   type Trajectory,
   type Pressure,
+  type Strategy,
   type QuickStartResponse,
   type Question,
   type QuestionType,
@@ -52,6 +54,9 @@ import {
   postPracticeSessionProctoringEvent,
   endPracticeSession,
   type EndPracticeSessionResponse,
+  type PracticeProctoringRecentEvent,
+  type PracticeProctoringSnapshot,
+  type PracticeSessionProctoringEventType,
 } from '@/lib/practiceModeApi';
 import { startPracticeProctoring } from '@/lib/practiceProctoring';
 import {
@@ -80,13 +85,28 @@ import {
   Star,
   Flame,
   Camera,
+  Shield,
   Settings,
+  Download,
+  FileText,
+  Eye,
+  Layers,
+  Activity,
+  Gauge,
+  CircleDot,
+  Lightbulb,
+  GraduationCap,
+  Rocket,
+  Timer,
+  Radio,
 } from 'lucide-react';
 import RoundSelection from './RoundSelection';
 import ResumeUpload from './ResumeUpload';
 import { loadSavedResumeContext } from '@/lib/resumeContextStorage';
 import type { ResumeContext } from '../types/resume';
 import { Collapsible, CollapsibleTrigger, CollapsibleContent } from '@/components/ui/collapsible';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import type { RoundConfig } from '@/lib/practiceModeApi';
 import { StrataxApiError } from '@/lib/strataxClient';
 
@@ -96,6 +116,11 @@ type FeedbackRatingDraft = {
   usefulnessRating?: number;
   perceivedDifficulty?: PerceivedDifficulty;
   comment?: string;
+};
+
+type PendingQuestionAudio = {
+  questionKey: string;
+  ttsAudioUrl: string;
 };
 
 type GuestGateBanner =
@@ -108,6 +133,504 @@ type SessionConfidenceStoredState = {
   skipped?: boolean;
   disabled?: boolean;
   updatedAt?: number;
+};
+
+type ProctoringOverlayState = {
+  tone: 'warning' | 'final-warning' | 'terminate';
+  title: string;
+  description: string;
+  presentation: 'banner' | 'modal';
+  supportingText?: string;
+  reasonItems?: string[];
+};
+
+type ProctoringEndSummary = {
+  title: string;
+  description: string;
+  items: string[];
+};
+
+const PROCTORING_WARNING_DURATION_MS = 3200;
+const PROCTORING_BADGE_MIN_VISIBLE_MS = 2500;
+const PROCTORING_BADGE_AUTO_COLLAPSE_MS = 4500;
+const PROCTORING_BADGE_DEBOUNCE_MS = 1500;
+
+const QUIET_PROCTORING_RISK_LEVELS = new Set(['', 'none', 'low', 'normal', 'active', 'ok', 'safe', 'good', 'clear']);
+const ACTIONABLE_PROCTORING_EVENT_TYPES = new Set([
+  'camera_stopped',
+  'device_detected',
+  'mobile_phone_detected',
+  'monitoring_interrupted',
+  'multiple_faces_detected',
+  'phone_detected',
+  'screen_stopped',
+  'tab_switch',
+  'window_blur',
+  'window_minimized',
+]);
+const SERIOUS_PROCTORING_EVENT_TYPES = new Set([
+  'camera_stopped',
+  'device_detected',
+  'monitoring_interrupted',
+  'multiple_faces_detected',
+  'screen_stopped',
+]);
+
+const normalizeProctoringToken = (value?: string | null): string =>
+  typeof value === 'string' ? value.trim().toLowerCase() : '';
+
+const normalizeProctoringEventType = (value?: string | null): string => {
+  const normalized = normalizeProctoringToken(value);
+  if (normalized === 'mobile_phone_detected' || normalized === 'phone_detected') return 'device_detected';
+  if (normalized === 'window_minimized') return 'window_blur';
+  return normalized;
+};
+
+const getProctoringEventLabel = (eventType: string): string => {
+  if (eventType.includes('phone') || eventType.includes('device')) return 'Phone detected';
+  if (eventType === 'multiple_faces_detected') return 'Multiple people detected';
+  if (eventType === 'tab_switch') return 'Tab switch detected';
+  if (eventType === 'window_blur' || eventType === 'window_minimized') return 'Interview window left';
+  if (eventType === 'monitoring_interrupted') return 'Monitoring interrupted';
+  if (eventType === 'camera_stopped') return 'Camera stopped';
+  if (eventType === 'screen_stopped') return 'Screen sharing stopped';
+
+  return 'Proctoring warning';
+};
+
+const getLatestProctoringEvent = (
+  snapshot?: PracticeProctoringSnapshot | null
+): PracticeProctoringRecentEvent | null => snapshot?.recent_events?.[0] ?? null;
+
+const getProctoringEventMetadataText = (event?: PracticeProctoringRecentEvent | null): string => {
+  if (!event?.metadata) return '';
+
+  const candidates = [
+    event.metadata.message,
+    event.metadata.detail,
+    event.metadata.reason,
+    event.metadata.description,
+    event.metadata.event_detail,
+    event.metadata.violation_reason,
+  ];
+
+  for (const candidate of candidates) {
+    if (typeof candidate === 'string' && candidate.trim()) return candidate.trim();
+  }
+
+  if (typeof event.metadata.face_count === 'number' && event.metadata.face_count > 1) {
+    return `${event.metadata.face_count} faces detected in frame.`;
+  }
+
+  return '';
+};
+
+const getProctoringEventTitle = (event?: PracticeProctoringRecentEvent | null): string => {
+  return getProctoringEventLabel(normalizeProctoringEventType(event?.event_type));
+};
+
+const getProctoringEventDescription = (event?: PracticeProctoringRecentEvent | null): string => {
+  if (!event) return '';
+
+  if (typeof event.message === 'string' && event.message.trim()) return event.message.trim();
+
+  const metadataText = getProctoringEventMetadataText(event);
+  if (metadataText) return metadataText;
+
+  const eventType = normalizeProctoringToken(event.event_type);
+  switch (eventType) {
+    case 'multiple_faces_detected':
+      return 'More than one person was detected on camera. Make sure only you are visible in frame.';
+    case 'tab_switch':
+      return 'You switched away from the interview tab. Keep the interview tab in focus.';
+    case 'window_blur':
+    case 'window_minimized':
+      return 'The interview window lost focus. Keep the interview window active.';
+    case 'monitoring_interrupted':
+      return 'Monitoring was interrupted. Keep camera and screen sharing active.';
+    case 'camera_stopped':
+      return 'Your camera stopped streaming. Re-enable the camera to continue safely.';
+    case 'screen_stopped':
+      return 'Screen sharing stopped. Resume sharing to continue the interview.';
+    default:
+      if (eventType.includes('phone') || eventType.includes('device')) {
+        return 'A phone or secondary device was detected. Keep other devices out of view during the interview.';
+      }
+      return 'A proctoring warning was issued. Keep the interview window, camera, and screen share active.';
+  }
+};
+
+const isEscalatedProctoringRisk = (riskLevel?: string | null): boolean => {
+  const normalized = normalizeProctoringToken(riskLevel);
+  if (!normalized) return false;
+  return !QUIET_PROCTORING_RISK_LEVELS.has(normalized);
+};
+
+const isActionableProctoringEvent = (event?: PracticeProctoringRecentEvent | null): boolean => {
+  const eventType = normalizeProctoringEventType(event?.event_type);
+  return !!eventType && ACTIONABLE_PROCTORING_EVENT_TYPES.has(eventType);
+};
+
+const isSeriousProctoringEvent = (event?: PracticeProctoringRecentEvent | null): boolean => {
+  const eventType = normalizeProctoringEventType(event?.event_type);
+  return !!eventType && SERIOUS_PROCTORING_EVENT_TYPES.has(eventType);
+};
+
+const formatCountLabel = (count: number, singular: string, plural = `${singular}s`): string =>
+  `${count} ${count === 1 ? singular : plural}`;
+
+const formatProctoringReasonItem = (eventType: string, count: number): string => {
+  const normalized = normalizeProctoringEventType(eventType);
+
+  switch (normalized) {
+    case 'multiple_faces_detected':
+      return `${formatCountLabel(count, 'multiple-person detection')} in camera view`;
+    case 'device_detected':
+      return formatCountLabel(count, 'device detection');
+    case 'monitoring_interrupted':
+      return formatCountLabel(count, 'monitoring interruption');
+    case 'camera_stopped':
+      return formatCountLabel(count, 'camera interruption');
+    case 'screen_stopped':
+      return formatCountLabel(count, 'screen-share interruption');
+    case 'tab_switch':
+      return formatCountLabel(count, 'tab switch', 'tab switches');
+    case 'window_blur':
+      return formatCountLabel(count, 'focus loss', 'focus losses');
+    default:
+      return `${formatCountLabel(count, 'proctoring alert')} (${getProctoringEventLabel(normalized).toLowerCase()})`;
+  }
+};
+
+const getProctoringReasonItems = (snapshot?: PracticeProctoringSnapshot | null): string[] => {
+  if (!snapshot) return [];
+
+  const items: string[] = [];
+  const seriousViolations = snapshot.serious_violations ?? 0;
+  const totalViolations = snapshot.total_violations ?? 0;
+
+  const mergedCounts = new Map<string, number>();
+  for (const [rawType, rawCount] of Object.entries(snapshot.event_counts ?? {})) {
+    if (typeof rawCount !== 'number' || rawCount <= 0) continue;
+    const normalized = normalizeProctoringEventType(rawType);
+    mergedCounts.set(normalized, (mergedCounts.get(normalized) ?? 0) + rawCount);
+  }
+
+  const countItems = [...mergedCounts.entries()]
+    .sort((left, right) => right[1] - left[1])
+    .map(([eventType, count]) => formatProctoringReasonItem(eventType, count));
+
+  for (const item of countItems) {
+    if (!items.includes(item)) items.push(item);
+  }
+
+  if (seriousViolations > 0) {
+    const summaryItem = `${formatCountLabel(seriousViolations, 'serious violation')} recorded`;
+    if (!items.includes(summaryItem)) items.push(summaryItem);
+  }
+
+  if (items.length === 0 && totalViolations > 0) {
+    items.push(`${formatCountLabel(totalViolations, 'total violation')} recorded`);
+  }
+
+  if (items.length === 0) {
+    const latestEvent = getLatestProctoringEvent(snapshot);
+    if (latestEvent) {
+      items.push(getProctoringEventDescription(latestEvent) || getProctoringEventTitle(latestEvent));
+    }
+  }
+
+  return items.slice(0, 3);
+};
+
+const isFinalWarningProctoringSnapshot = (snapshot?: PracticeProctoringSnapshot | null): boolean => {
+  if (!snapshot) return false;
+  if (snapshot.action === 'terminate' || snapshot.status === 'terminated') return false;
+
+  const remainingSerious = snapshot.remaining_serious_violations;
+  if (typeof remainingSerious === 'number' && remainingSerious <= 1) return true;
+
+  const remainingTotal = snapshot.remaining_total_violations;
+  return typeof remainingTotal === 'number' && remainingTotal <= 1;
+};
+
+const getProctoringEscalationText = (snapshot?: PracticeProctoringSnapshot | null): string => {
+  if (!snapshot) return 'Correct the issue now to avoid escalation.';
+
+  const remainingSerious = snapshot.remaining_serious_violations;
+  if (typeof remainingSerious === 'number') {
+    if (remainingSerious <= 0) return 'Any additional serious violation may end this interview immediately.';
+    if (remainingSerious === 1) return 'Final warning. One more serious violation will end this interview.';
+    return `${remainingSerious} serious violations remaining before termination.`;
+  }
+
+  const remainingTotal = snapshot.remaining_total_violations;
+  if (typeof remainingTotal === 'number') {
+    if (remainingTotal <= 0) return 'Any additional violation may end this interview immediately.';
+    if (remainingTotal === 1) return 'Final warning. One more violation may end this interview.';
+    return `${remainingTotal} violations remaining before termination.`;
+  }
+
+  return 'Correct the issue now to avoid escalation.';
+};
+
+const buildProctoringEndSummary = (snapshot?: PracticeProctoringSnapshot | null): ProctoringEndSummary => ({
+  title: 'Why the session ended',
+  description:
+    snapshot?.message ||
+    snapshot?.terminated_reason ||
+    'The interview ended because the monitoring policy detected repeated integrity violations.',
+  items: getProctoringReasonItems(snapshot),
+});
+
+const STRATEGY_ACTION_LABELS: Record<string, string> = {
+  ASK_QUESTION: 'Next question',
+  FOLLOW_UP: 'Follow-up',
+  INCREASE_DIFFICULTY: 'Harder next',
+  DECREASE_DIFFICULTY: 'Easier next',
+  GIVE_FEEDBACK: 'Feedback',
+  END_SESSION: 'Wrap up',
+};
+
+const formatStrategyTokenLabel = (value?: string | null): string | null => {
+  if (typeof value !== 'string' || !value.trim()) return null;
+
+  return value
+    .trim()
+    .split(/[_\s-]+/)
+    .filter(Boolean)
+    .map((segment) => segment.charAt(0).toUpperCase() + segment.slice(1).toLowerCase())
+    .join(' ');
+};
+
+const asQuestionStateRecord = (value: unknown): Record<string, unknown> | null => {
+  if (!value || typeof value !== 'object') return null;
+  return value as Record<string, unknown>;
+};
+
+const getQuestionStateKeyText = (question: unknown): string => {
+  const questionRecord = asQuestionStateRecord(question);
+  if (!questionRecord) return '';
+
+  const candidates = [
+    questionRecord.question_text,
+    questionRecord.text,
+    questionRecord.question,
+    questionRecord.prompt,
+    questionRecord.questionText,
+    questionRecord.question_prompt,
+    questionRecord.prompt_text,
+    questionRecord.body,
+    questionRecord.statement,
+    questionRecord.content,
+  ];
+
+  for (const value of candidates) {
+    if (typeof value === 'string' && value.trim()) {
+      return value.trim().replace(/\s+/g, ' ').slice(0, 180);
+    }
+  }
+
+  return '';
+};
+
+const buildPracticeQuestionStateKey = (
+  question: unknown,
+  sessionId: string | null | undefined,
+  fallbackQuestionNumber: number,
+): string => {
+  const questionRecord = asQuestionStateRecord(question);
+  const questionId = typeof questionRecord?.id === 'number' ? questionRecord.id : fallbackQuestionNumber;
+  const difficulty = typeof questionRecord?.difficulty === 'string' ? questionRecord.difficulty.trim() : '';
+  const timeLimit = typeof questionRecord?.time_limit === 'number' && Number.isFinite(questionRecord.time_limit)
+    ? String(questionRecord.time_limit)
+    : '';
+  const questionType = typeof questionRecord?.question_type === 'string' ? questionRecord.question_type.trim() : '';
+  const promptText = getQuestionStateKeyText(questionRecord);
+
+  return `${sessionId ?? 'no-session'}:${questionId}:${difficulty}:${timeLimit}:${questionType}:${promptText}`;
+};
+
+const PRACTICE_STRATEGY_DEBUG_STORAGE_KEY = 'practice_strategy_debug';
+const PRACTICE_PROGRESS_REFRESH_HINT_STORAGE_KEY = 'practice_progress_refresh_hint';
+const PRACTICE_PROGRESS_REFRESH_EVENT = 'practice:session-complete';
+
+const persistPracticeProgressRefreshHint = (sessionId?: string | null) => {
+  if (typeof window === 'undefined') return;
+
+  const detail = {
+    sessionId: sessionId ?? null,
+    completedAt: new Date().toISOString(),
+  };
+
+  try {
+    window.localStorage.setItem(PRACTICE_PROGRESS_REFRESH_HINT_STORAGE_KEY, JSON.stringify(detail));
+  } catch {
+    // Ignore storage failures.
+  }
+
+  try {
+    window.dispatchEvent(new CustomEvent(PRACTICE_PROGRESS_REFRESH_EVENT, { detail }));
+  } catch {
+    // Ignore event dispatch failures.
+  }
+};
+
+const readPracticeStrategyDebugMode = (): boolean => {
+  if (typeof window === 'undefined') return false;
+
+  try {
+    const params = new URLSearchParams(window.location.search);
+    const queryValue = params.get('practiceDebug') ?? params.get('strategyDebug');
+    if (queryValue === '1' || queryValue === 'true') return true;
+  } catch {
+    // ignore
+  }
+
+  try {
+    return window.localStorage.getItem(PRACTICE_STRATEGY_DEBUG_STORAGE_KEY) === '1';
+  } catch {
+    return false;
+  }
+};
+
+const getStrategyActionLabel = (action?: string | null): string => {
+  if (typeof action === 'string' && STRATEGY_ACTION_LABELS[action]) {
+    return STRATEGY_ACTION_LABELS[action];
+  }
+
+  return formatStrategyTokenLabel(action) ?? 'Next step';
+};
+
+const getStrategyBadgeLabel = (strategy?: Strategy | null): string | null => {
+  switch (strategy?.action) {
+    case 'FOLLOW_UP':
+      return 'Going deeper';
+    case 'INCREASE_DIFFICULTY':
+    case 'DECREASE_DIFFICULTY':
+      return 'Adjusting difficulty';
+    case 'ASK_QUESTION':
+      return 'Next question';
+    case 'END_SESSION':
+      return 'Wrapping up';
+    case 'GIVE_FEEDBACK':
+      return 'Feedback';
+    default:
+      return null;
+  }
+};
+
+const getStrategyHeadline = (strategy?: Strategy | null, fallback = 'Here’s what comes next.'): string => {
+  switch (strategy?.action) {
+    case 'FOLLOW_UP':
+      return strategy.follow_up_depth === 'deep'
+        ? 'Let’s dig deeper on this.'
+        : 'Let’s go a bit deeper on this.';
+    case 'INCREASE_DIFFICULTY':
+      return 'You handled that well. Let’s push a little further.';
+    case 'DECREASE_DIFFICULTY':
+      return 'Let’s strengthen the fundamentals before moving ahead.';
+    case 'ASK_QUESTION':
+      return 'Let’s move to the next question.';
+    case 'END_SESSION':
+      return 'Let’s wrap up this session.';
+    case 'GIVE_FEEDBACK':
+      return 'Here’s what to focus on next.';
+    default:
+      return fallback;
+  }
+};
+
+const formatStrategyReason = (reason?: string | null): string | null => {
+  if (typeof reason !== 'string') return null;
+  const compact = reason.trim().replace(/\s+/g, ' ');
+  if (!compact) return null;
+  const normalized = compact.charAt(0).toUpperCase() + compact.slice(1);
+  return /[.!?]$/.test(normalized) ? normalized : `${normalized}.`;
+};
+
+const getStrategyDepthLabel = (depth?: string | null): string | null => {
+  if (typeof depth !== 'string' || !depth.trim() || depth === 'none') return null;
+  if (depth === 'light') return 'Light probe';
+  if (depth === 'deep') return 'Deep probe';
+  return formatStrategyTokenLabel(depth);
+};
+
+const getStrategyToneClasses = (style?: string | null) => {
+  switch ((style ?? '').toLowerCase()) {
+    case 'supportive':
+      return {
+        card: 'border-emerald-500/30 bg-emerald-500/5',
+        badge: 'border-emerald-500/20 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300',
+      };
+    case 'challenging':
+      return {
+        card: 'border-amber-500/30 bg-amber-500/5',
+        badge: 'border-amber-500/20 bg-amber-500/10 text-amber-700 dark:text-amber-300',
+      };
+    default:
+      return {
+        card: 'border-primary/20 bg-primary/5',
+        badge: 'border-primary/20 bg-primary/10 text-primary',
+      };
+  }
+};
+
+const getStrategyGuardrailText = (guardrail: unknown): string | null => {
+  if (typeof guardrail === 'string' && guardrail.trim()) return guardrail.trim();
+  if (typeof guardrail === 'boolean') return guardrail ? 'Active' : 'Clear';
+  if (typeof guardrail === 'number' && Number.isFinite(guardrail)) return String(guardrail);
+
+  if (Array.isArray(guardrail)) {
+    const items = guardrail.map((item) => String(item).trim()).filter(Boolean);
+    return items.length > 0 ? items.join(', ') : null;
+  }
+
+  if (guardrail && typeof guardrail === 'object') {
+    const record = guardrail as Record<string, unknown>;
+    const candidates = [record.reason, record.message, record.detail, record.name, record.action];
+    for (const candidate of candidates) {
+      if (typeof candidate === 'string' && candidate.trim()) return candidate.trim();
+    }
+
+    try {
+      return JSON.stringify(record);
+    } catch {
+      return null;
+    }
+  }
+
+  return null;
+};
+
+const parseProgressCounter = (progress?: string | null): { current: number; total: number } | null => {
+  if (typeof progress !== 'string' || !progress.trim()) return null;
+  const match = progress.match(/(\d+)\s*\/\s*(\d+)/);
+  if (!match) return null;
+
+  const current = Number(match[1]);
+  const total = Number(match[2]);
+  if (!Number.isFinite(current) || !Number.isFinite(total)) return null;
+
+  return { current, total };
+};
+
+const isHeartbeatInterruptedSnapshot = (snapshot?: PracticeProctoringSnapshot | null): boolean => {
+  if (!snapshot) return false;
+
+  const status = normalizeProctoringToken(snapshot.status);
+  const latestEventType = normalizeProctoringToken(getLatestProctoringEvent(snapshot)?.event_type);
+
+  return snapshot.heartbeat_stale === true || status === 'interrupted' || latestEventType === 'monitoring_interrupted';
+};
+
+const isWarningProctoringSnapshot = (snapshot?: PracticeProctoringSnapshot | null): boolean => {
+  if (!snapshot) return false;
+  if (snapshot.action === 'terminate' || snapshot.status === 'terminated') return false;
+  if (isHeartbeatInterruptedSnapshot(snapshot)) return true;
+  if (snapshot.action === 'warn' || snapshot.status === 'warning') return true;
+  if (isEscalatedProctoringRisk(snapshot.risk_level)) return true;
+  return isActionableProctoringEvent(getLatestProctoringEvent(snapshot));
 };
 
 export const PracticeMode = () => {
@@ -157,6 +680,8 @@ export const PracticeMode = () => {
 
     setIsAudioLoading(true);
     setIsPlayingAudio(false);
+  isAudioLoadingRef.current = true;
+  isPlayingAudioRef.current = false;
     questionAudioDurationRef.current = null;
 
     const absoluteUrl = ttsAudioUrl.startsWith('http://') || ttsAudioUrl.startsWith('https://')
@@ -179,19 +704,26 @@ export const PracticeMode = () => {
 
       audio.onloadeddata = () => {
         setIsAudioLoading(false);
+        isAudioLoadingRef.current = false;
       };
 
       audio.onplay = () => {
+        setIsAudioLoading(false);
         setIsPlayingAudio(true);
+        isAudioLoadingRef.current = false;
+        isPlayingAudioRef.current = true;
       };
 
       audio.onended = () => {
         setIsPlayingAudio(false);
+        isPlayingAudioRef.current = false;
       };
 
       audio.onerror = () => {
         setIsAudioLoading(false);
         setIsPlayingAudio(false);
+        isAudioLoadingRef.current = false;
+        isPlayingAudioRef.current = false;
       };
 
       // Force a reload when reusing same filenames in rare cases.
@@ -201,6 +733,8 @@ export const PracticeMode = () => {
     } catch (err) {
       setIsAudioLoading(false);
       setIsPlayingAudio(false);
+      isAudioLoadingRef.current = false;
+      isPlayingAudioRef.current = false;
     }
   };
 
@@ -213,7 +747,7 @@ export const PracticeMode = () => {
       type="button"
       variant="ghost"
       size="sm"
-      onClick={() => navigate('/progress')}
+      onClick={() => navigate('/progress', { state: { refreshToken: Date.now() } })}
       className={className}
     >
       <BarChart3 className="w-4 h-4 mr-2" />
@@ -343,6 +877,7 @@ export const PracticeMode = () => {
   const [isPlayingAudio, setIsPlayingAudio] = useState(false);
   const [isAudioLoading, setIsAudioLoading] = useState(false);
   const [audioLevel, setAudioLevel] = useState<number>(0);
+  const [pendingQuestionAudio, setPendingQuestionAudio] = useState<PendingQuestionAudio | null>(null);
 
   // If a next-session plan exists (set from Progress screen), jump straight into round selection.
   useEffect(() => {
@@ -410,22 +945,30 @@ export const PracticeMode = () => {
   const [enableAdaptive, setEnableAdaptive] = useState(false);
   const [questionCount, setQuestionCount] = useState<number>(1);  // Default to 1 question
 
-  // Privacy-safe camera proctoring (opt-in; event-only)
+  // Optional enhanced proctoring on top of the required Live Practice media gate.
   const [enableCameraProctoring, setEnableCameraProctoring] = useState(false);
+  const [livePracticeConsentChecked, setLivePracticeConsentChecked] = useState(false);
 
   // Resume-based interviewing — parsed resume context for claim-based probing
   const [resumeContext, setResumeContext] = useState<ResumeContext | null>(() => loadSavedResumeContext());
   const [proctoringStatus, setProctoringStatus] = useState<'inactive' | 'starting' | 'active' | 'error'>('inactive');
   const [proctoringInfo, setProctoringInfo] = useState<string>('');
+  const [proctoringSnapshot, setProctoringSnapshot] = useState<PracticeProctoringSnapshot | null>(null);
+  const [proctoringOverlay, setProctoringOverlay] = useState<ProctoringOverlayState | null>(null);
+  const [proctoringSessionEndSummary, setProctoringSessionEndSummary] = useState<ProctoringEndSummary | null>(null);
+  const [isProctoringBadgePinned, setIsProctoringBadgePinned] = useState(false);
+  const [isProctoringBadgeHovered, setIsProctoringBadgeHovered] = useState(false);
+  const [isProctoringBadgeAutoExpanded, setIsProctoringBadgeAutoExpanded] = useState(false);
   const proctoringStopRef = useRef<null | (() => void)>(null);
   const proctoringSessionIdRef = useRef<string | null>(null);
-
-  // Multiple-face proctoring warnings (max 3 → auto-end)
-  const MAX_FACE_WARNINGS = 3;
-  const [faceWarningCount, setFaceWarningCount] = useState(0);
-  const [faceWarningVisible, setFaceWarningVisible] = useState(false);
-  const faceWarningCountRef = useRef(0);
-  const faceWarningTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const proctoringStartInFlightRef = useRef<string | null>(null);
+  const proctoringOverlayTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const proctoringBadgeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const proctoringBadgeAutoCollapseAtRef = useRef(0);
+  const proctoringBadgeLastExpandAtRef = useRef(0);
+  const lastProctoringOverlayKeyRef = useRef<string>('');
+  const lastProctoringBadgeIssueKeyRef = useRef<string>('');
+  const proctoringTerminationHandledRef = useRef<string | null>(null);
 
   // Lock to prevent parallel ensureCameraForProctoring() calls (race-condition guard)
   const cameraAcquiringRef = useRef(false);
@@ -451,6 +994,7 @@ export const PracticeMode = () => {
     questionId?: number;
     questionText?: string;
     kind: 'voice' | 'code';
+    strategy?: Strategy | null;
     transcript?: string;
     metrics?: SpeechMetrics | null;
     microFeedback?: MicroFeedback | null;
@@ -464,6 +1008,223 @@ export const PracticeMode = () => {
 
   const [questionEvaluations, setQuestionEvaluations] = useState<QuestionEvaluationItem[]>([]);
   const [endedEarlyData, setEndedEarlyData] = useState<EndPracticeSessionResponse | null>(null);
+  const sessionIdRef = useRef<string | null>(null);
+  const phaseRef = useRef<PracticePhase>('welcome');
+  const progressRefreshHintSessionRef = useRef<string | null>(null);
+  const currentQuestionRenderKey = buildPracticeQuestionStateKey(
+    currentQuestion,
+    sessionId,
+    currentQuestionNumber,
+  );
+
+  useEffect(() => {
+    sessionIdRef.current = sessionId;
+  }, [sessionId]);
+
+  useEffect(() => {
+    phaseRef.current = phase;
+  }, [phase]);
+
+  useEffect(() => {
+    if (phase !== 'complete' || !sessionId) return;
+    if (progressRefreshHintSessionRef.current === sessionId) return;
+
+    progressRefreshHintSessionRef.current = sessionId;
+    persistPracticeProgressRefreshHint(sessionId);
+  }, [phase, sessionId]);
+
+  const clearProctoringOverlay = () => {
+    if (proctoringOverlayTimerRef.current) {
+      clearTimeout(proctoringOverlayTimerRef.current);
+      proctoringOverlayTimerRef.current = null;
+    }
+    setProctoringOverlay(null);
+  };
+
+  const clearProctoringBadgeTimer = () => {
+    if (proctoringBadgeTimerRef.current) {
+      clearTimeout(proctoringBadgeTimerRef.current);
+      proctoringBadgeTimerRef.current = null;
+    }
+  };
+
+  const scheduleProctoringBadgeCollapse = (delayMs: number) => {
+    clearProctoringBadgeTimer();
+
+    if (delayMs <= 0) {
+      proctoringBadgeAutoCollapseAtRef.current = 0;
+      setIsProctoringBadgeAutoExpanded(false);
+      return;
+    }
+
+    proctoringBadgeTimerRef.current = setTimeout(() => {
+      proctoringBadgeAutoCollapseAtRef.current = 0;
+      proctoringBadgeTimerRef.current = null;
+      setIsProctoringBadgeAutoExpanded(false);
+    }, delayMs);
+  };
+
+  const ensureLivePracticeConsent = (): boolean => {
+    if (livePracticeConsentChecked) return true;
+
+    toast({
+      title: 'Consent required',
+      description: 'Review the Live Practice consent. This session uses camera, screen, and recording to simulate real interview conditions.',
+      variant: 'warning',
+    });
+    return false;
+  };
+
+  const getSeriousViolationLimit = (snapshot?: PracticeProctoringSnapshot | null): number => {
+    const current = snapshot?.serious_violations ?? 0;
+    const remaining = snapshot?.remaining_serious_violations;
+    return typeof remaining === 'number' && remaining >= 0 ? current + remaining : 3;
+  };
+
+  const getTotalViolationLimit = (snapshot?: PracticeProctoringSnapshot | null): number => {
+    const current = snapshot?.total_violations ?? 0;
+    const remaining = snapshot?.remaining_total_violations;
+    return typeof remaining === 'number' && remaining >= 0 ? current + remaining : 5;
+  };
+
+  const buildProctoringSnapshotKey = (snapshot: PracticeProctoringSnapshot): string => {
+    const latestEvent = snapshot.recent_events?.[0];
+    return [
+      snapshot.status,
+      snapshot.risk_level ?? '',
+      snapshot.action ?? '',
+      snapshot.message ?? '',
+      snapshot.terminated_reason ?? '',
+      snapshot.total_violations ?? '',
+      snapshot.serious_violations ?? '',
+      snapshot.remaining_total_violations ?? '',
+      snapshot.remaining_serious_violations ?? '',
+      latestEvent?.event_type ?? '',
+      latestEvent?.timestamp ?? '',
+    ].join('|');
+  };
+
+  const buildProctoringBadgeIssueKey = (snapshot: PracticeProctoringSnapshot): string => {
+    const latestEvent = getLatestProctoringEvent(snapshot);
+
+    return [
+      snapshot.status,
+      snapshot.action ?? '',
+      snapshot.risk_level ?? '',
+      snapshot.heartbeat_stale ? 'heartbeat' : '',
+      normalizeProctoringEventType(latestEvent?.event_type),
+      snapshot.total_violations ?? '',
+      snapshot.serious_violations ?? '',
+      snapshot.remaining_total_violations ?? '',
+      snapshot.remaining_serious_violations ?? '',
+    ].join('|');
+  };
+
+  const buildProctoringOverlayState = (snapshot: PracticeProctoringSnapshot): ProctoringOverlayState | null => {
+    const isTerminal = snapshot.action === 'terminate' || snapshot.status === 'terminated';
+    const latestEvent = getLatestProctoringEvent(snapshot);
+    const heartbeatInterrupted = isHeartbeatInterruptedSnapshot(snapshot);
+    const isFinalWarning = isFinalWarningProctoringSnapshot(snapshot);
+    const isSeriousWarning = heartbeatInterrupted || isSeriousProctoringEvent(latestEvent);
+    const shouldWarn = isTerminal || isWarningProctoringSnapshot(snapshot);
+    const warningDescription =
+      snapshot.message ||
+      (heartbeatInterrupted ? 'Camera or screen monitoring stopped responding. Check permissions and keep both streams live.' : '') ||
+      getProctoringEventDescription(latestEvent) ||
+      'A proctoring warning was issued. Correct the issue to continue without escalation.';
+    const reasonItems = getProctoringReasonItems(snapshot);
+
+    if (!shouldWarn) return null;
+
+    if (isTerminal) {
+      const endSummary = buildProctoringEndSummary(snapshot);
+
+      return {
+        tone: 'terminate',
+        title: 'Interview ended',
+        description: endSummary.description,
+        presentation: 'modal',
+        supportingText: 'This session was closed by the interview integrity policy.',
+        reasonItems: endSummary.items,
+      };
+    }
+
+    if (isFinalWarning) {
+      return {
+        tone: 'final-warning',
+        title: 'Final warning',
+        description: warningDescription,
+        presentation: 'modal',
+        supportingText: getProctoringEscalationText(snapshot),
+        reasonItems,
+      };
+    }
+
+    if (isSeriousWarning) {
+      return {
+        tone: 'warning',
+        title: heartbeatInterrupted ? 'Monitoring interrupted' : getProctoringEventTitle(latestEvent),
+        description: warningDescription,
+        presentation: 'modal',
+        supportingText: 'This may end your interview if repeated.',
+        reasonItems,
+      };
+    }
+
+    return {
+      tone: 'warning',
+      title: heartbeatInterrupted ? 'Monitoring interrupted' : getProctoringEventTitle(latestEvent),
+      description: warningDescription,
+      presentation: 'banner',
+      supportingText: getProctoringEscalationText(snapshot),
+    };
+  };
+
+  const applyProctoringSnapshot = (
+    snapshot: PracticeProctoringSnapshot,
+    source: 'event' | 'heartbeat' | 'status'
+  ) => {
+    setProctoringSnapshot(snapshot);
+    if (snapshot.message || snapshot.terminated_reason) {
+      setProctoringInfo(snapshot.message || snapshot.terminated_reason || '');
+    }
+
+    const overlayState = buildProctoringOverlayState(snapshot);
+    const snapshotKey = buildProctoringSnapshotKey(snapshot);
+
+    if (!overlayState) {
+      if (source === 'status' && snapshot.action !== 'terminate' && snapshot.status !== 'terminated') {
+        clearProctoringOverlay();
+      }
+      return;
+    }
+
+    if (overlayState.tone === 'terminate') {
+      clearProctoringOverlay();
+      setProctoringOverlay(overlayState);
+
+      if (
+        proctoringTerminationHandledRef.current !== snapshotKey &&
+        sessionIdRef.current &&
+        phaseRef.current !== 'complete' &&
+        phaseRef.current !== 'welcome'
+      ) {
+        proctoringTerminationHandledRef.current = snapshotKey;
+        void handleEndPracticeFromBackend(snapshot);
+      }
+      return;
+    }
+
+    if (lastProctoringOverlayKeyRef.current === snapshotKey) return;
+
+    lastProctoringOverlayKeyRef.current = snapshotKey;
+    clearProctoringOverlay();
+    setProctoringOverlay(overlayState);
+    proctoringOverlayTimerRef.current = setTimeout(() => {
+      setProctoringOverlay((current) => (current && current.tone !== 'terminate' ? null : current));
+      proctoringOverlayTimerRef.current = null;
+    }, PROCTORING_WARNING_DURATION_MS);
+  };
 
   const stopProctoring = () => {
     try {
@@ -473,9 +1234,109 @@ export const PracticeMode = () => {
     }
     proctoringStopRef.current = null;
     proctoringSessionIdRef.current = null;
+    proctoringStartInFlightRef.current = null;
     setProctoringStatus('inactive');
     setProctoringInfo('');
+    setProctoringSnapshot(null);
+    clearProctoringOverlay();
+    clearProctoringBadgeTimer();
+    proctoringBadgeAutoCollapseAtRef.current = 0;
+    proctoringBadgeLastExpandAtRef.current = 0;
+    lastProctoringBadgeIssueKeyRef.current = '';
+    setIsProctoringBadgeAutoExpanded(false);
+    setIsProctoringBadgeHovered(false);
+    setIsProctoringBadgePinned(false);
   };
+
+  useEffect(() => {
+    return () => {
+      clearProctoringBadgeTimer();
+    };
+  }, []);
+
+  useEffect(() => {
+    const showBadge =
+      enableCameraProctoring &&
+      !!sessionId &&
+      (phase === 'question' || phase === 'recording' || phase === 'processing' || phase === 'feedback');
+
+    const now = Date.now();
+
+    if (!showBadge) {
+      clearProctoringBadgeTimer();
+      proctoringBadgeAutoCollapseAtRef.current = 0;
+      proctoringBadgeLastExpandAtRef.current = 0;
+      lastProctoringBadgeIssueKeyRef.current = '';
+      setIsProctoringBadgeAutoExpanded(false);
+      return;
+    }
+
+    const hasIssue =
+      proctoringStatus === 'error' ||
+      (proctoringSnapshot != null && (
+        proctoringSnapshot.action === 'terminate' ||
+        proctoringSnapshot.status === 'terminated' ||
+        isWarningProctoringSnapshot(proctoringSnapshot)
+      ));
+
+    if (!hasIssue) {
+      lastProctoringBadgeIssueKeyRef.current = '';
+
+      if (isProctoringBadgeAutoExpanded && proctoringBadgeAutoCollapseAtRef.current > now) {
+        scheduleProctoringBadgeCollapse(proctoringBadgeAutoCollapseAtRef.current - now);
+        return;
+      }
+
+      clearProctoringBadgeTimer();
+      proctoringBadgeAutoCollapseAtRef.current = 0;
+      setIsProctoringBadgeAutoExpanded(false);
+      return;
+    }
+
+    const issueKey = proctoringSnapshot
+      ? buildProctoringBadgeIssueKey(proctoringSnapshot)
+      : `${proctoringStatus}|${proctoringInfo}`;
+    const isTerminated = proctoringSnapshot?.action === 'terminate' || proctoringSnapshot?.status === 'terminated';
+
+    if (lastProctoringBadgeIssueKeyRef.current !== issueKey) {
+      const recentlyExpanded = now - proctoringBadgeLastExpandAtRef.current < PROCTORING_BADGE_DEBOUNCE_MS;
+
+      lastProctoringBadgeIssueKeyRef.current = issueKey;
+      setIsProctoringBadgeAutoExpanded(true);
+
+      if (!recentlyExpanded || proctoringBadgeAutoCollapseAtRef.current <= now) {
+        proctoringBadgeLastExpandAtRef.current = now;
+        proctoringBadgeAutoCollapseAtRef.current = now + PROCTORING_BADGE_AUTO_COLLAPSE_MS;
+      } else {
+        proctoringBadgeAutoCollapseAtRef.current = Math.max(
+          proctoringBadgeAutoCollapseAtRef.current,
+          proctoringBadgeLastExpandAtRef.current + PROCTORING_BADGE_MIN_VISIBLE_MS
+        );
+      }
+    }
+
+    if (isTerminated) {
+      clearProctoringBadgeTimer();
+      proctoringBadgeAutoCollapseAtRef.current = 0;
+      setIsProctoringBadgeAutoExpanded(true);
+      return;
+    }
+
+    if (!isProctoringBadgeAutoExpanded) return;
+
+    const minimumVisibleUntil = proctoringBadgeLastExpandAtRef.current + PROCTORING_BADGE_MIN_VISIBLE_MS;
+    const collapseAt = Math.max(proctoringBadgeAutoCollapseAtRef.current, minimumVisibleUntil, now + 1);
+    proctoringBadgeAutoCollapseAtRef.current = collapseAt;
+    scheduleProctoringBadgeCollapse(collapseAt - now);
+  }, [
+    enableCameraProctoring,
+    isProctoringBadgeAutoExpanded,
+    phase,
+    proctoringInfo,
+    proctoringSnapshot,
+    proctoringStatus,
+    sessionId,
+  ]);
 
   const startProctoringBestEffort = async (practiceSessionId: string) => {
     if (!enableCameraProctoring) return;
@@ -485,47 +1346,31 @@ export const PracticeMode = () => {
       return;
     }
 
+    if (proctoringStartInFlightRef.current === practiceSessionId) {
+      return;
+    }
+
     stopProctoring();
+    proctoringStartInFlightRef.current = practiceSessionId;
     setProctoringStatus('starting');
     setProctoringInfo('');
-
-    // Reset face warnings for new session
-    faceWarningCountRef.current = 0;
-    setFaceWarningCount(0);
-    setFaceWarningVisible(false);
+    setProctoringSnapshot(null);
+    setProctoringSessionEndSummary(null);
+    clearProctoringOverlay();
+    lastProctoringOverlayKeyRef.current = '';
+    proctoringTerminationHandledRef.current = null;
 
     try {
       const controller = await startPracticeProctoring({
         sessionId: practiceSessionId,
         cameraStream: cameraStreamRef.current,
+        screenStream: screenStreamRef.current,
         onStatus: (status, info) => {
           setProctoringStatus(status);
           setProctoringInfo(info ?? '');
         },
-        onMultipleFaces: (faceCount: number) => {
-          const newCount = faceWarningCountRef.current + 1;
-          faceWarningCountRef.current = newCount;
-          setFaceWarningCount(newCount);
-          setFaceWarningVisible(true);
-
-          // Clear any existing auto-hide timer
-          if (faceWarningTimerRef.current) {
-            clearTimeout(faceWarningTimerRef.current);
-            faceWarningTimerRef.current = null;
-          }
-
-          if (newCount >= MAX_FACE_WARNINGS) {
-            // Exceeded max warnings → auto-end interview
-            console.warn(`[Proctoring] ${newCount} face warnings — auto-ending interview`);
-            // Don't auto-hide; the overlay stays until the interview ends
-            void handleEndPracticeForProctoring(faceCount, newCount);
-          } else {
-            // Show warning for 6 seconds then auto-hide
-            faceWarningTimerRef.current = setTimeout(() => {
-              setFaceWarningVisible(false);
-              faceWarningTimerRef.current = null;
-            }, 6000);
-          }
+        onSnapshot: (snapshot, source) => {
+          applyProctoringSnapshot(snapshot, source);
         },
       });
 
@@ -551,6 +1396,10 @@ export const PracticeMode = () => {
         description: 'Proctored mode requires camera permission. Continuing unproctored.',
         variant: 'destructive',
       });
+    } finally {
+      if (proctoringStartInFlightRef.current === practiceSessionId) {
+        proctoringStartInFlightRef.current = null;
+      }
     }
   };
 
@@ -558,10 +1407,7 @@ export const PracticeMode = () => {
   useEffect(() => {
     return () => {
       stopProctoring();
-      if (faceWarningTimerRef.current) {
-        clearTimeout(faceWarningTimerRef.current);
-        faceWarningTimerRef.current = null;
-      }
+      clearProctoringOverlay();
       try { screenRecorderRef.current?.stop(); } catch { }
       try { cameraRecorderRef.current?.stop(); } catch { }
       try { screenStreamRef.current?.getTracks().forEach((t) => t.stop()); } catch { }
@@ -602,24 +1448,28 @@ export const PracticeMode = () => {
 
     const track = cameraPreviewStream?.getVideoTracks?.()?.[0];
     const trackLive = !!track && track.readyState === 'live';
+    const seriousViolationCount = proctoringSnapshot?.serious_violations ?? 0;
+    const seriousViolationLimit = getSeriousViolationLimit(proctoringSnapshot);
+    const isTerminated = proctoringSnapshot?.action === 'terminate' || proctoringSnapshot?.status === 'terminated';
+    const isWarning = isWarningProctoringSnapshot(proctoringSnapshot);
 
     return (
       <div className="fixed top-4 left-4 z-[90]">
-        <div className={`w-64 overflow-hidden rounded-2xl border bg-background/70 backdrop-blur shadow-lg ${
-          faceWarningCount > 0
-            ? faceWarningCount >= MAX_FACE_WARNINGS
-              ? 'border-red-500/80'
-              : 'border-amber-500/60'
-            : 'border-border/60'
+        <div className={`w-[min(16rem,calc(100vw-2rem))] overflow-hidden rounded-2xl border bg-background/70 backdrop-blur shadow-lg ${
+          isTerminated
+            ? 'border-red-500/80'
+            : isWarning
+              ? 'border-amber-500/60'
+              : 'border-border/60'
         }`}>
           <div className="px-3 py-2 text-[11px] text-muted-foreground flex items-center justify-between">
             <span>Camera</span>
             <div className="flex items-center gap-2">
-              {faceWarningCount > 0 && (
+              {(seriousViolationCount > 0 || proctoringSnapshot?.remaining_serious_violations !== undefined) && (
                 <span className={`text-[10px] font-medium ${
-                  faceWarningCount >= MAX_FACE_WARNINGS ? 'text-red-400' : 'text-amber-500'
+                  isTerminated ? 'text-red-400' : isWarning ? 'text-amber-500' : 'text-muted-foreground'
                 }`}>
-                  ⚠ {faceWarningCount}/{MAX_FACE_WARNINGS}
+                  Strike {seriousViolationCount}/{seriousViolationLimit}
                 </span>
               )}
               <span className="text-[10px]">{trackLive ? 'Live' : 'Starting…'}</span>
@@ -648,51 +1498,102 @@ export const PracticeMode = () => {
   };
 
   const renderFaceWarningOverlay = () => {
-    if (!faceWarningVisible || faceWarningCount === 0) return null;
+    if (!proctoringOverlay) return null;
 
-    const isTerminal = faceWarningCount >= MAX_FACE_WARNINGS;
+    const isTerminal = proctoringOverlay.tone === 'terminate';
+    const isFinalWarning = proctoringOverlay.tone === 'final-warning';
+    const seriousViolationCount = proctoringSnapshot?.serious_violations ?? 0;
+    const seriousViolationLimit = getSeriousViolationLimit(proctoringSnapshot);
+    const reasonItems = proctoringOverlay.reasonItems ?? [];
+
+    if (proctoringOverlay.presentation === 'banner') {
+      return (
+        <div className="fixed top-20 left-1/2 z-[200] w-[min(92vw,28rem)] -translate-x-1/2 animate-in fade-in slide-in-from-top-4 duration-200">
+          <div className="rounded-2xl border border-amber-500/70 bg-background/95 px-4 py-3 shadow-2xl backdrop-blur">
+            <div className="flex items-start gap-3">
+              <div className="mt-0.5 text-xl">⚠️</div>
+              <div className="min-w-0 flex-1">
+                <div className="text-sm font-semibold text-amber-500">{proctoringOverlay.title}</div>
+                <p className="mt-1 text-sm text-muted-foreground leading-relaxed">{proctoringOverlay.description}</p>
+                {proctoringOverlay.supportingText && (
+                  <p className="mt-2 text-[11px] font-medium text-amber-600 dark:text-amber-400">
+                    {proctoringOverlay.supportingText}
+                  </p>
+                )}
+                <p className="mt-2 text-[11px] font-mono text-amber-600 dark:text-amber-400">
+                  Strike {seriousViolationCount}/{seriousViolationLimit}
+                </p>
+              </div>
+            </div>
+          </div>
+        </div>
+      );
+    }
 
     return (
       <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/60 backdrop-blur-sm animate-in fade-in duration-300">
         <div className={`mx-4 max-w-md w-full rounded-2xl border-2 p-6 shadow-2xl ${
           isTerminal
             ? 'border-red-500 bg-red-950/95'
+            : isFinalWarning
+              ? 'border-red-500/80 bg-background/95'
             : 'border-amber-500 bg-background/95'
         }`}>
-          {/* Warning Icon */}
           <div className="flex justify-center mb-4">
             <div className={`w-16 h-16 rounded-full flex items-center justify-center ${
-              isTerminal ? 'bg-red-500/20' : 'bg-amber-500/20'
+              isTerminal ? 'bg-red-500/20' : isFinalWarning ? 'bg-red-500/10' : 'bg-amber-500/20'
             }`}>
-              <span className="text-4xl">{isTerminal ? '⛔' : '⚠️'}</span>
+              <span className="text-4xl">{isTerminal ? '⛔' : isFinalWarning ? '🚨' : '⚠️'}</span>
             </div>
           </div>
 
-          {/* Title */}
           <h3 className={`text-xl font-bold text-center mb-2 ${
-            isTerminal ? 'text-red-400' : 'text-amber-500'
+            isTerminal ? 'text-red-400' : isFinalWarning ? 'text-red-500' : 'text-amber-500'
           }`}>
-            {isTerminal ? 'Interview Terminated' : 'Multiple People Detected'}
+            {proctoringOverlay.title}
           </h3>
 
-          {/* Message */}
           <p className={`text-sm text-center mb-4 leading-relaxed ${
-            isTerminal ? 'text-red-300/80' : 'text-muted-foreground'
+            isTerminal ? 'text-red-300/80' : isFinalWarning ? 'text-foreground' : 'text-muted-foreground'
           }`}>
-            {isTerminal
-              ? 'Your interview has been automatically ended because multiple people were detected on camera 3 times. This is a proctoring violation.'
-              : 'Our camera detected more than one person. Please ensure only you are visible on camera during the interview.'
-            }
+            {proctoringOverlay.description}
           </p>
 
-          {/* Warning counter */}
+          {proctoringOverlay.supportingText && (
+            <p className={`mb-4 text-center text-sm font-semibold ${
+              isTerminal ? 'text-red-300' : isFinalWarning ? 'text-red-500' : 'text-amber-600 dark:text-amber-400'
+            }`}>
+              {proctoringOverlay.supportingText}
+            </p>
+          )}
+
+          {reasonItems.length > 0 && (
+            <div className={`mb-4 rounded-xl border px-4 py-3 text-sm ${
+              isTerminal
+                ? 'border-red-500/30 bg-red-500/10 text-red-100'
+                : isFinalWarning
+                  ? 'border-red-500/20 bg-red-500/5 text-foreground'
+                  : 'border-amber-500/20 bg-amber-500/5 text-foreground'
+            }`}>
+              <p className="mb-2 text-xs font-semibold uppercase tracking-[0.18em] opacity-80">Issue summary</p>
+              <div className="space-y-1.5">
+                {reasonItems.map((item) => (
+                  <div key={item} className="flex items-start gap-2">
+                    <span className="mt-0.5">•</span>
+                    <span>{item}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
           <div className="flex justify-center gap-2 mb-4">
-            {Array.from({ length: MAX_FACE_WARNINGS }).map((_, idx) => (
+            {Array.from({ length: seriousViolationLimit }).map((_, idx) => (
               <div
                 key={idx}
                 className={`w-3 h-3 rounded-full transition-all ${
-                  idx < faceWarningCount
-                    ? isTerminal ? 'bg-red-500' : 'bg-amber-500'
+                  idx < seriousViolationCount
+                    ? isTerminal || isFinalWarning ? 'bg-red-500' : 'bg-amber-500'
                     : 'bg-muted-foreground/20'
                 }`}
               />
@@ -700,28 +1601,206 @@ export const PracticeMode = () => {
           </div>
 
           <p className={`text-xs text-center font-mono ${
-            isTerminal ? 'text-red-400' : 'text-amber-600 dark:text-amber-400'
+            isTerminal ? 'text-red-400' : isFinalWarning ? 'text-red-500' : 'text-amber-600 dark:text-amber-400'
           }`}>
             {isTerminal
-              ? `Warning ${faceWarningCount}/${MAX_FACE_WARNINGS} — Session ended`
-              : `Warning ${faceWarningCount}/${MAX_FACE_WARNINGS} — ${MAX_FACE_WARNINGS - faceWarningCount} remaining before auto-termination`
+              ? `Strike ${seriousViolationCount}/${seriousViolationLimit} — Session ended`
+              : isFinalWarning
+                ? `Strike ${seriousViolationCount}/${seriousViolationLimit} — One more serious violation will end the session`
+                : `Strike ${seriousViolationCount}/${seriousViolationLimit} — ${Math.max(seriousViolationLimit - seriousViolationCount, 0)} remaining before termination`
             }
           </p>
-
-          {/* Dismiss button (only for non-terminal) */}
-          {!isTerminal && (
-            <div className="mt-4 flex justify-center">
-              <Button
-                variant="outline"
-                size="sm"
-                className="border-amber-500/40 text-amber-600 dark:text-amber-400 hover:bg-amber-500/10"
-                onClick={() => setFaceWarningVisible(false)}
-              >
-                I understand, continue
-              </Button>
-            </div>
-          )}
         </div>
+      </div>
+    );
+  };
+
+  const renderLivePracticeConsentCard = ({
+    id,
+    compact = false,
+    className = '',
+  }: {
+    id: string;
+    compact?: boolean;
+    className?: string;
+  }) => (
+    <div className={`rounded-xl border border-primary/20 bg-primary/5 ${compact ? 'p-3' : 'p-3.5'} ${className}`.trim()}>
+      <div className="flex items-start gap-3">
+        <Checkbox
+          id={id}
+          checked={livePracticeConsentChecked}
+          onCheckedChange={(value) => setLivePracticeConsentChecked(!!value)}
+          className="mt-0.5"
+        />
+        <div className="min-w-0">
+          <Label
+            htmlFor={id}
+            className={`${compact ? 'text-[11px]' : 'text-sm'} cursor-pointer font-semibold leading-snug text-foreground`}
+          >
+            I understand that Live Practice uses camera, screen, and recording to simulate real interview conditions.
+          </Label>
+          <div className={`${compact ? 'mt-1.5 space-y-1 text-[10px]' : 'mt-2 space-y-1.5 text-xs'} text-muted-foreground`}>
+            <p>Camera and full-screen monitoring stay active while the session runs.</p>
+            <p>Recordings may be uploaded for interview evaluation and review.</p>
+            <p>Camera-proctored mode adds automated integrity checks and warning enforcement.</p>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+
+  const renderProctoringStatusPanel = () => {
+    const showBadge =
+      enableCameraProctoring &&
+      !!sessionId &&
+      (phase === 'question' || phase === 'recording' || phase === 'processing' || phase === 'feedback');
+
+    if (!showBadge) return null;
+
+    const latestEvent = getLatestProctoringEvent(proctoringSnapshot);
+    const isTerminated = proctoringSnapshot?.action === 'terminate' || proctoringSnapshot?.status === 'terminated';
+    const heartbeatInterrupted = isHeartbeatInterruptedSnapshot(proctoringSnapshot);
+    const isWarning = !!proctoringSnapshot && isWarningProctoringSnapshot(proctoringSnapshot);
+    const isFinalWarning = !!proctoringSnapshot && isFinalWarningProctoringSnapshot(proctoringSnapshot);
+    const isExpanded = isProctoringBadgePinned || isProctoringBadgeHovered || isProctoringBadgeAutoExpanded;
+    const seriousViolationCount = proctoringSnapshot?.serious_violations ?? 0;
+    const seriousViolationLimit = getSeriousViolationLimit(proctoringSnapshot);
+    const totalViolationCount = proctoringSnapshot?.total_violations ?? 0;
+    const totalViolationLimit = getTotalViolationLimit(proctoringSnapshot);
+    const remainingSerious = proctoringSnapshot?.remaining_serious_violations;
+    const escalationText = getProctoringEscalationText(proctoringSnapshot);
+    const reasonItems = getProctoringReasonItems(proctoringSnapshot);
+
+    const toneClass = isTerminated
+      ? 'border-red-500/50 bg-red-500/10 text-red-700 dark:text-red-300'
+      : isFinalWarning
+        ? 'border-red-500/40 bg-red-500/10 text-red-700 dark:text-red-300'
+      : heartbeatInterrupted || proctoringStatus === 'error'
+        ? 'border-amber-500/50 bg-amber-500/10 text-amber-700 dark:text-amber-300'
+        : isWarning
+          ? 'border-amber-500/40 bg-amber-500/10 text-amber-700 dark:text-amber-300'
+          : proctoringStatus === 'starting'
+            ? 'border-sky-500/40 bg-sky-500/10 text-sky-700 dark:text-sky-300'
+            : 'border-emerald-500/40 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300';
+
+    const dotClass = isTerminated
+      ? 'bg-red-500'
+      : isFinalWarning
+        ? 'bg-red-500'
+      : heartbeatInterrupted || proctoringStatus === 'error'
+        ? 'bg-amber-500'
+        : isWarning
+          ? 'bg-amber-500'
+          : proctoringStatus === 'starting'
+            ? 'bg-sky-500'
+            : 'bg-emerald-500';
+
+    const statusLabel = isTerminated
+      ? 'Session terminated'
+      : isFinalWarning
+        ? 'Final warning'
+      : heartbeatInterrupted
+        ? 'Monitoring interrupted'
+        : isWarning
+          ? 'Attention needed'
+          : proctoringStatus === 'starting'
+            ? 'Proctoring starting'
+            : 'Proctoring active';
+
+    const detailText = isTerminated
+      ? (proctoringSnapshot?.message || proctoringSnapshot?.terminated_reason || 'The backend enforcement policy ended this session.')
+      : isFinalWarning
+        ? `Final warning. ${proctoringSnapshot?.message || getProctoringEventDescription(latestEvent) || 'Correct the issue immediately to continue.'}`
+      : heartbeatInterrupted
+        ? (proctoringSnapshot?.message || 'Heartbeat checks are stale. Recheck camera and screen sharing before continuing.')
+        : isWarning
+          ? (proctoringSnapshot?.message || getProctoringEventDescription(latestEvent) || 'Correct the issue now to avoid escalation.')
+          : proctoringStatus === 'starting'
+            ? (proctoringInfo || 'Connecting camera checks, heartbeat, and backend status updates.')
+            : (proctoringSnapshot?.message || 'Camera proctoring is running quietly in the background.');
+
+    const latestLabel = latestEvent ? getProctoringEventTitle(latestEvent) : null;
+    const latestDescription = latestEvent ? getProctoringEventDescription(latestEvent) : null;
+
+    return (
+      <div
+        className="fixed bottom-3 right-3 z-[90] sm:right-4 sm:top-4 sm:bottom-auto"
+        onMouseEnter={() => setIsProctoringBadgeHovered(true)}
+        onMouseLeave={() => setIsProctoringBadgeHovered(false)}
+      >
+        <button
+          type="button"
+          onClick={() => setIsProctoringBadgePinned((current) => !current)}
+          aria-expanded={isExpanded}
+          className={`ml-auto flex items-center gap-2 rounded-full border px-2.5 py-2 text-[11px] font-semibold shadow-lg backdrop-blur transition-all sm:px-3 sm:text-xs ${toneClass}`}
+        >
+          <span className={`h-2.5 w-2.5 rounded-full ${dotClass} ${!isTerminated ? 'animate-pulse' : ''}`} />
+          <Shield className="h-4 w-4" />
+          <span>{statusLabel}</span>
+          <ChevronDown className={`h-3.5 w-3.5 transition-transform ${isExpanded ? 'rotate-180' : ''}`} />
+        </button>
+
+        {isExpanded && (
+          <div className="mt-2 w-[min(88vw,20rem)] rounded-2xl border border-border/60 bg-background/95 p-3 shadow-2xl backdrop-blur sm:w-[min(92vw,20rem)]">
+            <div className="flex items-start justify-between gap-3">
+              <div className="min-w-0">
+                <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">Live integrity</p>
+                <p className="mt-1 text-sm font-semibold text-foreground">{statusLabel}</p>
+              </div>
+              <Badge variant="outline" className={toneClass}>
+                {seriousViolationCount}/{seriousViolationLimit} serious
+              </Badge>
+            </div>
+
+            <p className="mt-2 text-xs leading-relaxed text-muted-foreground">{detailText}</p>
+
+            <div className="mt-3 grid grid-cols-2 gap-2 text-[11px]">
+              <div className="rounded-xl bg-muted/50 px-3 py-2">
+                <p className="text-muted-foreground">Serious strikes</p>
+                <p className="mt-1 font-semibold text-foreground">{seriousViolationCount}/{seriousViolationLimit}</p>
+              </div>
+              <div className="rounded-xl bg-muted/50 px-3 py-2">
+                <p className="text-muted-foreground">All violations</p>
+                <p className="mt-1 font-semibold text-foreground">{totalViolationCount}/{totalViolationLimit}</p>
+              </div>
+            </div>
+
+            {(isFinalWarning || typeof remainingSerious === 'number') && !isTerminated && (
+              <p className={`mt-3 text-[11px] font-medium ${
+                isFinalWarning ? 'text-red-500' : 'text-amber-600 dark:text-amber-400'
+              }`}>
+                {isFinalWarning
+                  ? escalationText
+                  : remainingSerious > 0
+                    ? `${remainingSerious} serious warning${remainingSerious === 1 ? '' : 's'} remaining before termination.`
+                    : 'The next serious violation may end the session.'}
+              </p>
+            )}
+
+            {latestLabel && (
+              <div className="mt-3 rounded-xl border border-border/50 bg-muted/30 px-3 py-2">
+                <p className="text-[11px] font-semibold text-foreground">Latest event: {latestLabel}</p>
+                {latestDescription && (
+                  <p className="mt-1 text-[11px] text-muted-foreground">{latestDescription}</p>
+                )}
+              </div>
+            )}
+
+            {(isTerminated || isFinalWarning) && reasonItems.length > 0 && (
+              <div className="mt-3 rounded-xl border border-border/50 bg-muted/20 px-3 py-2 text-[11px]">
+                <p className="font-semibold text-foreground">Why this happened</p>
+                <div className="mt-2 space-y-1 text-muted-foreground">
+                  {reasonItems.map((item) => (
+                    <div key={item} className="flex items-start gap-2">
+                      <span className="mt-0.5">•</span>
+                      <span>{item}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+        )}
       </div>
     );
   };
@@ -752,14 +1831,22 @@ export const PracticeMode = () => {
     }
   };
 
-  const postSessionEventBestEffort = async (sid: string, event_type: any, metadata: Record<string, unknown> = {}) => {
+  const postSessionEventBestEffort = async (
+    sid: string,
+    event_type: PracticeSessionProctoringEventType,
+    metadata: Record<string, unknown> = {}
+  ) => {
     try {
       const res = await postPracticeSessionProctoringEvent({
         session_id: sid,
         event_type,
         metadata,
         client_timestamp: new Date().toISOString(),
-      } as any);
+      });
+
+      if (res.snapshot) {
+        applyProctoringSnapshot(res.snapshot, 'event');
+      }
 
       if (res.status === 429) {
         dispatchGuestLimitReached('practice_session_proctoring');
@@ -821,12 +1908,14 @@ export const PracticeMode = () => {
       const cameraTrack = cameraStreamRef.current.getVideoTracks()[0];
       try {
         cameraTrack.addEventListener('ended', () => {
-          console.warn('[Proctoring] Camera track ended — enforcing session termination if active');
+          console.warn('[Proctoring] Camera track ended — waiting for backend enforcement status');
           const activePhases = ['question', 'recording', 'feedback', 'processing'];
-          // Use refs/state to check if an interview session is active
-          if (sessionId && activePhases.includes(phase)) {
-            // Camera died mid-interview → compliance enforcement → auto-end
-            void handleEndPracticeForCameraLoss();
+          if (sessionIdRef.current && activePhases.includes(phaseRef.current)) {
+            toast({
+              title: 'Camera stopped',
+              description: 'Camera was disconnected. Backend proctoring will decide whether the session can continue.',
+              variant: 'destructive',
+            });
           } else {
             toast({
               title: 'Camera stopped',
@@ -962,11 +2051,6 @@ export const PracticeMode = () => {
     liveCaptureSessionIdRef.current = sid;
     recordingStartedAtRef.current = Date.now();
 
-    void postSessionEventBestEffort(sid, 'SESSION_STARTED_WITH_PROCTORING', {
-      screen_track: screen.getVideoTracks()?.[0]?.label,
-      camera_track: cam.getVideoTracks()?.[0]?.label,
-    });
-
     const videoCandidates = [
       'video/webm;codecs=vp9',
       'video/webm;codecs=vp8',
@@ -1005,6 +2089,12 @@ export const PracticeMode = () => {
             dispatchGuestLimitReached('practice_session_media_upload');
             stopProctoring();
             setEnableCameraProctoring(false);
+          } else if (err instanceof StrataxApiError && err.status === 413) {
+            toast({
+              title: 'Recording too large to upload',
+              description: `${kind === 'screen' ? 'Screen' : 'Camera'} recording was too large to store automatically. The interview result is safe, but the recording upload was skipped.`,
+              variant: 'warning',
+            });
           }
         }
       };
@@ -1044,18 +2134,25 @@ export const PracticeMode = () => {
     setLiveMediaInfo('');
   }, [phase]);
 
-  // When the session ends, stop recorders and upload final chunks,
-  // but keep the screen/camera streams alive so the user stays sharing on the complete screen.
+  // When the session ends, stop recorders, finalize uploads, and fully tear down
+  // screen/camera capture so the browser stops showing active sharing indicators.
   useEffect(() => {
     if (phase !== 'complete') return;
     if (!liveCaptureSessionIdRef.current) return;
 
     try { screenRecorderRef.current?.stop(); } catch { }
     try { cameraRecorderRef.current?.stop(); } catch { }
+    try { screenStreamRef.current?.getTracks().forEach((t) => t.stop()); } catch { }
+    try { cameraStreamRef.current?.getTracks().forEach((t) => t.stop()); } catch { }
     screenRecorderRef.current = null;
     cameraRecorderRef.current = null;
+    screenStreamRef.current = null;
+    cameraStreamRef.current = null;
     liveCaptureSessionIdRef.current = null;
     recordingStartedAtRef.current = null;
+    setCameraPreviewStream(null);
+    setLiveMediaStatus('inactive');
+    setLiveMediaInfo('');
   }, [phase]);
 
   // Best-effort navigation lock while screen sharing is active.
@@ -1297,6 +2394,11 @@ export const PracticeMode = () => {
   const [evaluationTrace, setEvaluationTrace] = useState<EvaluationTrace | null>(null);
   const [trajectory, setTrajectory] = useState<Trajectory | null>(null);
   const [pressure, setPressure] = useState<Pressure | null>(null);
+  const [strategyPreview, setStrategyPreview] = useState<Strategy | null>(null);
+  const [transitionStrategy, setTransitionStrategy] = useState<Strategy | null>(null);
+  const [pendingAcknowledgmentQuestionId, setPendingAcknowledgmentQuestionId] = useState<number | null>(null);
+  const [feedbackRequiresAcknowledgment, setFeedbackRequiresAcknowledgment] = useState(false);
+  const [strategyDebugMode] = useState(() => readPracticeStrategyDebugMode());
   const [evaluation, setEvaluation] = useState<Evaluation | null>(null);
   const [completionPending, setCompletionPending] = useState(false);
 
@@ -1419,6 +2521,72 @@ export const PracticeMode = () => {
   const countdownTimerRef = useRef<ReturnType<typeof window.setInterval> | null>(null);
   const audioLevelIntervalRef = useRef<ReturnType<typeof window.setInterval> | null>(null);
 
+  // Refs for async effects (avoid stale closures)
+  const isRecordingRef = useRef(false);
+  const isPlayingAudioRef = useRef(false);
+  const isAudioLoadingRef = useRef(false);
+  const recordingStartInFlightRef = useRef(false);
+  const activeRecordingQuestionKeyRef = useRef<string | null>(null);
+
+  useEffect(() => {
+    isRecordingRef.current = isRecording;
+  }, [isRecording]);
+
+  useEffect(() => {
+    isPlayingAudioRef.current = isPlayingAudio;
+  }, [isPlayingAudio]);
+
+  useEffect(() => {
+    isAudioLoadingRef.current = isAudioLoading;
+  }, [isAudioLoading]);
+
+  const resetQuestionPresentationState = () => {
+    cancelQuestionStreaming();
+    setStreamedQuestionText('');
+    questionAudioDurationRef.current = null;
+    setPendingQuestionAudio(null);
+
+    try {
+      audioPlayerRef.current?.pause();
+    } catch {
+      // ignore
+    }
+
+    audioPlayerRef.current = null;
+    isAudioLoadingRef.current = false;
+    isPlayingAudioRef.current = false;
+    setIsAudioLoading(false);
+    setIsPlayingAudio(false);
+  };
+
+  const stopRecordingSilently = async () => {
+    // Always clear timers first.
+    if (recordingTimerRef.current) {
+      clearInterval(recordingTimerRef.current);
+      recordingTimerRef.current = null;
+    }
+    if (countdownTimerRef.current) {
+      clearInterval(countdownTimerRef.current);
+      countdownTimerRef.current = null;
+    }
+    if (audioLevelIntervalRef.current) {
+      clearInterval(audioLevelIntervalRef.current);
+      audioLevelIntervalRef.current = null;
+    }
+
+    setAudioLevel(0);
+
+    try {
+      await audioRecorder.current.stop();
+    } catch {
+      // Best-effort: ignore if recorder was not active.
+    } finally {
+      isRecordingRef.current = false;
+      activeRecordingQuestionKeyRef.current = null;
+      setIsRecording(false);
+    }
+  };
+
   useEffect(() => {
     return () => {
       if (recordingTimerRef.current) {
@@ -1477,6 +2645,19 @@ export const PracticeMode = () => {
     }
   }, [phase, currentQuestion]);
 
+  useEffect(() => {
+    if (phase !== 'question' || !currentQuestion || !pendingQuestionAudio) return;
+    if (pendingQuestionAudio.questionKey !== currentQuestionRenderKey) return;
+
+    const queuedAudioUrl = pendingQuestionAudio.ttsAudioUrl;
+    setPendingQuestionAudio(null);
+
+    if (!enableTTS || !queuedAudioUrl) return;
+
+    void playTtsBestEffort(queuedAudioUrl);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [phase, currentQuestionRenderKey, pendingQuestionAudio, enableTTS]);
+
   // Reset and stream question text when a new question is shown.
   useEffect(() => {
     // NOTE: During answer submission we keep phase='question' for UX stability.
@@ -1497,7 +2678,7 @@ export const PracticeMode = () => {
       return;
     }
 
-    const key = `${sessionId ?? 'no-session'}:${(currentQuestion as any)?.id ?? currentQuestionNumber}`;
+    const key = currentQuestionRenderKey;
     questionStreamKeyRef.current = key;
     const runId = (questionStreamRunIdRef.current += 1);
 
@@ -1621,10 +2802,66 @@ export const PracticeMode = () => {
       cancelQuestionStreaming();
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [phase, currentQuestion, currentQuestionNumber, enableTTS, sessionId, isProcessing]);
+  }, [phase, currentQuestionRenderKey, enableTTS, isProcessing]);
+
+  // Auto-start recording when the current question is shown/changes.
+  // Trigger conditions:
+  // - `auto_start_recording === true` (backend hint)
+  // - OR `question_type` indicates a voice question
+  // NOTE: This is keyed to the authoritative question signature so rewritten
+  // backend questions with the same ordinal still remount and re-arm correctly.
+  useEffect(() => {
+    if (!sessionId || !currentQuestion) return;
+
+    // Only voice questions should ever auto-start recording.
+    if (isCodingQuestion(currentQuestion)) return;
+
+    const autoStart = (currentQuestion as any)?.auto_start_recording === true ||
+      String((currentQuestion as any)?.question_type ?? '').toUpperCase() === 'VOICE';
+
+    if (!autoStart) return;
+
+    let cancelled = false;
+
+    const run = async () => {
+      const questionKey = currentQuestionRenderKey;
+
+      // If the user already started recording for this question, do nothing.
+      if (recordingStartInFlightRef.current) return;
+      if (isRecordingRef.current && activeRecordingQuestionKeyRef.current === questionKey) return;
+
+      // Stop any prior recorder before starting a new one.
+      if (isRecordingRef.current && activeRecordingQuestionKeyRef.current !== questionKey) {
+        await stopRecordingSilently();
+        if (cancelled) return;
+      }
+
+      // If TTS audio is loading/playing, wait for it to finish.
+      const startedAt = Date.now();
+      while (!cancelled && (isAudioLoadingRef.current || isPlayingAudioRef.current)) {
+        // Safety valve: don't wait forever (fallback to letting the user start manually).
+        if (Date.now() - startedAt > 120_000) return;
+        await new Promise((resolve) => setTimeout(resolve, 125));
+      }
+
+      if (cancelled) return;
+      if (recordingStartInFlightRef.current) return;
+      if (isRecordingRef.current) return; // user already started
+      if (phase !== 'question') return;
+
+      await handleStartRecording();
+    };
+
+    void run();
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [phase, currentQuestionRenderKey]);
 
   const handleStartInterview = async () => {
-    cancelQuestionStreaming();
+    resetQuestionPresentationState();
+    if (!ensureLivePracticeConsent()) return;
     setIsProcessing(true);
     try {
       // Gate: camera must be live if proctored mode is ON
@@ -1663,6 +2900,10 @@ export const PracticeMode = () => {
         console.log('🧠 [Adaptive Mode] Using profile:', userProfile);
       }
 
+      setStrategyPreview(null);
+      setTransitionStrategy(null);
+      setPendingAcknowledgmentQuestionId(null);
+      setFeedbackRequiresAcknowledgment(false);
       setSessionId(response.session_id);
       setCurrentQuestion(response.first_question);
       setCurrentQuestionNumber(1);
@@ -1674,7 +2915,7 @@ export const PracticeMode = () => {
       void startLiveCaptureForSession(response.session_id);
       // Proctoring is started by the enableCameraProctoring/sessionId effect.
 
-      // DO NOT start countdown timer here - it starts when user clicks "Start Recording"
+      // Countdown timer starts when recording begins.
 
       // Play TTS audio if available
       if (response.tts_audio_url && enableTTS) {
@@ -1753,7 +2994,7 @@ export const PracticeMode = () => {
   };
 
   const handleQuickStart = async () => {
-    cancelQuestionStreaming();
+    resetQuestionPresentationState();
     if (!quickStartInput.trim()) {
       toast({
         title: 'Input Required',
@@ -1762,6 +3003,8 @@ export const PracticeMode = () => {
       });
       return;
     }
+
+    if (!ensureLivePracticeConsent()) return;
 
     setQuickStartLoading(true);
     try {
@@ -1787,6 +3030,10 @@ export const PracticeMode = () => {
       console.log('📍 [Quick Start] Progress:', response.progress);
 
       setAiMessage(response.ai_message);
+      setStrategyPreview(null);
+      setTransitionStrategy(null);
+      setPendingAcknowledgmentQuestionId(null);
+      setFeedbackRequiresAcknowledgment(false);
       setSessionId(response.session_id);
       setCurrentQuestion(response.first_question);
       setCurrentQuestionNumber(1);
@@ -1869,8 +3116,29 @@ export const PracticeMode = () => {
   };
 
   const handleStartRecording = async () => {
+    if (recordingStartInFlightRef.current) return;
+    if (isRecordingRef.current) return;
+
+    recordingStartInFlightRef.current = true;
+
     try {
+      // Clear any stale timers from prior recordings.
+      if (recordingTimerRef.current) {
+        clearInterval(recordingTimerRef.current);
+        recordingTimerRef.current = null;
+      }
+      if (countdownTimerRef.current) {
+        clearInterval(countdownTimerRef.current);
+        countdownTimerRef.current = null;
+      }
+      if (audioLevelIntervalRef.current) {
+        clearInterval(audioLevelIntervalRef.current);
+        audioLevelIntervalRef.current = null;
+      }
+
       await audioRecorder.current.start();
+      isRecordingRef.current = true;
+      activeRecordingQuestionKeyRef.current = currentQuestionRenderKey;
       setIsRecording(true);
       setRecordingTime(0);
       setPhase('recording');
@@ -1881,10 +3149,6 @@ export const PracticeMode = () => {
       }, 1000);
 
       // Start countdown timer (starts when recording begins)
-      if (countdownTimerRef.current) {
-        clearInterval(countdownTimerRef.current);
-      }
-
       countdownTimerRef.current = setInterval(() => {
         setTimeRemaining((prev) => {
           if (prev <= 1) {
@@ -1923,12 +3187,16 @@ export const PracticeMode = () => {
         variant: 'success',
       });
     } catch (error: any) {
+      isRecordingRef.current = false;
+      activeRecordingQuestionKeyRef.current = null;
       console.error('❌ [Practice Mode] Microphone Error:', error);
       toast({
         title: 'Microphone error',
         description: 'Could not access your microphone. Please check browser permissions and try again.',
         variant: 'destructive',
       });
+    } finally {
+      recordingStartInFlightRef.current = false;
     }
   };
 
@@ -1944,6 +3212,10 @@ export const PracticeMode = () => {
       clearInterval(recordingTimerRef.current);
       recordingTimerRef.current = null;
     }
+    if (countdownTimerRef.current) {
+      clearInterval(countdownTimerRef.current);
+      countdownTimerRef.current = null;
+    }
     if (audioLevelIntervalRef.current) {
       clearInterval(audioLevelIntervalRef.current);
       audioLevelIntervalRef.current = null;
@@ -1952,6 +3224,8 @@ export const PracticeMode = () => {
 
     try {
       const audioBlob = await audioRecorder.current.stop();
+      isRecordingRef.current = false;
+      activeRecordingQuestionKeyRef.current = null;
       setIsRecording(false);
       console.log('🎤 [Practice Mode] Audio Blob Size:', audioBlob.size, 'bytes, Type:', audioBlob.type);
 
@@ -1968,6 +3242,15 @@ export const PracticeMode = () => {
       setEvaluationTrace(response.evaluation_trace ?? null);
       setTrajectory(response.trajectory ?? null);
       setPressure(response.pressure ?? null);
+      setStrategyPreview(response.strategy ?? null);
+      setTransitionStrategy(null);
+      setPendingAcknowledgmentQuestionId(response.current_question_id ?? effectiveQuestionId);
+      setFeedbackRequiresAcknowledgment(response.requires_acknowledgment ?? true);
+
+      const previewProgress = parseProgressCounter(response.progress);
+      if (previewProgress?.total && previewProgress.total >= 1) {
+        setTotalQuestions(previewProgress.total);
+      }
 
       // Store per-question evaluation for the final report (do not render per-question feedback).
       setQuestionEvaluations((prev) => ([
@@ -1977,6 +3260,7 @@ export const PracticeMode = () => {
           questionId: effectiveQuestionId,
           questionText: getQuestionPromptText(currentQuestion),
           kind: 'voice',
+          strategy: response.strategy ?? null,
           transcript: response.transcript,
           metrics: response.metrics,
           microFeedback: response.micro_feedback,
@@ -2056,6 +3340,7 @@ export const PracticeMode = () => {
           questionId: currentQuestion.id || currentQuestionNumber,
           questionText: getQuestionPromptText(currentQuestion),
           kind: 'code',
+          strategy: response.strategy ?? null,
           codeEvaluation: response.evaluation,
           testResults: response.test_results,
           createdAt: new Date().toISOString(),
@@ -2065,6 +3350,18 @@ export const PracticeMode = () => {
       // Store code evaluation in component state so the feedback phase can display it.
       setCodeTestResults(response.test_results ?? null);
       setCodeEvaluation(response.evaluation ?? null);
+      setEvaluationTrace(null);
+      setTrajectory(null);
+      setPressure(null);
+      setStrategyPreview(response.strategy ?? null);
+      setTransitionStrategy(null);
+      setPendingAcknowledgmentQuestionId(response.current_question_id ?? currentQuestion.id ?? currentQuestionNumber);
+      setFeedbackRequiresAcknowledgment(response.requires_acknowledgment ?? true);
+
+      const previewProgress = parseProgressCounter(response.progress);
+      if (previewProgress?.total && previewProgress.total >= 1) {
+        setTotalQuestions(previewProgress.total);
+      }
 
       setCompletionPending(!!response.complete);
 
@@ -2110,18 +3407,22 @@ export const PracticeMode = () => {
     setTranscription('');
     setSpeechMetrics(null);
     setMicroFeedback(null);
+    setEvaluationTrace(null);
+    setTrajectory(null);
+    setPressure(null);
+    setStrategyPreview(null);
+    setTransitionStrategy(null);
+    setPendingAcknowledgmentQuestionId(null);
+    setFeedbackRequiresAcknowledgment(false);
     setEvaluation(null);
     setCompletionPending(false);
     setRecordingTime(0);
     setEndedEarlyData(null);
-    // Reset face warnings
-    faceWarningCountRef.current = 0;
-    setFaceWarningCount(0);
-    setFaceWarningVisible(false);
-    if (faceWarningTimerRef.current) {
-      clearTimeout(faceWarningTimerRef.current);
-      faceWarningTimerRef.current = null;
-    }
+    setProctoringSessionEndSummary(null);
+    setProctoringSnapshot(null);
+    clearProctoringOverlay();
+    lastProctoringOverlayKeyRef.current = '';
+    proctoringTerminationHandledRef.current = null;
   };
 
   const handleEndPractice = async () => {
@@ -2130,6 +3431,7 @@ export const PracticeMode = () => {
     try {
       const result = await endPracticeSession(sessionId);
       setEndedEarlyData(result);
+      setProctoringSessionEndSummary(null);
       stopProctoring();
       cancelQuestionStreaming();
       setPhase('complete');
@@ -2147,61 +3449,33 @@ export const PracticeMode = () => {
     }
   };
 
-  // Auto-end triggered by proctoring (multiple faces detected too many times)
-  const handleEndPracticeForProctoring = async (faceCount: number, warningNumber: number) => {
-    if (!sessionId) return;
-    try {
-      const result = await endPracticeSession(sessionId);
-      setEndedEarlyData(result);
-      stopProctoring();
-      cancelQuestionStreaming();
-      setPhase('complete');
-      toast({
-        title: 'Interview terminated',
-        description: `Multiple people detected on camera (${faceCount} faces). Session ended after ${warningNumber} warning${warningNumber !== 1 ? 's' : ''}.`,
-        variant: 'destructive',
-      });
-    } catch (err) {
-      console.error("Failed to auto-end practice session:", err);
-      // Force end even if API fails
-      stopProctoring();
-      cancelQuestionStreaming();
-      setPhase('complete');
-      toast({
-        title: 'Interview terminated',
-        description: 'Multiple people detected. Session ended due to proctoring violation.',
-        variant: 'destructive',
-      });
-    }
-  };
+  const handleEndPracticeFromBackend = async (snapshot: PracticeProctoringSnapshot) => {
+    const activeSessionId = sessionIdRef.current;
+    if (!activeSessionId) return;
+    const endSummary = buildProctoringEndSummary(snapshot);
+    const description = endSummary.description;
 
-  /**
-   * Compliance enforcement: camera died/disconnected mid-interview.
-   * Treated as a proctoring violation — auto-terminates the session.
-   */
-  const handleEndPracticeForCameraLoss = async () => {
-    if (!sessionId) return;
-    console.warn('[Proctoring] Camera lost mid-interview — enforcing session termination');
+    setProctoringSessionEndSummary(endSummary);
+
     try {
-      const result = await endPracticeSession(sessionId);
+      const result = await endPracticeSession(activeSessionId);
       setEndedEarlyData(result);
       stopProctoring();
       cancelQuestionStreaming();
       setPhase('complete');
       toast({
-        title: 'Interview terminated — Camera lost',
-        description: 'Your camera was disconnected during a proctored interview. The session has been ended for compliance.',
+        title: 'Interview terminated',
+        description: endSummary.items[0] ? `${description} Primary cause: ${endSummary.items[0]}.` : description,
         variant: 'destructive',
       });
     } catch (err) {
-      console.error('[Proctoring] Failed to auto-end session after camera loss:', err);
-      // Force end even if API call fails
+      console.error('[Proctoring] Failed to finalize backend termination:', err);
       stopProctoring();
       cancelQuestionStreaming();
       setPhase('complete');
       toast({
-        title: 'Interview terminated — Camera lost',
-        description: 'Camera disconnected. Session ended due to proctoring policy.',
+        title: 'Interview terminated',
+        description: endSummary.items[0] ? `${description} Primary cause: ${endSummary.items[0]}.` : description,
         variant: 'destructive',
       });
     }
@@ -2364,8 +3638,10 @@ export const PracticeMode = () => {
       return;
     }
 
-    if (!currentQuestion) {
-      console.error('❌ [Practice Mode] No current question available');
+    const acknowledgedQuestionId = pendingAcknowledgmentQuestionId ?? currentQuestion?.id ?? currentQuestionNumber;
+
+    if (!acknowledgedQuestionId) {
+      console.error('❌ [Practice Mode] No acknowledged question ID available');
       return;
     }
 
@@ -2375,16 +3651,17 @@ export const PracticeMode = () => {
     try {
       // Phase 3: best-effort rate feedback right before user advances.
       // Do not block Next Question if this fails.
-      submitFeedbackRatingBestEffort({ sessionId, questionId: currentQuestion.id });
+      submitFeedbackRatingBestEffort({ sessionId, questionId: acknowledgedQuestionId });
 
-      console.log('🔄 [Practice Mode] Acknowledging feedback for session:', sessionId, 'question:', currentQuestion.id);
+      console.log('🔄 [Practice Mode] Acknowledging feedback for session:', sessionId, 'question:', acknowledgedQuestionId);
       console.log('📊 [Practice Mode] Current state:', {
         currentQuestionNumber,
         totalQuestions,
         phase,
+        pendingAcknowledgmentQuestionId,
       });
 
-      const response = await acknowledgeFeedback(sessionId, currentQuestion.id);
+      const response = await acknowledgeFeedback(sessionId, acknowledgedQuestionId);
       console.log('➡️ [Practice Mode] Next Question Response:', response);
       console.log('📋 [Practice Mode] Response details:', {
         hasNextQuestion: !!response.next_question,
@@ -2392,7 +3669,13 @@ export const PracticeMode = () => {
         progress: response.progress,
         hasTtsAudio: !!response.tts_audio_url,
         hasEvaluation: !!response.evaluation_report,
+        strategyAction: response.strategy?.action,
       });
+
+      const parsedProgress = parseProgressCounter(response.progress);
+      if (parsedProgress?.total && parsedProgress.total >= 1) {
+        setTotalQuestions(parsedProgress.total);
+      }
 
       if (response.complete) {
         // Interview complete - show evaluation
@@ -2402,8 +3685,14 @@ export const PracticeMode = () => {
           setEvaluation(response.evaluation_report);
         }
 
+        setStrategyPreview(null);
+        setTransitionStrategy(null);
+        setPendingQuestionAudio(null);
+        setPendingAcknowledgmentQuestionId(null);
+        setFeedbackRequiresAcknowledgment(false);
+
         setPhase('complete');
-  setCompletionPending(false);
+        setCompletionPending(false);
 
         toast({
           title: 'Interview complete',
@@ -2425,10 +3714,27 @@ export const PracticeMode = () => {
           time_limit: response.next_question?.time_limit,
         });
 
+        const nextQuestion: Question = {
+          ...response.next_question,
+          auto_start_recording:
+            response.auto_start_recording ?? response.next_question.auto_start_recording,
+        };
+        const nextQuestionNumber = parsedProgress?.current && parsedProgress.current >= 1
+          ? parsedProgress.current
+          : currentQuestionNumber + 1;
+        const nextQuestionKey = buildPracticeQuestionStateKey(
+          nextQuestion,
+          sessionId,
+          nextQuestionNumber,
+        );
+
+        resetQuestionPresentationState();
+
         // Move to next question
-        setCurrentQuestion(response.next_question);
-        setCurrentQuestionNumber(prev => prev + 1);
-        setTimeRemaining(response.next_question.time_limit);
+        setCurrentQuestion(nextQuestion);
+        setCurrentQuestionNumber(nextQuestionNumber);
+        setSelectedDifficulty(nextQuestion.difficulty);
+        setTimeRemaining(nextQuestion.time_limit);
         setCompletionPending(false);
         setPhase('question');
         setTranscription('');
@@ -2436,7 +3742,16 @@ export const PracticeMode = () => {
         setMicroFeedback(null);
         setEvaluationTrace(null);
         setTrajectory(null);
-        setPressure(null);
+        setPressure(response.pressure ?? null);
+        setStrategyPreview(null);
+        setTransitionStrategy(response.strategy ?? null);
+        setPendingQuestionAudio(
+          response.tts_audio_url
+            ? { questionKey: nextQuestionKey, ttsAudioUrl: response.tts_audio_url }
+            : null
+        );
+        setPendingAcknowledgmentQuestionId(null);
+        setFeedbackRequiresAcknowledgment(false);
 
         // Clear code submission state (for coding questions)
         setCodeTestResults(null);
@@ -2448,12 +3763,7 @@ export const PracticeMode = () => {
           countdownTimerRef.current = null;
         }
 
-        console.log('✅ [Practice Mode] State updated, now on question', currentQuestionNumber + 1);
-
-        // Play next question audio if available
-        if (response.tts_audio_url && enableTTS) {
-          void playTtsBestEffort(response.tts_audio_url);
-        }
+        console.log('✅ [Practice Mode] State updated, now on question', parsedProgress?.current ?? currentQuestionNumber + 1);
       }
     } catch (error: any) {
       console.error('❌ [Practice Mode] Next Question Error:', error);
@@ -2487,6 +3797,12 @@ export const PracticeMode = () => {
   };
 
   const handleRoundStart = (sessionId: string, roundConfig: RoundConfig, firstQuestion: any, ttsAudioUrl?: string, totalQuestionsFromApi?: number) => {
+    if (!ensureLivePracticeConsent()) {
+      return;
+    }
+
+    resetQuestionPresentationState();
+
     // Note: For round-based starts, camera is already ensured in RoundSelection
     // via ensureLiveMediaReady. But we also verify here as a safety net.
     if (enableCameraProctoring) {
@@ -2513,6 +3829,10 @@ export const PracticeMode = () => {
     console.log('🔊 [Round-Based] TTS Audio URL:', ttsAudioUrl);
 
     setQuestionEvaluations([]);
+    setStrategyPreview(null);
+    setTransitionStrategy(null);
+    setPendingAcknowledgmentQuestionId(null);
+    setFeedbackRequiresAcknowledgment(false);
     setSessionId(sessionId);
     setCurrentRoundConfig(roundConfig);
     setCurrentQuestion(firstQuestion);
@@ -2633,77 +3953,107 @@ export const PracticeMode = () => {
   if (phase === 'welcome') {
     return (
       <div className="max-w-4xl mx-auto w-full px-4">
-        <div className="flex justify-end pt-2">
-          {viewProgressButton("h-8 px-3 md:hidden")}
-        </div>
 
         {/* ── GATEWAY: Choose your practice mode ── */}
         {welcomeStep === 'gateway' && (
-          <div className="space-y-5 animate-in fade-in slide-in-from-bottom-3 duration-500">
-            {/* Header */}
-            <div className="text-center space-y-2 pt-4">
-              <div className="mx-auto w-12 h-12 md:w-14 md:h-14 bg-primary/15 border border-primary/20 rounded-2xl flex items-center justify-center shadow-lg shadow-black/30">
-                <Mic className="w-6 h-6 md:w-7 md:h-7 text-white" />
+          <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-700">
+            {/* Futuristic Header with animated gradient ring */}
+            <div className="text-center space-y-3 pt-4">
+              <div className="flex justify-center md:hidden mb-2">
+                {viewProgressButton("h-9 px-3")}
               </div>
-              <h1 className="text-xl md:text-2xl font-bold text-foreground">How do you want to practice?</h1>
-              <p className="text-[11px] md:text-sm text-muted-foreground max-w-[300px] md:max-w-none mx-auto">
-                Choose a path — you can always switch later
-              </p>
+              <div className="relative mx-auto w-20 h-20 md:w-24 md:h-24">
+                {/* Outer rotating ring */}
+                <div className="absolute inset-0 rounded-full bg-gradient-to-r from-primary via-purple-500 to-cyan-400 animate-spin" style={{ animationDuration: '6s' }} />
+                <div className="absolute inset-[3px] rounded-full bg-background" />
+                {/* Inner icon container */}
+                <div className="absolute inset-[6px] rounded-full bg-gradient-to-br from-primary/20 via-purple-500/10 to-cyan-400/10 border border-primary/20 flex items-center justify-center backdrop-blur-sm">
+                  <Mic className="w-8 h-8 md:w-10 md:h-10 text-primary drop-shadow-[0_0_8px_rgba(var(--primary-rgb),0.5)]" />
+                </div>
+              </div>
+              <div>
+                <h1 className="text-2xl md:text-3xl font-extrabold text-foreground tracking-tight bg-gradient-to-r from-foreground via-primary to-foreground bg-clip-text">
+                  Choose Your Practice Mode
+                </h1>
+                <p className="text-xs md:text-sm text-muted-foreground max-w-md mx-auto mt-1.5 leading-relaxed">
+                  AI-powered interview preparation — pick a path and let&apos;s elevate your skills
+                </p>
+              </div>
             </div>
 
             {renderPracticeInsights()}
 
-            {/* Three intent cards */}
-            <div className="space-y-3">
+            {/* Three intent cards — futuristic glassmorphism */}
+            <div className="grid grid-cols-1 gap-3">
               {/* Quick Practice */}
               <button
                 onClick={() => { setUseQuickStart(false); setWelcomeStep('configure'); }}
-                className="w-full group relative flex items-center gap-4 p-4 md:p-5 rounded-2xl border-2 border-border/50 bg-background/60 backdrop-blur-xl shadow-lg hover:border-primary/50 hover:shadow-xl hover:shadow-primary/10 transition-all duration-300 text-left"
+                className="w-full group relative flex items-center gap-4 p-5 md:p-6 rounded-3xl border border-border/30 bg-gradient-to-br from-background/80 via-background/60 to-primary/[0.03] backdrop-blur-2xl shadow-xl shadow-black/10 hover:border-primary/40 hover:shadow-2xl hover:shadow-primary/10 hover:scale-[1.01] transition-all duration-500 text-left overflow-hidden"
               >
-                <div className="shrink-0 w-12 h-12 md:w-14 md:h-14 rounded-2xl bg-gradient-to-br from-blue-500/20 to-primary/20 border border-primary/20 flex items-center justify-center shadow-md">
-                  <Zap className="w-6 h-6 md:w-7 md:h-7 text-primary" />
+                {/* Glow effect on hover */}
+                <div className="absolute inset-0 opacity-0 group-hover:opacity-100 transition-opacity duration-500 bg-gradient-to-r from-primary/5 via-transparent to-primary/5 rounded-3xl" />
+                <div className="relative shrink-0 w-14 h-14 md:w-16 md:h-16 rounded-2xl bg-gradient-to-br from-blue-500/25 to-primary/25 border border-primary/20 flex items-center justify-center shadow-lg backdrop-blur-sm">
+                  <Zap className="w-7 h-7 md:w-8 md:h-8 text-primary drop-shadow-[0_0_6px_rgba(var(--primary-rgb),0.4)]" />
                 </div>
-                <div className="flex-1 min-w-0">
-                  <h3 className="font-bold text-[15px] md:text-base text-foreground">Quick Practice</h3>
-                  <p className="text-[11px] md:text-sm text-muted-foreground leading-snug mt-0.5">
-                    Tell me the role — I'll pick questions, difficulty, and adapt as you go
+                <div className="relative flex-1 min-w-0">
+                  <div className="flex items-center gap-2">
+                    <h3 className="font-bold text-base md:text-lg text-foreground">Quick Practice</h3>
+                    <Badge variant="secondary" className="text-[9px] px-1.5 py-0 h-4 bg-primary/10 text-primary border-primary/20">AI-DRIVEN</Badge>
+                  </div>
+                  <p className="text-xs md:text-sm text-muted-foreground leading-relaxed mt-1">
+                    Tell me the role — I&apos;ll pick questions, difficulty, and adapt as you go
                   </p>
                 </div>
-                <ArrowRight className="w-4 h-4 md:w-5 md:h-5 text-muted-foreground/50 group-hover:text-primary group-hover:translate-x-0.5 transition-all shrink-0" />
+                <ArrowRight className="relative w-5 h-5 text-muted-foreground/40 group-hover:text-primary group-hover:translate-x-1 transition-all duration-300 shrink-0" />
               </button>
 
-              {/* Full Interview Simulation */}
+              {/* Full Interview Simulation — Highly Recommended */}
               <button
                 onClick={() => setPhase('round-selection')}
-                className="w-full group relative flex items-center gap-4 p-4 md:p-5 rounded-2xl border-2 border-border/50 bg-background/60 backdrop-blur-xl shadow-lg hover:border-purple-500/50 hover:shadow-xl hover:shadow-purple-500/10 transition-all duration-300 text-left"
+                className="w-full group relative flex items-center gap-4 p-5 md:p-6 rounded-3xl border-2 border-purple-500/40 bg-gradient-to-br from-purple-500/[0.08] via-background/60 to-violet-500/[0.06] backdrop-blur-2xl shadow-xl shadow-purple-500/10 hover:border-purple-500/60 hover:shadow-2xl hover:shadow-purple-500/20 hover:scale-[1.01] transition-all duration-500 text-left overflow-hidden ring-1 ring-purple-500/20"
               >
-                <div className="shrink-0 w-12 h-12 md:w-14 md:h-14 rounded-2xl bg-gradient-to-br from-purple-500/20 to-violet-500/20 border border-purple-500/20 flex items-center justify-center shadow-md">
-                  <Target className="w-6 h-6 md:w-7 md:h-7 text-purple-500" />
+                {/* Recommended ribbon */}
+                <div className="absolute top-0 right-0 overflow-hidden w-28 h-28 pointer-events-none">
+                  <div className="absolute top-3 right-[-30px] w-[150px] text-center text-[8px] font-extrabold uppercase tracking-widest text-white bg-gradient-to-r from-purple-600 to-violet-500 py-1 rotate-45 shadow-lg shadow-purple-500/30">
+                    Recommended
+                  </div>
                 </div>
-                <div className="flex-1 min-w-0">
-                  <h3 className="font-bold text-[15px] md:text-base text-foreground">Full Interview Simulation</h3>
-                  <p className="text-[11px] md:text-sm text-muted-foreground leading-snug mt-0.5">
+                <div className="absolute inset-0 opacity-0 group-hover:opacity-100 transition-opacity duration-500 bg-gradient-to-r from-purple-500/5 via-transparent to-purple-500/5 rounded-3xl" />
+                <div className="relative shrink-0 w-14 h-14 md:w-16 md:h-16 rounded-2xl bg-gradient-to-br from-purple-500/30 to-violet-500/30 border border-purple-500/30 flex items-center justify-center shadow-lg shadow-purple-500/20 backdrop-blur-sm">
+                  <Target className="w-7 h-7 md:w-8 md:h-8 text-purple-400 drop-shadow-[0_0_8px_rgba(168,85,247,0.5)]" />
+                </div>
+                <div className="relative flex-1 min-w-0">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <h3 className="font-bold text-base md:text-lg text-foreground">Full Interview Simulation</h3>
+                    <Badge variant="secondary" className="text-[9px] px-1.5 py-0 h-4 bg-purple-500/10 text-purple-500 border-purple-500/20">ROUNDS</Badge>
+                    <Badge className="text-[8px] px-1.5 py-0 h-4 bg-gradient-to-r from-purple-600 to-violet-500 text-white border-0 shadow-sm shadow-purple-500/30 animate-pulse">★ HIGHLY RECOMMENDED</Badge>
+                  </div>
+                  <p className="text-xs md:text-sm text-muted-foreground leading-relaxed mt-1">
                     Step through real interview rounds — HR, Technical, System Design
                   </p>
                 </div>
-                <ArrowRight className="w-4 h-4 md:w-5 md:h-5 text-muted-foreground/50 group-hover:text-purple-500 group-hover:translate-x-0.5 transition-all shrink-0" />
+                <ArrowRight className="relative w-5 h-5 text-purple-400/60 group-hover:text-purple-400 group-hover:translate-x-1 transition-all duration-300 shrink-0" />
               </button>
 
               {/* Custom Setup */}
               <button
                 onClick={() => { setUseQuickStart(true); setWelcomeStep('configure'); }}
-                className="w-full group relative flex items-center gap-4 p-4 md:p-5 rounded-2xl border-2 border-border/50 bg-background/60 backdrop-blur-xl shadow-lg hover:border-amber-500/50 hover:shadow-xl hover:shadow-amber-500/10 transition-all duration-300 text-left"
+                className="w-full group relative flex items-center gap-4 p-5 md:p-6 rounded-3xl border border-border/30 bg-gradient-to-br from-background/80 via-background/60 to-amber-500/[0.03] backdrop-blur-2xl shadow-xl shadow-black/10 hover:border-amber-500/40 hover:shadow-2xl hover:shadow-amber-500/10 hover:scale-[1.01] transition-all duration-500 text-left overflow-hidden"
               >
-                <div className="shrink-0 w-12 h-12 md:w-14 md:h-14 rounded-2xl bg-gradient-to-br from-amber-500/20 to-orange-500/20 border border-amber-500/20 flex items-center justify-center shadow-md">
-                  <Settings className="w-6 h-6 md:w-7 md:h-7 text-amber-500" />
+                <div className="absolute inset-0 opacity-0 group-hover:opacity-100 transition-opacity duration-500 bg-gradient-to-r from-amber-500/5 via-transparent to-amber-500/5 rounded-3xl" />
+                <div className="relative shrink-0 w-14 h-14 md:w-16 md:h-16 rounded-2xl bg-gradient-to-br from-amber-500/25 to-orange-500/25 border border-amber-500/20 flex items-center justify-center shadow-lg backdrop-blur-sm">
+                  <Settings className="w-7 h-7 md:w-8 md:h-8 text-amber-500 drop-shadow-[0_0_6px_rgba(245,158,11,0.4)]" />
                 </div>
-                <div className="flex-1 min-w-0">
-                  <h3 className="font-bold text-[15px] md:text-base text-foreground">Custom Setup</h3>
-                  <p className="text-[11px] md:text-sm text-muted-foreground leading-snug mt-0.5">
+                <div className="relative flex-1 min-w-0">
+                  <div className="flex items-center gap-2">
+                    <h3 className="font-bold text-base md:text-lg text-foreground">Custom Setup</h3>
+                    <Badge variant="secondary" className="text-[9px] px-1.5 py-0 h-4 bg-amber-500/10 text-amber-500 border-amber-500/20">ADVANCED</Badge>
+                  </div>
+                  <p className="text-xs md:text-sm text-muted-foreground leading-relaxed mt-1">
                     Pick your role, difficulty, number of questions, and more
                   </p>
                 </div>
-                <ArrowRight className="w-4 h-4 md:w-5 md:h-5 text-muted-foreground/50 group-hover:text-amber-500 group-hover:translate-x-0.5 transition-all shrink-0" />
+                <ArrowRight className="relative w-5 h-5 text-muted-foreground/40 group-hover:text-amber-500 group-hover:translate-x-1 transition-all duration-300 shrink-0" />
               </button>
             </div>
           </div>
@@ -2711,22 +4061,24 @@ export const PracticeMode = () => {
 
         {/* ── CONFIGURE: Mode-specific setup ── */}
         {welcomeStep === 'configure' && (
-          <Card className="w-full border border-border/50 bg-background/60 backdrop-blur-xl shadow-2xl shadow-black/40 animate-in fade-in slide-in-from-right-4 duration-400">
-            <CardHeader className="pb-3 pt-5 px-4">
+          <Card className="w-full border border-border/30 bg-gradient-to-br from-background/90 via-background/70 to-primary/[0.02] backdrop-blur-2xl shadow-2xl shadow-black/20 rounded-3xl animate-in fade-in slide-in-from-right-4 duration-500 overflow-hidden">
+            {/* Decorative top gradient bar */}
+            <div className="h-1 bg-gradient-to-r from-primary via-purple-500 to-cyan-400" />
+            <CardHeader className="pb-3 pt-5 px-5">
               <div className="flex items-center gap-3">
                 <Button
                   variant="ghost"
                   size="sm"
-                  className="h-8 w-8 p-0 rounded-full hover:bg-muted/50 shrink-0"
+                  className="h-9 w-9 p-0 rounded-xl hover:bg-muted/50 shrink-0 border border-border/30"
                   onClick={() => setWelcomeStep('gateway')}
                 >
                   <ChevronLeft className="w-4 h-4" />
                 </Button>
                 <div className="flex-1">
-                  <CardTitle className="text-lg md:text-xl font-bold text-foreground">
+                  <CardTitle className="text-lg md:text-xl font-extrabold text-foreground tracking-tight">
                     {useQuickStart ? 'Custom Setup' : 'AI Interviewer'}
                   </CardTitle>
-                  <CardDescription className="text-[10px] md:text-xs mt-0.5">
+                  <CardDescription className="text-[10px] md:text-xs mt-0.5 text-muted-foreground/80">
                     {useQuickStart
                       ? 'Configure your practice session exactly how you want it'
                       : "Tell me the role — I'll adapt questions and difficulty as you go"}
@@ -2735,13 +4087,16 @@ export const PracticeMode = () => {
               </div>
             </CardHeader>
 
-            <CardContent className="space-y-4 pb-6">
+            <CardContent className="space-y-4 pb-6 px-5">
               {!useQuickStart ? (
                 /* ── Instant / AI Interviewer mode ── */
-                <div className="space-y-3 animate-in fade-in slide-in-from-bottom-2 duration-500">
+                <div className="space-y-4 animate-in fade-in slide-in-from-bottom-2 duration-500">
                   <div className="space-y-2">
                     <div className="flex items-center justify-between px-1">
-                      <Label className="text-[9px] font-black uppercase tracking-wider text-muted-foreground/70">What are you preparing for?</Label>
+                      <Label className="text-[9px] font-black uppercase tracking-[0.2em] text-muted-foreground/70 flex items-center gap-1.5">
+                        <Rocket className="w-3 h-3" />
+                        What are you preparing for?
+                      </Label>
                     </div>
                     <div className="relative group">
                       <Input
@@ -2754,19 +4109,21 @@ export const PracticeMode = () => {
                           }
                         }}
                         maxLength={512}
-                        className="text-xs h-10 bg-background/50 border-muted-foreground/20 rounded-xl pl-3 pr-9 focus:ring-primary/20 transition-all"
+                        className="text-sm h-12 bg-background/50 border-border/30 rounded-2xl pl-4 pr-10 focus:ring-2 focus:ring-primary/20 focus:border-primary/40 transition-all shadow-inner"
                         autoFocus
                       />
-                      <div className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground/30 group-focus-within:text-primary/50 transition-colors">
-                        <MessageSquare className="w-3.5 h-3.5" />
+                      <div className="absolute right-4 top-1/2 -translate-y-1/2 text-muted-foreground/30 group-focus-within:text-primary/50 transition-colors">
+                        <MessageSquare className="w-4 h-4" />
                       </div>
                     </div>
                   </div>
 
                   {aiMessage && (
-                    <div className="p-2.5 bg-green-500/10 border border-green-500/20 rounded-xl flex items-start gap-2 shadow-sm animate-in zoom-in-95 duration-300">
-                      <CheckCircle2 className="w-3.5 h-3.5 text-green-500 mt-0.5 shrink-0" />
-                      <p className="text-[11px] text-green-700 dark:text-green-400 font-medium leading-tight">
+                    <div className="p-3 bg-green-500/10 border border-green-500/20 rounded-2xl flex items-start gap-2.5 shadow-sm animate-in zoom-in-95 duration-300 backdrop-blur-sm">
+                      <div className="p-1 bg-green-500/20 rounded-lg mt-0.5">
+                        <CheckCircle2 className="w-3.5 h-3.5 text-green-500" />
+                      </div>
+                      <p className="text-xs text-green-700 dark:text-green-400 font-medium leading-relaxed">
                         {aiMessage}
                       </p>
                     </div>
@@ -2793,12 +4150,17 @@ export const PracticeMode = () => {
                     </div>
                   </div>
 
+                  {renderLivePracticeConsentCard({
+                    id: 'quick-start-live-practice-consent',
+                    compact: true,
+                  })}
+
                   {/* CTA */}
                   <Button
                     size="lg"
                     className="w-full h-12 text-sm font-bold shadow-xl shadow-black/30 transition-all hover:scale-[1.01] active:scale-[0.98] rounded-2xl"
                     onClick={handleQuickStart}
-                    disabled={quickStartLoading || !quickStartInput.trim()}
+                    disabled={quickStartLoading || !quickStartInput.trim() || !livePracticeConsentChecked}
                   >
                     {quickStartLoading ? (
                       <>
@@ -2836,7 +4198,7 @@ export const PracticeMode = () => {
                         <Switch
                           checked={enableTTS}
                           onCheckedChange={setEnableTTS}
-                          className="scale-[0.6] md:scale-75 origin-right data-[state=checked]:bg-primary"
+                          className="scale-75 md:scale-75 origin-right data-[state=checked]:bg-primary"
                         />
                       </div>
 
@@ -2847,13 +4209,13 @@ export const PracticeMode = () => {
                           </div>
                           <div>
                             <p className="font-bold text-[11px] text-foreground">Camera-proctored mode</p>
-                            <p className="text-[9px] text-muted-foreground">Opt-in · No recordings · Local-only</p>
+                            <p className="text-[9px] text-muted-foreground">Optional integrity analysis on top of the required camera and screen recording</p>
                           </div>
                         </div>
                         <Switch
                           checked={enableCameraProctoring}
                           onCheckedChange={setEnableCameraProctoring}
-                          className="scale-[0.6] md:scale-75 origin-right data-[state=checked]:bg-primary"
+                          className="scale-75 md:scale-75 origin-right data-[state=checked]:bg-primary"
                         />
                       </div>
                     </CollapsibleContent>
@@ -2964,6 +4326,11 @@ export const PracticeMode = () => {
                     </div>
                   </div>
 
+                  {renderLivePracticeConsentCard({
+                    id: 'custom-setup-live-practice-consent',
+                    compact: true,
+                  })}
+
                   {/* CTAs */}
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                     <Button
@@ -3025,7 +4392,7 @@ export const PracticeMode = () => {
                           <Camera className="w-4 h-4 text-muted-foreground" />
                           <div>
                             <p className="font-medium text-xs">Camera-proctored mode</p>
-                            <p className="text-[10px] text-muted-foreground">Opt-in · No recordings · Local-only</p>
+                            <p className="text-[10px] text-muted-foreground">Optional integrity analysis on top of the required camera and screen recording</p>
                           </div>
                         </div>
                         <Switch
@@ -3077,42 +4444,57 @@ export const PracticeMode = () => {
         <div ref={roundSelectionScrollRef} className="flex-1 overflow-y-auto scrollbar-hide">
           {/* Sticky header: back + interview settings */}
           <div
-            className={`sticky top-0 z-[60] bg-background border-b border-border/30 transition-all duration-300 ${
+            className={`sticky top-0 z-[60] transition-all duration-300 ${
               showRoundSelectionHeader ? 'translate-y-0 opacity-100' : '-translate-y-full opacity-0 pointer-events-none'
             }`}
           >
-            <div className="max-w-7xl mx-auto w-full px-4 py-2.5 flex items-center justify-between gap-3">
-              {/* Left: Back */}
-              <Button
-                variant="ghost"
-                onClick={() => { setWelcomeStep('gateway'); setPhase('welcome'); }}
-                className="group h-9 px-3 rounded-lg hover:bg-muted/40 text-muted-foreground hover:text-foreground"
-              >
-                <ChevronLeft className="w-4 h-4 mr-1 group-hover:-translate-x-0.5 transition-transform" />
-                <span className="text-[13px] font-medium">Back</span>
-              </Button>
+            <div className="backdrop-blur-xl">
+              <div className="max-w-7xl mx-auto w-full px-4 sm:px-8 py-3 flex items-center justify-between gap-3">
+                {/* Left: Back */}
+                <Button
+                  variant="ghost"
+                  onClick={() => { setWelcomeStep('gateway'); setPhase('welcome'); }}
+                  className="group h-10 px-4 rounded-xl bg-muted/30 hover:bg-muted/50 text-muted-foreground hover:text-foreground border border-border/20 hover:border-border/40 transition-all"
+                >
+                  <ChevronLeft className="w-4 h-4 mr-1.5 group-hover:-translate-x-0.5 transition-transform" />
+                  <span className="text-sm font-semibold">Back</span>
+                </Button>
 
-              {/* Right: Camera toggle + Progress */}
-              <div className="flex items-center gap-3">
-                <label className="flex items-center gap-2.5 cursor-pointer select-none px-3 py-1.5 rounded-lg hover:bg-muted/30 transition-colors">
-                  <Camera className="w-4 h-4 text-muted-foreground/70" />
-                  <span className="hidden sm:inline text-xs font-medium text-muted-foreground">Proctoring</span>
-                  <Switch
-                    checked={enableCameraProctoring}
-                    onCheckedChange={setEnableCameraProctoring}
-                    aria-label="Toggle camera-proctored mode"
-                  />
-                </label>
+                {/* Right: Camera toggle + Progress */}
+                <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-2.5 px-4 py-2 rounded-xl bg-muted/20 border border-border/15 select-none">
+                    <label className="flex items-center gap-2.5 cursor-pointer">
+                      <div className="w-7 h-7 rounded-lg bg-muted/40 flex items-center justify-center">
+                        <Camera className="w-3.5 h-3.5 text-muted-foreground" />
+                      </div>
+                      <span className="hidden md:inline text-xs font-semibold text-muted-foreground">Proctoring</span>
+                      <Switch
+                        checked={enableCameraProctoring}
+                        onCheckedChange={setEnableCameraProctoring}
+                        aria-label="Toggle camera-proctored mode"
+                      />
+                    </label>
+                  </div>
 
-                {viewProgressButton(
-                  "h-9 px-3 md:hidden rounded-lg hover:bg-muted/40 text-muted-foreground hover:text-foreground"
-                )}
+                  {viewProgressButton(
+                    "h-10 px-4 md:hidden rounded-xl bg-muted/30 hover:bg-muted/50 text-muted-foreground hover:text-foreground border border-border/20"
+                  )}
+                </div>
               </div>
             </div>
           </div>
 
-          <div className="max-w-7xl mx-auto w-full px-4 pt-4">
-            <RoundSelection onRoundStart={handleRoundStart} userProfile={userProfile} ensureLiveMediaReady={ensureLiveMediaReady} ensureCameraForProctoring={ensureCameraForProctoring} resumeContext={resumeContext} onResumeChange={setResumeContext} />
+          <div className="max-w-7xl mx-auto w-full px-6 sm:px-8 pt-4">
+            <RoundSelection
+              onRoundStart={handleRoundStart}
+              userProfile={userProfile}
+              ensureLiveMediaReady={ensureLiveMediaReady}
+              ensureCameraForProctoring={ensureCameraForProctoring}
+              resumeContext={resumeContext}
+              onResumeChange={setResumeContext}
+              livePracticeConsentChecked={livePracticeConsentChecked}
+              onLivePracticeConsentChange={setLivePracticeConsentChecked}
+            />
           </div>
         </div>
       </div>
@@ -3125,10 +4507,14 @@ export const PracticeMode = () => {
         <div className="flex justify-end pt-2">
           {viewProgressButton("h-8 px-3 md:hidden")}
         </div>
-        <Card className="w-full">
-          <CardHeader className="text-center pb-3">
-            <CardTitle className="text-xl">
-              {enableAdaptive ? '🧠 Setup Your Profile' : '🎯 Ready to Start'}
+        <Card className="w-full rounded-3xl border border-border/30 overflow-hidden shadow-xl shadow-black/10">
+          <div className="h-1 bg-gradient-to-r from-primary via-purple-500 to-primary" />
+          <CardHeader className="text-center pb-3 pt-8">
+            <div className="mx-auto w-14 h-14 rounded-2xl bg-gradient-to-br from-primary/20 to-purple-500/20 border border-primary/20 flex items-center justify-center mb-3">
+              {enableAdaptive ? <Brain className="w-7 h-7 text-primary" /> : <Target className="w-7 h-7 text-primary" />}
+            </div>
+            <CardTitle className="text-2xl font-black tracking-tight">
+              {enableAdaptive ? 'Setup Your Profile' : 'Ready to Start'}
             </CardTitle>
             <CardDescription className="text-sm">
               {enableAdaptive
@@ -3138,13 +4524,15 @@ export const PracticeMode = () => {
             </CardDescription>
           </CardHeader>
 
-          <CardContent className="space-y-3">
-            <div className="flex items-center justify-between p-2 bg-muted/30 rounded-lg">
-              <div className="flex items-center gap-2">
-                <Camera className="w-4 h-4 text-muted-foreground" />
+          <CardContent className="space-y-4 px-6 pb-6">
+            <div className="flex items-center justify-between p-3 bg-muted/20 rounded-2xl border border-border/20">
+              <div className="flex items-center gap-3">
+                <div className="p-2 bg-muted/30 rounded-xl">
+                  <Camera className="w-4 h-4 text-muted-foreground" />
+                </div>
                 <div>
-                  <p className="font-medium text-xs">Camera-proctored mode</p>
-                  <p className="text-[10px] text-muted-foreground">Opt-in · No recordings · Local-only</p>
+                  <p className="font-semibold text-xs">Camera-proctored mode</p>
+                  <p className="text-[10px] text-muted-foreground">Optional integrity analysis on top of the required camera and screen recording</p>
                 </div>
               </div>
               <Switch
@@ -3153,14 +4541,18 @@ export const PracticeMode = () => {
               />
             </div>
 
+            {renderLivePracticeConsentCard({
+              id: 'setup-live-practice-consent',
+            })}
+
             {enableAdaptive && (
               <>
-                <div className="space-y-2">
-                  <div className="space-y-1">
-                    <Label htmlFor="domain" className="text-xs">Domain / Specialization *</Label>
+                <div className="space-y-3">
+                  <div className="space-y-1.5">
+                    <Label htmlFor="domain" className="text-xs font-semibold">Domain / Specialization *</Label>
                     <Input
                       id="domain"
-                      className="h-8 text-sm"
+                      className="h-10 text-sm rounded-xl border-border/30 bg-muted/10 focus:bg-background transition-colors"
                       placeholder="e.g., Python Backend Development"
                       value={profileDomain}
                       onChange={(e) => setProfileDomain(e.target.value)}
@@ -3169,12 +4561,12 @@ export const PracticeMode = () => {
                     <p className="text-[10px] text-muted-foreground">Your primary technical domain</p>
                   </div>
 
-                  <div className="space-y-1">
-                    <Label htmlFor="experience" className="text-xs">Years of Experience *</Label>
+                  <div className="space-y-1.5">
+                    <Label htmlFor="experience" className="text-xs font-semibold">Years of Experience *</Label>
                     <Input
                       id="experience"
                       type="number"
-                      className="h-8 text-sm"
+                      className="h-10 text-sm rounded-xl border-border/30 bg-muted/10 focus:bg-background transition-colors"
                       min="0"
                       max="50"
                       placeholder="e.g., 5"
@@ -3184,11 +4576,11 @@ export const PracticeMode = () => {
                     />
                   </div>
 
-                  <div className="space-y-1">
-                    <Label htmlFor="skills" className="text-xs">Key Skills *</Label>
+                  <div className="space-y-1.5">
+                    <Label htmlFor="skills" className="text-xs font-semibold">Key Skills *</Label>
                     <Input
                       id="skills"
-                      className="h-8 text-sm"
+                      className="h-10 text-sm rounded-xl border-border/30 bg-muted/10 focus:bg-background transition-colors"
                       placeholder="e.g., Python, Django, AWS"
                       value={profileSkills}
                       onChange={(e) => setProfileSkills(e.target.value)}
@@ -3197,15 +4589,15 @@ export const PracticeMode = () => {
                     <p className="text-[10px] text-muted-foreground">Comma-separated skills</p>
                   </div>
 
-                  <Separator />
-                  <p className="text-xs font-medium text-muted-foreground">Optional</p>
+                  <Separator className="my-1" />
+                  <p className="text-xs font-semibold text-muted-foreground tracking-wide uppercase">Optional</p>
 
-                  <div className="grid grid-cols-2 gap-2">
-                    <div className="space-y-1">
-                      <Label htmlFor="jobRole" className="text-xs">Target Role</Label>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div className="space-y-1.5">
+                      <Label htmlFor="jobRole" className="text-xs font-semibold">Target Role</Label>
                       <Input
                         id="jobRole"
-                        className="h-8 text-sm"
+                        className="h-10 text-sm rounded-xl border-border/30 bg-muted/10 focus:bg-background transition-colors"
                         placeholder="Senior Engineer"
                         value={profileJobRole}
                         onChange={(e) => setProfileJobRole(e.target.value)}
@@ -3213,11 +4605,11 @@ export const PracticeMode = () => {
                       />
                     </div>
 
-                    <div className="space-y-1">
-                      <Label htmlFor="company" className="text-xs">Company Type</Label>
+                    <div className="space-y-1.5">
+                      <Label htmlFor="company" className="text-xs font-semibold">Company Type</Label>
                       <Input
                         id="company"
-                        className="h-8 text-sm"
+                        className="h-10 text-sm rounded-xl border-border/30 bg-muted/10 focus:bg-background transition-colors"
                         placeholder="FAANG, Startup"
                         value={profileCompany}
                         onChange={(e) => setProfileCompany(e.target.value)}
@@ -3226,11 +4618,11 @@ export const PracticeMode = () => {
                     </div>
                   </div>
 
-                  <div className="space-y-1">
-                    <Label htmlFor="focus" className="text-xs">Focus Areas</Label>
+                  <div className="space-y-1.5">
+                    <Label htmlFor="focus" className="text-xs font-semibold">Focus Areas</Label>
                     <Input
                       id="focus"
-                      className="h-8 text-sm"
+                      className="h-10 text-sm rounded-xl border-border/30 bg-muted/10 focus:bg-background transition-colors"
                       placeholder="System Design, API Design"
                       value={profileFocus}
                       onChange={(e) => setProfileFocus(e.target.value)}
@@ -3241,38 +4633,38 @@ export const PracticeMode = () => {
                 </div>
 
                 {(!profileDomain || !profileExperience || !profileSkills) && (
-                  <div className="flex items-center gap-2 p-2 bg-yellow-500/10 border border-yellow-500/20 rounded-lg">
-                    <AlertCircle className="w-3 h-3 text-yellow-500 flex-shrink-0" />
-                    <p className="text-xs text-yellow-600 dark:text-yellow-500">
-                      Required fields (*) needed
+                  <div className="flex items-center gap-2.5 p-3 bg-yellow-500/10 border border-yellow-500/20 rounded-xl">
+                    <AlertCircle className="w-4 h-4 text-yellow-500 flex-shrink-0" />
+                    <p className="text-xs text-yellow-600 dark:text-yellow-500 font-medium">
+                      Required fields (*) needed to continue
                     </p>
                   </div>
                 )}
               </>
             )}
 
-            <div className="flex gap-2">
+            <div className="flex gap-3 pt-2">
               <Button
                 variant="outline"
-                className="flex-1 h-9 text-sm"
+                className="flex-1 h-11 text-sm rounded-2xl font-semibold"
                 onClick={() => setPhase('welcome')}
               >
-                <ArrowRight className="mr-1 w-3 h-3 rotate-180" />
+                <ArrowRight className="mr-1.5 w-4 h-4 rotate-180" />
                 Back
               </Button>
               <Button
-                className="flex-1 h-9 text-sm"
+                className="flex-1 h-11 text-sm rounded-2xl font-bold shadow-lg shadow-primary/20 hover:shadow-xl hover:shadow-primary/30 hover:scale-[1.02] active:scale-[0.98] transition-all duration-200"
                 onClick={handleStartInterview}
-                disabled={isProcessing || (enableAdaptive && (!profileDomain || !profileExperience || !profileSkills))}
+                disabled={isProcessing || !livePracticeConsentChecked || (enableAdaptive && (!profileDomain || !profileExperience || !profileSkills))}
               >
                 {isProcessing ? (
                   <>
-                    <Loader2 className="mr-1 w-3 h-3 animate-spin" />
+                    <Loader2 className="mr-1.5 w-4 h-4 animate-spin" />
                     Starting...
                   </>
                 ) : (
                   <>
-                    <Sparkles className="mr-1 w-3 h-3" />
+                    <Sparkles className="mr-1.5 w-4 h-4" />
                     {enableAdaptive ? 'Generate Questions' : 'Begin Interview'}
                   </>
                 )}
@@ -3287,102 +4679,88 @@ export const PracticeMode = () => {
   if (phase === 'question' || phase === 'recording') {
     const fullQuestionText = getQuestionPromptText(currentQuestion);
     const deliveredQuestionText = streamedQuestionText || '';
+    const displayedQuestionDifficulty = currentQuestion?.difficulty ?? selectedDifficulty;
+    const autoStartVoiceRecording = !isCodingQuestion(currentQuestion) && (
+      (currentQuestion as any)?.auto_start_recording === true ||
+      String((currentQuestion as any)?.question_type ?? '').toUpperCase() === 'VOICE'
+    );
 
     return (
       <div className="max-w-4xl mx-auto w-full px-3 sm:px-4 flex flex-col space-y-4 pb-[env(safe-area-inset-bottom)]">
         {renderGuestGateBanner()}
         {renderFacePreview()}
         {renderFaceWarningOverlay()}
+        {renderProctoringStatusPanel()}
 
-        {/* Header */}
-        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+        {/* ── Header bar ── */}
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
           <div className="flex flex-wrap items-center gap-2">
             {currentRoundConfig && (
-              <Badge variant="outline" className="text-[11px] sm:text-sm px-2.5 py-1 bg-muted/20 border-border/50">
-                <Target className="w-3 h-3 mr-1" />
+              <Badge variant="outline" className="text-[11px] sm:text-sm px-3 py-1.5 rounded-xl bg-muted/20 border-border/30 backdrop-blur-sm">
+                <Target className="w-3 h-3 mr-1.5" />
                 {currentRoundConfig.name}
               </Badge>
             )}
-            <Badge variant="outline" className="text-[11px] sm:text-sm px-2.5 py-1">
-              Question {currentQuestionNumber} / {totalQuestions}
+            <Badge variant="outline" className="text-[11px] sm:text-sm px-3 py-1.5 rounded-xl border-border/30">
+              Q {currentQuestionNumber} / {totalQuestions}
             </Badge>
 
-            {enableCameraProctoring && (
-              <Badge
-                variant="outline"
-                className={
-                  proctoringStatus === 'active'
-                    ? 'bg-green-500/10 border-green-500/50 text-green-700 dark:text-green-400'
-                    : proctoringStatus === 'starting'
-                      ? 'bg-yellow-500/10 border-yellow-500/50 text-yellow-700 dark:text-yellow-400'
-                      : 'bg-orange-500/10 border-orange-500/50 text-orange-700 dark:text-orange-400'
-                }
-              >
-                <Camera className="w-3 h-3 mr-1" />
-                {proctoringStatus === 'active'
-                  ? 'Proctored'
-                  : proctoringStatus === 'starting'
-                    ? 'Proctoring…'
-                    : 'Proctoring off'}
-              </Badge>
-            )}
-
-            {/* Debug Badge - Shows Question Type */}
             <Badge
               variant="outline"
-              className={
+              className={`rounded-xl ${
                 isCodingQuestion(currentQuestion)
-                  ? "bg-blue-500/10 border-blue-500/50 text-blue-700 dark:text-blue-400"
-                  : "bg-green-500/10 border-green-500/50 text-green-700 dark:text-green-400"
-              }
+                  ? "bg-blue-500/10 border-blue-500/30 text-blue-600 dark:text-blue-400"
+                  : "bg-green-500/10 border-green-500/30 text-green-600 dark:text-green-400"
+              }`}
             >
               {isCodingQuestion(currentQuestion) ? 'CODING' : 'VOICE'}
               {currentQuestion?.programming_language && ` (${currentQuestion.programming_language})`}
             </Badge>
 
-            <Badge className="bg-primary text-primary-foreground text-[11px] sm:text-sm">
-              {selectedDifficulty}
+            <Badge className="bg-primary/90 text-primary-foreground text-[11px] sm:text-sm rounded-xl px-3 py-1">
+              {displayedQuestionDifficulty}
             </Badge>
             {phase === 'recording' ? (
               <Badge
                 variant={timeRemaining <= 10 ? "destructive" : "secondary"}
-                className={timeRemaining <= 10 ? "animate-pulse" : ""}
+                className={`rounded-xl ${timeRemaining <= 10 ? "animate-pulse" : ""}`}
               >
                 <Clock className="w-3 h-3 mr-1" />
                 {formatTime(timeRemaining)}
               </Badge>
             ) : (
-              <Badge variant="outline" className="opacity-60">
+              <Badge variant="outline" className="opacity-60 rounded-xl">
                 <Clock className="w-3 h-3 mr-1" />
                 {currentQuestion?.time_limit}s limit
               </Badge>
             )}
 
             {(isProcessing || isSubmittingCode) && (
-              <Badge variant="secondary" className="animate-pulse text-[11px] sm:text-sm">
+              <Badge variant="secondary" className="animate-pulse text-[11px] sm:text-sm rounded-xl">
                 <Loader2 className="w-3 h-3 mr-1 animate-spin" />
                 Submitting…
               </Badge>
             )}
           </div>
           <div className="flex items-center gap-2">
-            <Progress value={(currentQuestionNumber / totalQuestions) * 100} className="w-full sm:w-32" />
+            <Progress value={(currentQuestionNumber / totalQuestions) * 100} className="w-full sm:w-36 h-2 rounded-full" />
             <Button
               variant="ghost"
               size="sm"
               onClick={handleEndPractice}
-              className="h-7 px-2 sm:px-3 text-[10px] sm:text-xs font-bold uppercase tracking-tight text-red-400/70 hover:text-white hover:bg-destructive transition-all duration-200 shrink-0"
+              className="h-8 px-3 text-[10px] sm:text-xs font-bold uppercase tracking-tight text-red-400/70 hover:text-white hover:bg-destructive rounded-xl transition-all duration-200 shrink-0"
             >
               End
             </Button>
           </div>
         </div>
 
-        {/* Question Card */}
-        <Card className="flex-1 flex flex-col">
-          {/* Check question type and render appropriate UI */}
+        {/* ── Question Card ── */}
+        <Card key={currentQuestionRenderKey} className="flex-1 flex flex-col rounded-2xl border border-border/30 shadow-lg shadow-black/5 overflow-hidden">
+          {/* Gradient top accent */}
+          <div className={`h-0.5 ${isCodingQuestion(currentQuestion) ? 'bg-gradient-to-r from-blue-500 via-cyan-400 to-blue-500' : 'bg-gradient-to-r from-green-500 via-emerald-400 to-green-500'}`} />
+
           {isCodingQuestion(currentQuestion) ? (
-            /* Coding Question - Show Code Editor */
             <div className="p-3 sm:p-6">
               <InterviewCodeEditor
                 question={{
@@ -3402,36 +4780,33 @@ export const PracticeMode = () => {
                       description: 'Submitting your current code...',
                       variant: 'warning',
                     });
-                    // Auto-submit current code
-                    // handleSubmitCode will be called by the editor component
                   }
                 }}
               />
             </div>
           ) : (
-            /* Voice Question - Show Voice Recorder (Original UI) */
             <>
-              <CardHeader>
+              <CardHeader className="pb-3">
                 <div className="flex items-start justify-between">
                   <div className="flex-1">
-                    <CardTitle className="text-2xl mb-2">
+                    <CardTitle className="text-xl sm:text-2xl font-bold mb-2 leading-snug">
                       {deliveredQuestionText || (fullQuestionText ? '…' : 'No question text available')}
                     </CardTitle>
-                    <div className="flex items-center gap-4 text-sm text-muted-foreground">
-                      <div className="flex items-center gap-1">
+                    <div className="flex items-center gap-3 text-sm text-muted-foreground">
+                      <div className="flex items-center gap-1.5">
                         <Clock className="w-4 h-4" />
                         {currentQuestion?.time_limit}s time limit
                       </div>
-                      <Badge variant="secondary" className="text-xs">
+                      <Badge variant="secondary" className="text-xs rounded-lg">
                         {currentQuestion?.category}
                       </Badge>
                     </div>
                   </div>
-
                   {enableTTS && (
                     <Button
                       variant="outline"
                       size="icon"
+                      className="rounded-xl"
                       onClick={() => {
                         if (currentQuestion && sessionId) {
                           // Replay audio logic here
@@ -3445,44 +4820,42 @@ export const PracticeMode = () => {
                 </div>
               </CardHeader>
 
-              <CardContent className="flex-1 flex flex-col items-center justify-center gap-6">
+              <CardContent className="flex-1 flex flex-col items-center justify-center gap-6 pb-8">
                 {phase === 'recording' ? (
                   <>
                     <div className="relative flex flex-col items-center">
-                      {/* Animated Waveform Visualization */}
-                      <div className="flex items-end gap-1 h-32 mb-8">
-                        {[...Array(12)].map((_, i) => {
-                          // Create varied heights based on audio level and position
-                          const baseHeight = 20;
+                      {/* Futuristic Waveform Visualization */}
+                      <div className="flex items-end gap-1.5 h-32 mb-6">
+                        {[...Array(16)].map((_, i) => {
+                          const baseHeight = 16;
                           const maxHeight = 120;
-                          const position = Math.abs(i - 5.5) / 5.5; // Center emphasis
-                          const heightMultiplier = (1 - position * 0.5) * audioLevel;
+                          const position = Math.abs(i - 7.5) / 7.5;
+                          const heightMultiplier = (1 - position * 0.4) * audioLevel;
                           const height = baseHeight + (maxHeight - baseHeight) * heightMultiplier;
 
                           return (
                             <div
                               key={i}
-                              className="w-2 bg-gradient-to-t from-red-500 to-pink-500 rounded-full transition-all duration-100 ease-out"
+                              className="w-1.5 rounded-full transition-all duration-75 ease-out"
                               style={{
                                 height: `${height}px`,
-                                opacity: 0.7 + audioLevel * 0.3,
+                                opacity: 0.6 + audioLevel * 0.4,
+                                background: `linear-gradient(to top, rgb(239, 68, 68), rgb(236, 72, 153))`,
                               }}
                             />
                           );
                         })}
                       </div>
 
-                      {/* Recording Timer */}
-                      <div className="mt-4">
-                        <Badge className="bg-red-500 text-white px-4 py-1.5 text-base">
-                          <div className="w-2 h-2 bg-white rounded-full mr-2 animate-pulse" />
-                          {formatTime(recordingTime)}
-                        </Badge>
-                      </div>
+                      {/* Recording Timer Pill */}
+                      <Badge className="bg-red-500/90 text-white px-5 py-2 text-base rounded-2xl shadow-lg shadow-red-500/30">
+                        <div className="w-2 h-2 bg-white rounded-full mr-2.5 animate-pulse" />
+                        {formatTime(recordingTime)}
+                      </Badge>
                     </div>
 
                     <div className="text-center space-y-2">
-                      <h3 className="text-2xl font-semibold">Recording...</h3>
+                      <h3 className="text-2xl font-bold">Recording...</h3>
                       <p className="text-muted-foreground">
                         Speak clearly and naturally. Click stop when finished.
                       </p>
@@ -3491,11 +4864,11 @@ export const PracticeMode = () => {
                     <Button
                       size="lg"
                       variant="destructive"
-                      className="px-8"
+                      className="px-8 h-12 rounded-2xl shadow-lg shadow-red-500/20 hover:shadow-xl hover:shadow-red-500/30 font-bold transition-all duration-200"
                       onClick={handleStopRecording}
                       disabled={isProcessing}
                     >
-                      <MicOff className="mr-2" />
+                      <MicOff className="mr-2 w-5 h-5" />
                       Stop & Submit
                     </Button>
                   </>
@@ -3504,18 +4877,19 @@ export const PracticeMode = () => {
                     {(isPlayingAudio || isAudioLoading) ? (
                       <>
                         <div className="relative">
-                          <div className="w-32 h-32 bg-gradient-to-br from-blue-500 to-purple-500 rounded-full flex items-center justify-center animate-pulse">
-                            <Volume2 className="w-16 h-16 text-white" />
+                          <div className="absolute inset-0 rounded-full bg-gradient-to-br from-blue-500 to-purple-500 blur-xl opacity-40 animate-pulse" />
+                          <div className="relative w-32 h-32 bg-gradient-to-br from-blue-500 to-purple-500 rounded-full flex items-center justify-center shadow-2xl shadow-blue-500/30">
+                            <Volume2 className="w-14 h-14 text-white" />
                           </div>
-                          <div className="absolute -bottom-2 left-1/2 transform -translate-x-1/2">
-                            <Badge className="bg-blue-500 text-white px-3 py-1">
+                          <div className="absolute -bottom-3 left-1/2 transform -translate-x-1/2">
+                            <Badge className="bg-blue-500 text-white px-4 py-1 rounded-xl shadow-lg">
                               AI Speaking
                             </Badge>
                           </div>
                         </div>
 
-                        <div className="text-center space-y-2">
-                          <h3 className="text-2xl font-semibold">Listen to the Question</h3>
+                        <div className="text-center space-y-2 pt-2">
+                          <h3 className="text-2xl font-bold">Listen to the Question</h3>
                           <p className="text-muted-foreground max-w-md">
                             The AI interviewer is asking you the question. Please listen carefully.
                           </p>
@@ -3524,7 +4898,7 @@ export const PracticeMode = () => {
                         <Button
                           size="lg"
                           variant="outline"
-                          className="px-8"
+                          className="px-8 h-12 rounded-2xl"
                           disabled
                         >
                           <Loader2 className="mr-2 animate-spin" />
@@ -3533,28 +4907,33 @@ export const PracticeMode = () => {
                       </>
                     ) : (
                       <>
-                        <div className="w-32 h-32 bg-primary/15 border border-primary/20 rounded-full flex items-center justify-center">
-                          <Mic className="w-16 h-16 text-white" />
+                        <div className="relative">
+                          <div className="absolute inset-0 rounded-full bg-gradient-to-br from-primary/30 to-purple-500/30 blur-xl opacity-30" />
+                          <div className="relative w-32 h-32 bg-gradient-to-br from-primary/20 to-primary/10 border-2 border-primary/30 rounded-full flex items-center justify-center shadow-xl">
+                            <Mic className="w-14 h-14 text-primary" />
+                          </div>
                         </div>
 
                         <div className="text-center space-y-2">
-                          <h3 className="text-2xl font-semibold">Ready to Answer</h3>
+                          <h3 className="text-2xl font-bold">Ready to Answer</h3>
                           <p className="text-muted-foreground max-w-md">
-                            Click the button below to start recording. Timer will begin when you start recording.
+                            {autoStartVoiceRecording
+                              ? 'Recording starts automatically when the question is ready. Timer begins when recording begins.'
+                              : 'Click the button below to start recording. Timer begins when recording begins.'}
                           </p>
                           <div className="flex items-center justify-center gap-2 text-sm">
                             <Clock className="w-4 h-4 text-primary" />
-                            <span className="font-medium text-primary">{currentQuestion?.time_limit}s time limit</span>
+                            <span className="font-semibold text-primary">{currentQuestion?.time_limit}s time limit</span>
                           </div>
                         </div>
 
                         <Button
                           size="lg"
-                          className="px-8"
+                          className="px-8 h-12 rounded-2xl shadow-xl shadow-primary/20 hover:shadow-2xl hover:shadow-primary/30 hover:scale-[1.02] active:scale-[0.98] transition-all duration-200 font-bold"
                           onClick={handleStartRecording}
                           disabled={isProcessing}
                         >
-                          <Mic className="mr-2" />
+                          <Mic className="mr-2 w-5 h-5" />
                           Start Recording
                         </Button>
                       </>
@@ -3570,14 +4949,19 @@ export const PracticeMode = () => {
   }
 
   if (phase === 'processing') {
-    // This phase is kept for backward compatibility, but we avoid showing a big "Analyzing" UI.
     return (
       <div className="max-w-4xl mx-auto w-full px-4 flex items-center justify-center">
         {renderFacePreview()}
         {renderFaceWarningOverlay()}
-        <div className="text-sm text-muted-foreground flex items-center gap-2">
-          <Loader2 className="w-4 h-4 animate-spin" />
-          Working…
+        {renderProctoringStatusPanel()}
+        <div className="flex flex-col items-center gap-4 py-12">
+          <div className="relative">
+            <div className="absolute inset-0 rounded-full bg-gradient-to-r from-primary to-purple-500 blur-xl opacity-30 animate-pulse" />
+            <div className="relative w-16 h-16 rounded-full bg-gradient-to-br from-primary/20 to-purple-500/20 border border-primary/30 flex items-center justify-center">
+              <Loader2 className="w-7 h-7 text-primary animate-spin" />
+            </div>
+          </div>
+          <div className="text-sm text-muted-foreground font-medium">Analyzing your response…</div>
         </div>
       </div>
     );
@@ -3594,33 +4978,156 @@ export const PracticeMode = () => {
     const ratingSubmitting = !!(questionId && ratingSubmittingByQuestion[questionId]);
 
     const isCodeQ = currentQuestion ? isCodingQuestion(currentQuestion) : false;
+    const persistedCodeEvaluation = isCodeQ
+      ? [...questionEvaluations]
+        .reverse()
+        .find((item) => item.kind === 'code' && item.questionId === (currentQuestion?.id || currentQuestionNumber))
+      : undefined;
+    const activeCodeEvaluation = codeEvaluation ?? persistedCodeEvaluation?.codeEvaluation ?? null;
+    const activeCodeTestResults = codeTestResults ?? persistedCodeEvaluation?.testResults ?? null;
+    const feedbackTone = getStrategyToneClasses(strategyPreview?.coaching_style);
+    const feedbackBadgeLabel = getStrategyBadgeLabel(strategyPreview);
+    const feedbackHeadline = getStrategyHeadline(
+      strategyPreview,
+      feedbackRequiresAcknowledgment
+        ? 'Review the feedback, then continue when you’re ready.'
+        : 'Here’s what comes next.'
+    );
+    const feedbackReasonText = formatStrategyReason(strategyPreview?.reason ?? null);
+    const feedbackActionLabel = getStrategyActionLabel(strategyPreview?.action);
+    const feedbackDepthLabel = getStrategyDepthLabel(strategyPreview?.follow_up_depth);
+    const feedbackGuardrail = getStrategyGuardrailText(strategyPreview?.decision_trace?.guardrail);
+    const feedbackPressureMode = formatStrategyTokenLabel(
+      strategyPreview?.decision_trace?.pressure_mode ?? pressure?.mode ?? null
+    );
+    const feedbackButtonLabel = completionPending
+      ? 'Finish'
+      : feedbackRequiresAcknowledgment
+        ? 'Continue'
+        : 'Next Question';
+    const showFeedbackPreview = Boolean(strategyPreview?.action || feedbackReasonText || feedbackRequiresAcknowledgment);
 
     return (
       <div className="max-w-4xl mx-auto w-full px-3 sm:px-4 flex flex-col space-y-3 sm:space-y-4 pb-6">
-        {/* Header */}
+        {renderProctoringStatusPanel()}
+        {/* ── Header ── */}
         <div className="flex items-center justify-between pt-2">
           <div className="flex items-center gap-2">
-            <h2 className="text-lg sm:text-2xl font-bold">{isCodeQ ? 'Code Feedback' : 'Answer Feedback'}</h2>
+            <h2 className="text-xl sm:text-2xl font-black tracking-tight">{isCodeQ ? 'Code Feedback' : 'Answer Feedback'}</h2>
             {completionPending && (
-              <Badge className="bg-primary/10 text-primary border-primary/20" variant="outline">
+              <Badge className="bg-primary/10 text-primary border-primary/20 rounded-xl" variant="outline">
                 Final
               </Badge>
             )}
           </div>
-          <Badge variant="outline" className="text-xs sm:text-sm">
-            Question {currentQuestionNumber} / {totalQuestions}
+          <Badge variant="outline" className="text-xs sm:text-sm rounded-xl">
+            Q {currentQuestionNumber} / {totalQuestions}
           </Badge>
         </div>
+
+        {showFeedbackPreview && (
+          <Card className={`border rounded-2xl overflow-hidden ${feedbackTone.card}`}>
+            <div className="h-0.5 bg-gradient-to-r from-primary via-purple-500 to-primary" />
+            <CardContent className="pt-4 px-4 pb-4 space-y-3">
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                <div className="min-w-0 space-y-2">
+                  <div className="text-[11px] font-black uppercase tracking-[0.18em] text-muted-foreground">
+                    Coming up next
+                  </div>
+                  {feedbackBadgeLabel && (
+                    <Badge variant="outline" className={`rounded-xl ${feedbackTone.badge}`}>
+                      {feedbackBadgeLabel}
+                    </Badge>
+                  )}
+                  <p className="text-base sm:text-lg font-bold leading-relaxed text-foreground/95">
+                    {feedbackHeadline}
+                  </p>
+                  {feedbackReasonText && (
+                    <p className="text-sm leading-relaxed text-muted-foreground">
+                      {feedbackReasonText}
+                    </p>
+                  )}
+                </div>
+
+                {feedbackRequiresAcknowledgment && (
+                  <span className="text-xs text-muted-foreground">Continue when you’re ready.</span>
+                )}
+              </div>
+
+              {strategyDebugMode && strategyPreview?.decision_trace && (
+                <Collapsible>
+                  <CollapsibleTrigger asChild>
+                    <Button type="button" variant="ghost" className="w-full justify-between px-3 py-2 h-auto rounded-lg border border-border/60 bg-background/60">
+                      <div className="text-left">
+                        <div className="text-sm font-semibold">Debug details</div>
+                        <div className="text-xs text-muted-foreground">Internal adaptation metadata for power users.</div>
+                      </div>
+                      <ChevronDown className="w-4 h-4 text-muted-foreground" />
+                    </Button>
+                  </CollapsibleTrigger>
+                  <CollapsibleContent className="space-y-2 px-1 pt-3">
+                    <div className="flex flex-wrap gap-2">
+                      <Badge variant="outline">Action: {feedbackActionLabel}</Badge>
+                      {feedbackDepthLabel && <Badge variant="outline">Depth: {feedbackDepthLabel}</Badge>}
+                      {strategyPreview?.target_difficulty && (
+                        <Badge variant="outline" className="capitalize">Difficulty: {strategyPreview.target_difficulty}</Badge>
+                      )}
+                      {strategyPreview?.coaching_style && (
+                        <Badge variant="outline" className="capitalize">Style: {strategyPreview.coaching_style}</Badge>
+                      )}
+                    </div>
+                    {(feedbackGuardrail || feedbackPressureMode) && (
+                      <div className="grid gap-2 sm:grid-cols-2">
+                        {feedbackGuardrail && (
+                          <div className="rounded-lg border border-border/60 bg-background/70 p-3">
+                            <div className="text-[11px] font-black uppercase tracking-[0.18em] text-muted-foreground">Guardrail</div>
+                            <div className="mt-1 text-sm text-foreground/90">{feedbackGuardrail}</div>
+                          </div>
+                        )}
+                        {feedbackPressureMode && (
+                          <div className="rounded-lg border border-border/60 bg-background/70 p-3">
+                            <div className="text-[11px] font-black uppercase tracking-[0.18em] text-muted-foreground">Pressure mode</div>
+                            <div className="mt-1 text-sm text-foreground/90">{feedbackPressureMode}</div>
+                          </div>
+                        )}
+                      </div>
+                    )}
+
+                    {strategyPreview.decision_trace.follow_up_budget && (
+                      <div className="rounded-lg border border-border/60 bg-background/70 p-3">
+                        <div className="text-[11px] font-black uppercase tracking-[0.18em] text-muted-foreground">Follow-up budget</div>
+                        <div className="mt-2 flex flex-wrap gap-2">
+                          {typeof strategyPreview.decision_trace.follow_up_budget.used === 'number' && (
+                            <Badge variant="outline">Used {strategyPreview.decision_trace.follow_up_budget.used}</Badge>
+                          )}
+                          {typeof strategyPreview.decision_trace.follow_up_budget.max === 'number' && (
+                            <Badge variant="outline">Max {strategyPreview.decision_trace.follow_up_budget.max}</Badge>
+                          )}
+                          {typeof strategyPreview.decision_trace.follow_up_budget.remaining === 'number' && (
+                            <Badge variant="outline">Remaining {strategyPreview.decision_trace.follow_up_budget.remaining}</Badge>
+                          )}
+                        </div>
+                      </div>
+                    )}
+                  </CollapsibleContent>
+                </Collapsible>
+              )}
+            </CardContent>
+          </Card>
+        )}
 
         {/* ── CODE question feedback ── */}
         {isCodeQ && (
           <>
             {/* Code Evaluation Scores */}
-            {codeEvaluation && (
-              <Card className="border-2 bg-gradient-to-br from-blue-500/5 to-blue-500/10">
+            {activeCodeEvaluation && (
+              <Card className="border border-border/30 rounded-2xl overflow-hidden bg-gradient-to-br from-blue-500/5 to-blue-500/10">
+                <div className="h-0.5 bg-gradient-to-r from-blue-500 via-cyan-400 to-blue-500" />
                 <CardHeader className="pb-3">
                   <CardTitle className="text-base sm:text-lg flex items-center gap-2">
-                    <Target className="w-5 h-5 text-blue-500" />
+                    <div className="p-1.5 bg-blue-500/10 rounded-lg">
+                      <Target className="w-5 h-5 text-blue-500" />
+                    </div>
                     Code Evaluation
                   </CardTitle>
                 </CardHeader>
@@ -3628,14 +5135,14 @@ export const PracticeMode = () => {
                   {/* Overall + Pass/Fail */}
                   <div className="flex flex-wrap items-center gap-2">
                     <Badge variant="secondary" className="text-base px-3 py-1">
-                      Overall: {codeEvaluation.overall_score}%
+                      Overall: {activeCodeEvaluation.overall_score}%
                     </Badge>
-                    <Badge variant={codeEvaluation.is_correct ? 'default' : 'destructive'}>
-                      {codeEvaluation.is_correct ? '✅ Accepted' : '❌ Not Accepted'}
+                    <Badge variant={activeCodeEvaluation.is_correct ? 'default' : 'destructive'}>
+                      {activeCodeEvaluation.is_correct ? '✅ Accepted' : '❌ Not Accepted'}
                     </Badge>
-                    {codeEvaluation.test_cases_total !== undefined && (
+                    {activeCodeEvaluation.test_cases_total !== undefined && (
                       <Badge variant="outline">
-                        Tests: {codeEvaluation.test_cases_passed ?? 0}/{codeEvaluation.test_cases_total}
+                        Tests: {activeCodeEvaluation.test_cases_passed ?? 0}/{activeCodeEvaluation.test_cases_total}
                       </Badge>
                     )}
                   </div>
@@ -3643,9 +5150,9 @@ export const PracticeMode = () => {
                   {/* Score breakdown bars */}
                   <div className="space-y-2">
                     {[
-                      { label: 'Correctness', value: codeEvaluation.correctness_score },
-                      { label: 'Code Quality', value: codeEvaluation.code_quality_score },
-                      { label: 'Efficiency', value: codeEvaluation.efficiency_score },
+                      { label: 'Correctness', value: activeCodeEvaluation.correctness_score },
+                      { label: 'Code Quality', value: activeCodeEvaluation.code_quality_score },
+                      { label: 'Efficiency', value: activeCodeEvaluation.efficiency_score },
                     ].map(({ label, value }) => (
                       <div key={label} className="space-y-1">
                         <div className="flex items-center justify-between text-sm">
@@ -3658,18 +5165,18 @@ export const PracticeMode = () => {
                   </div>
 
                   {/* Complexity */}
-                  {(codeEvaluation.time_complexity || codeEvaluation.space_complexity) && (
+                  {(activeCodeEvaluation.time_complexity || activeCodeEvaluation.space_complexity) && (
                     <div className="flex flex-wrap gap-3 text-sm">
-                      {codeEvaluation.time_complexity && (
+                      {activeCodeEvaluation.time_complexity && (
                         <div className="flex items-center gap-1.5">
                           <span className="text-muted-foreground">Time:</span>
-                          <code className="bg-muted px-2 py-0.5 rounded text-xs font-mono">{codeEvaluation.time_complexity}</code>
+                          <code className="bg-muted px-2 py-0.5 rounded text-xs font-mono">{activeCodeEvaluation.time_complexity}</code>
                         </div>
                       )}
-                      {codeEvaluation.space_complexity && (
+                      {activeCodeEvaluation.space_complexity && (
                         <div className="flex items-center gap-1.5">
                           <span className="text-muted-foreground">Space:</span>
-                          <code className="bg-muted px-2 py-0.5 rounded text-xs font-mono">{codeEvaluation.space_complexity}</code>
+                          <code className="bg-muted px-2 py-0.5 rounded text-xs font-mono">{activeCodeEvaluation.space_complexity}</code>
                         </div>
                       )}
                     </div>
@@ -3679,13 +5186,13 @@ export const PracticeMode = () => {
             )}
 
             {/* Test Results Detail */}
-            {codeTestResults && codeTestResults.length > 0 && (
+            {activeCodeTestResults && activeCodeTestResults.length > 0 && (
               <Card>
                 <CardHeader className="pb-3">
                   <CardTitle className="text-base sm:text-lg">Test Results</CardTitle>
                 </CardHeader>
                 <CardContent className="space-y-2">
-                  {codeTestResults.map((test, idx) => (
+                  {activeCodeTestResults.map((test, idx) => (
                     <div key={idx} className={`rounded-md border p-3 text-sm ${test.passed ? 'border-green-500/30 bg-green-500/5' : 'border-red-500/30 bg-red-500/5'}`}>
                       <div className="flex items-center justify-between mb-1">
                         <span className="font-medium">Test Case {test.test_case_number}</span>
@@ -3707,42 +5214,42 @@ export const PracticeMode = () => {
             )}
 
             {/* Approach Feedback */}
-            {codeEvaluation?.approach_feedback && (
+            {activeCodeEvaluation?.approach_feedback && (
               <Card>
                 <CardHeader className="pb-3">
                   <CardTitle className="text-base sm:text-lg">Approach Feedback</CardTitle>
                 </CardHeader>
                 <CardContent>
-                  <p className="text-sm text-muted-foreground whitespace-pre-wrap leading-relaxed">{codeEvaluation.approach_feedback}</p>
+                  <p className="text-sm text-muted-foreground whitespace-pre-wrap leading-relaxed">{activeCodeEvaluation.approach_feedback}</p>
                 </CardContent>
               </Card>
             )}
 
             {/* Edge cases & Suggestions */}
-            {codeEvaluation && (
+            {activeCodeEvaluation && (
               <div className="grid md:grid-cols-2 gap-3">
-                {codeEvaluation.edge_cases_handled && codeEvaluation.edge_cases_handled.length > 0 && (
+                {activeCodeEvaluation.edge_cases_handled && activeCodeEvaluation.edge_cases_handled.length > 0 && (
                   <Card className="border-green-500/30">
                     <CardHeader className="pb-2">
                       <CardTitle className="text-sm text-green-600 dark:text-green-400">✅ Edge Cases Handled</CardTitle>
                     </CardHeader>
                     <CardContent>
                       <ul className="text-xs space-y-1">
-                        {codeEvaluation.edge_cases_handled.map((ec, i) => (
+                        {activeCodeEvaluation.edge_cases_handled.map((ec, i) => (
                           <li key={i} className="flex items-start gap-1.5"><span className="text-green-500 shrink-0">✓</span> {ec}</li>
                         ))}
                       </ul>
                     </CardContent>
                   </Card>
                 )}
-                {codeEvaluation.edge_cases_missed && codeEvaluation.edge_cases_missed.length > 0 && (
+                {activeCodeEvaluation.edge_cases_missed && activeCodeEvaluation.edge_cases_missed.length > 0 && (
                   <Card className="border-red-500/30">
                     <CardHeader className="pb-2">
                       <CardTitle className="text-sm text-red-600 dark:text-red-400">❌ Edge Cases Missed</CardTitle>
                     </CardHeader>
                     <CardContent>
                       <ul className="text-xs space-y-1">
-                        {codeEvaluation.edge_cases_missed.map((ec, i) => (
+                        {activeCodeEvaluation.edge_cases_missed.map((ec, i) => (
                           <li key={i} className="flex items-start gap-1.5"><span className="text-red-500 shrink-0">✗</span> {ec}</li>
                         ))}
                       </ul>
@@ -3753,14 +5260,14 @@ export const PracticeMode = () => {
             )}
 
             {/* Optimization Suggestions */}
-            {codeEvaluation?.optimization_suggestions && codeEvaluation.optimization_suggestions.length > 0 && (
+            {activeCodeEvaluation?.optimization_suggestions && activeCodeEvaluation.optimization_suggestions.length > 0 && (
               <Card>
                 <CardHeader className="pb-2">
                   <CardTitle className="text-sm">💡 Optimization Suggestions</CardTitle>
                 </CardHeader>
                 <CardContent>
                   <ul className="text-xs space-y-1.5">
-                    {codeEvaluation.optimization_suggestions.map((s, i) => (
+                    {activeCodeEvaluation.optimization_suggestions.map((s, i) => (
                       <li key={i} className="flex items-start gap-2"><span className="text-primary shrink-0">→</span> <span className="leading-relaxed">{s}</span></li>
                     ))}
                   </ul>
@@ -3769,10 +5276,10 @@ export const PracticeMode = () => {
             )}
 
             {/* No evaluation fallback */}
-            {!codeEvaluation && (!codeTestResults || codeTestResults.length === 0) && (
+            {!activeCodeEvaluation && (!activeCodeTestResults || activeCodeTestResults.length === 0) && (
               <Card className="border-amber-500/30">
                 <CardContent className="py-8 text-center">
-                  <p className="text-muted-foreground">Code evaluation is being processed. The results will appear in the final summary.</p>
+                  <p className="text-muted-foreground">No code evaluation details were returned for this submission.</p>
                 </CardContent>
               </Card>
             )}
@@ -3782,8 +5289,8 @@ export const PracticeMode = () => {
         {/* ── VOICE question feedback ── */}
         {!isCodeQ && (
           <>
-        {/* Pressure / Mode indicator */}
-        {pressure && (pressure.mode || pressure.reason) && (
+        {/* Pressure / Mode indicator (debug only) */}
+        {strategyDebugMode && pressure && (pressure.mode || pressure.reason) && (
           <Card className="border-muted">
             <CardContent className="pt-4 px-3 sm:px-6 pb-4 sm:pb-5">
               <div className="flex items-start justify-between gap-3">
@@ -3805,45 +5312,21 @@ export const PracticeMode = () => {
           </Card>
         )}
 
-        {/* Speech Metrics - Compact Mobile Grid */}
-        <div className="grid grid-cols-3 gap-2 sm:gap-4">
-          <Card className="border-muted overflow-hidden">
-            <CardHeader className="pb-2 px-2 sm:px-6 pt-3 sm:pt-6">
-              <CardTitle className="text-[10px] sm:text-sm font-medium text-muted-foreground uppercase tracking-wide truncate">
-                Speed
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="px-2 sm:px-6 pb-3 sm:pb-6">
-              <div className="text-xl sm:text-3xl font-bold truncate">{speechMetrics?.wpm || 0}</div>
-              <p className="text-[9px] sm:text-xs text-muted-foreground mt-0.5 sm:mt-1 truncate">wpm</p>
-            </CardContent>
-          </Card>
-
-          <Card className="border-muted overflow-hidden">
-            <CardHeader className="pb-2 px-2 sm:px-6 pt-3 sm:pt-6">
-              <CardTitle className="text-[10px] sm:text-sm font-medium text-muted-foreground uppercase tracking-wide truncate">
-                Confidence
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="px-2 sm:px-6 pb-3 sm:pb-6">
-              <div className="text-xl sm:text-3xl font-bold truncate">
-                {((speechMetrics?.confidence_score || 0) * 100).toFixed(0)}%
-              </div>
-              <p className="text-[9px] sm:text-xs text-muted-foreground mt-0.5 sm:mt-1 truncate">score</p>
-            </CardContent>
-          </Card>
-
-          <Card className="border-muted overflow-hidden">
-            <CardHeader className="pb-2 px-2 sm:px-6 pt-3 sm:pt-6">
-              <CardTitle className="text-[10px] sm:text-sm font-medium text-muted-foreground uppercase tracking-wide truncate">
-                Fillers
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="px-2 sm:px-6 pb-3 sm:pb-6">
-              <div className="text-xl sm:text-3xl font-bold truncate">{speechMetrics?.filler_count || 0}</div>
-              <p className="text-[9px] sm:text-xs text-muted-foreground mt-0.5 sm:mt-1 truncate">um, uh</p>
-            </CardContent>
-          </Card>
+        {/* Speech Metrics - Futuristic Grid */}
+        <div className="grid grid-cols-3 gap-2 sm:gap-3">
+          {[
+            { label: 'Speed', value: speechMetrics?.wpm || 0, unit: 'wpm', icon: Activity, color: 'text-blue-500' },
+            { label: 'Confidence', value: `${((speechMetrics?.confidence_score || 0) * 100).toFixed(0)}%`, unit: 'score', icon: Gauge, color: 'text-green-500' },
+            { label: 'Fillers', value: speechMetrics?.filler_count || 0, unit: 'um, uh', icon: CircleDot, color: 'text-amber-500' },
+          ].map((metric) => (
+            <Card key={metric.label} className="border-border/20 rounded-2xl overflow-hidden">
+              <CardContent className="p-3 sm:p-4 text-center">
+                <metric.icon className={`w-4 h-4 mx-auto mb-1.5 ${metric.color} opacity-60`} />
+                <div className="text-xl sm:text-3xl font-black">{metric.value}</div>
+                <p className="text-[9px] sm:text-xs text-muted-foreground mt-0.5 uppercase tracking-wider">{metric.unit}</p>
+              </CardContent>
+            </Card>
+          ))}
         </div>
 
         {/* VAD Silence Removal - Compact Mobile Version */}
@@ -3886,7 +5369,6 @@ export const PracticeMode = () => {
                       </span>
                     </div>
                   </div>
-
                   <div className="mt-2">
                     <Progress
                       value={Math.min(100, (speechMetrics.silence_removed / (speechMetrics.duration || 1)) * 100)}
@@ -3903,9 +5385,15 @@ export const PracticeMode = () => {
         )}
 
         {/* Your Answer & Feedback */}
-        <Card className="flex-1">
+        <Card className="flex-1 rounded-2xl border border-border/30 overflow-hidden">
+          <div className="h-0.5 bg-gradient-to-r from-green-500 via-emerald-400 to-green-500" />
           <CardHeader className="px-3 sm:px-6 pt-4 sm:pt-6 pb-3">
-            <CardTitle className="text-base sm:text-lg">Your Answer</CardTitle>
+            <CardTitle className="text-base sm:text-lg flex items-center gap-2">
+              <div className="p-1.5 bg-green-500/10 rounded-lg">
+                <FileText className="w-4 h-4 text-green-500" />
+              </div>
+              Your Answer
+            </CardTitle>
           </CardHeader>
           <CardContent className="space-y-3 sm:space-y-4 px-3 sm:px-6 pb-4 sm:pb-6">
             <ScrollArea className="h-24 sm:h-32">
@@ -4221,7 +5709,8 @@ export const PracticeMode = () => {
 
         {/* Phase 3: Feedback usefulness rating (optional) */}
         {questionId && (
-          <Card className="border-muted">
+          <Card className="border-border/20 rounded-2xl overflow-hidden">
+            <div className="h-0.5 bg-gradient-to-r from-yellow-500 via-amber-400 to-yellow-500" />
             <CardHeader className="px-3 sm:px-6 pt-4 sm:pt-6 pb-3">
               <CardTitle className="text-base sm:text-lg">Was this feedback useful?</CardTitle>
               <CardDescription className="text-xs sm:text-sm">Optional — helps us improve the coach.</CardDescription>
@@ -4302,7 +5791,7 @@ export const PracticeMode = () => {
             onClick={handleNextQuestion}
             disabled={isProcessing || !!guestGateBanner}
             size="lg"
-            className="px-8"
+            className="px-8 h-12 rounded-2xl shadow-xl shadow-primary/20 hover:shadow-2xl hover:shadow-primary/30 hover:scale-[1.02] active:scale-[0.98] transition-all duration-200 font-bold"
           >
             {isProcessing ? (
               <>
@@ -4314,7 +5803,7 @@ export const PracticeMode = () => {
               </>
             ) : (
               <>
-                {completionPending ? 'Finish' : 'Next Question'}
+                {feedbackButtonLabel}
                 {completionPending ? (
                   <CheckCircle2 className="ml-2 w-4 h-4" />
                 ) : (
@@ -4337,57 +5826,274 @@ export const PracticeMode = () => {
       : Math.round((avgConfidence / 10) * 100); // 0-10 scale → convert to percentage
     const grade = getScoreGrade(score);
 
+    // ── Report download handler ──
+    const handleDownloadReport = () => {
+      const now = new Date();
+      const dateStr = now.toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
+      const timeStr = now.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
+
+      const strengthsList = evaluation?.strengths?.items && Array.isArray(evaluation.strengths.items) && evaluation.strengths.items.length > 0
+        ? evaluation.strengths.items.map((s: string, i: number) => `  ${i + 1}. ${s}`).join('\n')
+        : '  No strengths data available';
+
+      const improvementsList = evaluation?.improvements?.items && Array.isArray(evaluation.improvements.items) && evaluation.improvements.items.length > 0
+        ? evaluation.improvements.items.map((a: string, i: number) => `  ${i + 1}. ${a}`).join('\n')
+        : '  No improvement areas data available';
+
+      const actionSteps = evaluation?.action_plan?.steps && Array.isArray(evaluation.action_plan.steps) && evaluation.action_plan.steps.length > 0
+        ? evaluation.action_plan.steps.map((s: string, i: number) => `  Step ${i + 1}: ${s}`).join('\n')
+        : '  No action plan available';
+
+      const avgWpm = evaluation?.metrics_summary?.avg_wpm || evaluation?.speech_summary?.average_wpm || 0;
+      const totalFillers = evaluation?.metrics_summary?.total_fillers || evaluation?.speech_summary?.total_filler_count || 0;
+      const avgConf = ((evaluation?.metrics_summary?.avg_confidence || evaluation?.speech_summary?.average_confidence || 0) * 100).toFixed(0);
+      const longestPause = (evaluation?.metrics_summary?.longest_pause || 0).toFixed(1);
+      const totalDuration = formatTime(Math.floor(evaluation?.metrics_summary?.total_duration || 0));
+      const overtalkCount = evaluation?.metrics_summary?.overtalked_count || 0;
+
+      let questionDetails = '';
+      if (questionEvaluations.length > 0) {
+        const sorted = [...questionEvaluations].sort((a, b) => a.questionNumber - b.questionNumber);
+        questionDetails = sorted.map((item) => {
+          let detail = `\n  Question ${item.questionNumber} (${item.kind.toUpperCase()})`;
+          if (item.questionText) detail += `\n    Q: ${item.questionText}`;
+          if (item.kind === 'voice') {
+            if (item.transcript) detail += `\n    Your Answer: ${item.transcript}`;
+            if (item.metrics?.wpm) detail += `\n    WPM: ${item.metrics.wpm}`;
+            const voiceConf = item.metrics?.confidence_score !== undefined
+              ? Math.round((item.metrics.confidence_score || 0) * 100) : undefined;
+            if (voiceConf !== undefined) detail += ` | Confidence: ${voiceConf}%`;
+            if (item.metrics?.filler_count !== undefined) detail += ` | Fillers: ${item.metrics.filler_count}`;
+            if (item.microFeedback?.correctness_score !== undefined) {
+              detail += `\n    Correctness: ${item.microFeedback.correctness_score}%`;
+              if (item.microFeedback.technical_accuracy) detail += ` (${item.microFeedback.technical_accuracy})`;
+            }
+            if (item.microFeedback?.key_points_covered?.length) detail += `\n    Key Points Covered: ${item.microFeedback.key_points_covered.join('; ')}`;
+            if (item.microFeedback?.key_points_missed?.length) detail += `\n    Key Points Missed: ${item.microFeedback.key_points_missed.join('; ')}`;
+            if (item.microFeedback?.strengths?.length) detail += `\n    Strengths: ${item.microFeedback.strengths.join('; ')}`;
+            if (item.microFeedback?.improvement_areas?.length) detail += `\n    Areas to Improve: ${item.microFeedback.improvement_areas.join('; ')}`;
+            if (item.microFeedback?.model_answer) detail += `\n    Model Answer: ${item.microFeedback.model_answer}`;
+          } else if (item.kind === 'code') {
+            if (item.codeEvaluation) {
+              detail += `\n    Overall: ${item.codeEvaluation.overall_score}% | ${item.codeEvaluation.is_correct ? 'Accepted' : 'Not Accepted'}`;
+              if (item.codeEvaluation.correctness_score !== undefined) detail += `\n    Correctness: ${item.codeEvaluation.correctness_score}%`;
+              if (item.codeEvaluation.code_quality_score !== undefined) detail += ` | Quality: ${item.codeEvaluation.code_quality_score}%`;
+              if (item.codeEvaluation.efficiency_score !== undefined) detail += ` | Efficiency: ${item.codeEvaluation.efficiency_score}%`;
+              if (item.codeEvaluation.time_complexity) detail += `\n    Time: ${item.codeEvaluation.time_complexity}`;
+              if (item.codeEvaluation.space_complexity) detail += ` | Space: ${item.codeEvaluation.space_complexity}`;
+              if (item.codeEvaluation.approach_feedback) detail += `\n    Approach: ${item.codeEvaluation.approach_feedback}`;
+              if (item.codeEvaluation.edge_cases_handled?.length) detail += `\n    Edge Cases Handled: ${item.codeEvaluation.edge_cases_handled.join('; ')}`;
+              if (item.codeEvaluation.edge_cases_missed?.length) detail += `\n    Edge Cases Missed: ${item.codeEvaluation.edge_cases_missed.join('; ')}`;
+              if (item.codeEvaluation.optimization_suggestions?.length) detail += `\n    Suggestions: ${item.codeEvaluation.optimization_suggestions.join('; ')}`;
+            }
+            if (item.testResults?.length) {
+              const passed = item.testResults.filter((t) => t.passed).length;
+              detail += `\n    Tests: ${passed}/${item.testResults.length} passed`;
+            }
+          }
+          return detail;
+        }).join('\n');
+      }
+
+      const skippedSection = endedEarlyData?.skipped_questions?.length
+        ? `\n\n${'═'.repeat(60)}\n  SKIPPED QUESTIONS\n${'═'.repeat(60)}\n${endedEarlyData.skipped_questions.map((q) => `  Q${q.question_number}: ${q.question}${q.category ? ` [${q.category}]` : ''}`).join('\n')}`
+        : '';
+
+      const proctoringSection = proctoringSessionEndSummary
+        ? `\n\n${'═'.repeat(60)}\n  PROCTORING SUMMARY\n${'═'.repeat(60)}\n  ${proctoringSessionEndSummary.title}\n  ${proctoringSessionEndSummary.description}${proctoringSessionEndSummary.items.length ? '\n' + proctoringSessionEndSummary.items.map((item) => `  • ${item}`).join('\n') : ''}`
+        : '';
+
+      const reportContent = `
+${'╔' + '═'.repeat(58) + '╗'}
+${'║'}  STRATAX AI — INTERVIEW EVALUATION REPORT${' '.repeat(15)}${'║'}
+${'╚' + '═'.repeat(58) + '╝'}
+
+  Generated: ${dateStr} at ${timeStr}
+  Session ID: ${sessionId || 'N/A'}
+  ${currentRoundConfig ? `Round: ${currentRoundConfig.name}` : ''}
+  Questions: ${totalQuestions}${endedEarlyData?.ended_early ? ` (${endedEarlyData.questions_answered ?? currentQuestionNumber} answered)` : ''}
+
+${'═'.repeat(60)}
+  OVERALL SCORE
+${'═'.repeat(60)}
+  Score: ${score}/100 (Grade: ${grade})
+  ${score >= 80 ? '★ Excellent Performance!' : score >= 60 ? '★ Good Performance!' : score >= 40 ? '△ Fair — Keep Practicing' : '▽ Needs Improvement — Don\'t Give Up!'}
+
+${'═'.repeat(60)}
+  SPEECH ANALYTICS
+${'═'.repeat(60)}
+  Average Speed:    ${avgWpm} WPM
+  Total Fillers:    ${totalFillers}
+  Avg Confidence:   ${avgConf}%
+  Longest Pause:    ${longestPause}s
+  Duration:         ${totalDuration}
+  Overtalk Count:   ${overtalkCount}
+
+${evaluation?.learning_insight ? `  Peer Benchmark: ${evaluation.learning_insight}\n` : ''}
+${'═'.repeat(60)}
+  STRENGTHS
+${'═'.repeat(60)}
+${strengthsList}
+
+${'═'.repeat(60)}
+  AREAS FOR IMPROVEMENT
+${'═'.repeat(60)}
+${improvementsList}
+
+${'═'.repeat(60)}
+  ACTION PLAN
+${'═'.repeat(60)}
+${actionSteps}
+${evaluation?.practice_recommendation ? `\n  Recommendation: ${evaluation.practice_recommendation}` : ''}
+
+${'═'.repeat(60)}
+  DETAILED QUESTION ANALYSIS
+${'═'.repeat(60)}
+${questionDetails || '  No detailed question data available'}
+${skippedSection}${proctoringSection}
+
+${'─'.repeat(60)}
+  Report generated by StrataxAI Interview Practice Platform
+  © ${now.getFullYear()} StrataxAI — All rights reserved
+${'─'.repeat(60)}
+`.trim();
+
+      const blob = new Blob([reportContent], { type: 'text/plain;charset=utf-8' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `StrataxAI_Interview_Report_${now.toISOString().slice(0, 10)}.txt`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+
+      toast({
+        title: 'Report Downloaded',
+        description: 'Your evaluation report has been saved.',
+      });
+    };
+
     return (
       <div className="max-w-4xl mx-auto w-full px-4 overflow-auto">
         <ScrollArea className="h-full">
-          <div className="space-y-6">
-            {/* Header */}
-            <Card className="border-2 bg-muted/20">
-              <CardContent className="pt-8 pb-8">
-                <div className="text-center space-y-4">
-                  <div className="mx-auto w-24 h-24 bg-gradient-to-br from-yellow-400 to-orange-500 rounded-full flex items-center justify-center">
-                    <Trophy className="w-12 h-12 text-white" />
+          <div className="space-y-6 pb-8">
+
+            {/* ── HERO: Futuristic completion header ── */}
+            <div className="relative overflow-hidden rounded-3xl border border-border/30 bg-gradient-to-br from-background via-background/95 to-primary/5 shadow-2xl shadow-black/20">
+              {/* Animated background elements */}
+              <div className="absolute inset-0 overflow-hidden">
+                <div className="absolute -top-20 -right-20 w-60 h-60 rounded-full bg-gradient-to-br from-primary/10 to-transparent blur-3xl" />
+                <div className="absolute -bottom-10 -left-10 w-40 h-40 rounded-full bg-gradient-to-tr from-purple-500/10 to-transparent blur-3xl" />
+                <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-96 h-96 rounded-full bg-gradient-to-r from-cyan-400/5 to-primary/5 blur-3xl" />
+              </div>
+
+              <div className="relative pt-10 pb-8 px-6">
+                <div className="text-center space-y-5">
+                  {/* Animated trophy with glow ring */}
+                  <div className="relative mx-auto w-28 h-28 md:w-32 md:h-32">
+                    <div className="absolute inset-0 rounded-full bg-gradient-to-r from-yellow-400 via-orange-500 to-amber-400 animate-spin opacity-60" style={{ animationDuration: '4s' }} />
+                    <div className="absolute inset-[3px] rounded-full bg-background" />
+                    <div className="absolute inset-[6px] rounded-full bg-gradient-to-br from-yellow-400/30 via-orange-500/20 to-amber-400/30 flex items-center justify-center backdrop-blur-sm">
+                      <Trophy className="w-14 h-14 md:w-16 md:h-16 text-yellow-500 drop-shadow-[0_0_12px_rgba(234,179,8,0.5)]" />
+                    </div>
                   </div>
-                  <div>
-                    <h1 className="text-2xl sm:text-4xl font-bold mb-2">Interview Complete!</h1>
+
+                  <div className="space-y-2">
+                    <h1 className="text-3xl sm:text-4xl md:text-5xl font-black tracking-tight bg-gradient-to-r from-foreground via-primary to-foreground bg-clip-text text-transparent">
+                      Interview Complete!
+                    </h1>
                     {endedEarlyData?.ended_early && (
-                      <div className="inline-flex items-center px-3 py-1 mb-2 rounded-full bg-yellow-500/10 text-yellow-600 dark:text-yellow-400 text-sm font-medium">
-                        ⚠️ Ended early — {endedEarlyData.questions_answered ?? currentQuestionNumber}/{endedEarlyData.total_questions ?? totalQuestions} answered
+                      <div className={`inline-flex items-center px-4 py-1.5 rounded-2xl text-sm font-semibold backdrop-blur-sm ${
+                        proctoringSessionEndSummary
+                          ? 'bg-red-500/10 text-red-600 dark:text-red-400 border border-red-500/20'
+                          : 'bg-yellow-500/10 text-yellow-600 dark:text-yellow-400 border border-yellow-500/20'
+                      }`}>
+                        {proctoringSessionEndSummary ? '🚨 Interview ended by proctoring' : '⚠️ Ended early'} — {endedEarlyData.questions_answered ?? currentQuestionNumber}/{endedEarlyData.total_questions ?? totalQuestions} answered
                       </div>
                     )}
                     {currentRoundConfig ? (
-                      <p className="text-muted-foreground text-lg">
-                        Completed <span className="font-semibold text-primary">{currentRoundConfig.name}</span> • {totalQuestions} questions
+                      <p className="text-muted-foreground text-base md:text-lg">
+                        Completed <span className="font-bold text-primary">{currentRoundConfig.name}</span> — {totalQuestions} questions
                       </p>
                     ) : (
-                      <p className="text-muted-foreground text-lg">
-                        Great job completing all {totalQuestions} questions!
+                      <p className="text-muted-foreground text-base md:text-lg">
+                        Great job completing all <span className="font-bold text-primary">{totalQuestions}</span> questions!
                       </p>
                     )}
                   </div>
+
+                  {/* Completion badge */}
+                  <div className="inline-flex items-center gap-2 px-5 py-2.5 rounded-2xl bg-gradient-to-r from-primary/10 via-primary/5 to-primary/10 border border-primary/20 backdrop-blur-sm">
+                    <Sparkles className="w-4 h-4 text-primary" />
+                    <span className="text-sm font-semibold text-primary">See your detailed score breakdown below</span>
+                    <ChevronDown className="w-4 h-4 text-primary animate-bounce" />
+                  </div>
                 </div>
-              </CardContent>
-            </Card>
+              </div>
+            </div>
+
+            {/* Proctoring termination summary */}
+            {proctoringSessionEndSummary && (
+              <Card className="border-red-500/30 bg-gradient-to-br from-red-500/5 to-transparent rounded-2xl overflow-hidden">
+                <div className="h-0.5 bg-gradient-to-r from-red-500 via-red-400 to-red-500" />
+                <CardHeader>
+                  <CardTitle className="text-lg flex items-center gap-2 text-red-600 dark:text-red-400">
+                    <div className="p-1.5 bg-red-500/10 rounded-lg">
+                      <AlertCircle className="h-5 w-5" />
+                    </div>
+                    {proctoringSessionEndSummary.title}
+                  </CardTitle>
+                  <CardDescription className="text-sm text-red-700/80 dark:text-red-300/80">
+                    {proctoringSessionEndSummary.description}
+                  </CardDescription>
+                </CardHeader>
+                {proctoringSessionEndSummary.items.length > 0 && (
+                  <CardContent className="space-y-2 text-sm text-foreground">
+                    {proctoringSessionEndSummary.items.map((item) => (
+                      <div key={item} className="flex items-start gap-2">
+                        <span className="mt-0.5 text-red-500">•</span>
+                        <span>{item}</span>
+                      </div>
+                    ))}
+                  </CardContent>
+                )}
+              </Card>
+            )}
 
             {/* Instant Score Breakdown */}
             {sessionId && (
               <InstantScoreBreakdown 
                 sessionId={sessionId} 
-                onViewProgress={() => navigate('/progress')}
+                onViewProgress={() => navigate('/progress', { state: { refreshToken: Date.now() } })}
               />
             )}
 
-            {/* All Questions Evaluation (shown only at end) */}
-            {questionEvaluations.length > 0 && (
-              <Card>
-                <CardHeader>
-                  <CardTitle className="text-xl sm:text-2xl">All Questions Evaluation</CardTitle>
-                  <CardDescription>
-                    Review feedback for each question in one place.
-                  </CardDescription>
-                </CardHeader>
-                <CardContent className="space-y-4">
-                  {questionEvaluations
+            {/* ── TABBED REPORT VIEW ── */}
+            <Tabs defaultValue="questions" className="w-full">
+              <TabsList className="w-full grid grid-cols-4 h-12 rounded-2xl bg-muted/40 border border-border/30 p-1">
+                <TabsTrigger value="questions" className="rounded-xl text-xs sm:text-sm font-semibold data-[state=active]:bg-background data-[state=active]:shadow-md transition-all">
+                  <Layers className="w-3.5 h-3.5 mr-1.5 hidden sm:block" />
+                  Questions
+                </TabsTrigger>
+                <TabsTrigger value="strengths" className="rounded-xl text-xs sm:text-sm font-semibold data-[state=active]:bg-background data-[state=active]:shadow-md transition-all">
+                  <TrendingUp className="w-3.5 h-3.5 mr-1.5 hidden sm:block" />
+                  Insights
+                </TabsTrigger>
+                <TabsTrigger value="analytics" className="rounded-xl text-xs sm:text-sm font-semibold data-[state=active]:bg-background data-[state=active]:shadow-md transition-all">
+                  <Activity className="w-3.5 h-3.5 mr-1.5 hidden sm:block" />
+                  Analytics
+                </TabsTrigger>
+                <TabsTrigger value="plan" className="rounded-xl text-xs sm:text-sm font-semibold data-[state=active]:bg-background data-[state=active]:shadow-md transition-all">
+                  <Target className="w-3.5 h-3.5 mr-1.5 hidden sm:block" />
+                  Action Plan
+                </TabsTrigger>
+              </TabsList>
+
+              {/* TAB: All Questions Evaluation */}
+              <TabsContent value="questions" className="mt-4 space-y-4 animate-in fade-in slide-in-from-bottom-2 duration-300">
+                {questionEvaluations.length > 0 ? (
+                  questionEvaluations
                     .slice()
                     .sort((a, b) => a.questionNumber - b.questionNumber)
                     .map((item) => {
@@ -4400,20 +6106,26 @@ export const PracticeMode = () => {
                         : item.codeEvaluation?.test_cases_passed;
 
                       return (
-                        <Card key={`${item.kind}-${item.questionNumber}-${item.createdAt}`} className="border-muted">
+                        <Card key={`${item.kind}-${item.questionNumber}-${item.createdAt}`} className="border border-border/30 rounded-2xl overflow-hidden hover:shadow-lg hover:shadow-primary/5 transition-all duration-300 group">
+                          <div className={`h-0.5 ${item.kind === 'code' ? 'bg-gradient-to-r from-blue-500 via-cyan-400 to-blue-500' : 'bg-gradient-to-r from-green-500 via-emerald-400 to-green-500'}`} />
                           <CardHeader className="pb-3">
                             <div className="flex items-start justify-between gap-3">
-                              <div className="min-w-0">
-                                <CardTitle className="text-base sm:text-lg truncate">
-                                  Question {item.questionNumber}
-                                </CardTitle>
+                              <div className="min-w-0 flex-1">
+                                <div className="flex items-center gap-2">
+                                  <div className={`w-8 h-8 rounded-xl flex items-center justify-center text-xs font-black ${item.kind === 'code' ? 'bg-blue-500/10 text-blue-500 border border-blue-500/20' : 'bg-green-500/10 text-green-500 border border-green-500/20'}`}>
+                                    Q{item.questionNumber}
+                                  </div>
+                                  <CardTitle className="text-base sm:text-lg truncate">
+                                    Question {item.questionNumber}
+                                  </CardTitle>
+                                </div>
                                 {item.questionText && (
-                                  <p className="text-xs sm:text-sm text-muted-foreground mt-1 line-clamp-2">
+                                  <p className="text-xs sm:text-sm text-muted-foreground mt-2 line-clamp-2 pl-10">
                                     {item.questionText}
                                   </p>
                                 )}
                               </div>
-                              <Badge variant="outline" className={item.kind === 'code' ? 'bg-blue-500/10 border-blue-500/50 text-blue-700 dark:text-blue-400' : 'bg-green-500/10 border-green-500/50 text-green-700 dark:text-green-400'}>
+                              <Badge variant="outline" className={`shrink-0 rounded-xl ${item.kind === 'code' ? 'bg-blue-500/10 border-blue-500/30 text-blue-600 dark:text-blue-400' : 'bg-green-500/10 border-green-500/30 text-green-600 dark:text-green-400'}`}>
                                 {item.kind === 'code' ? 'CODE' : 'VOICE'}
                               </Badge>
                             </div>
@@ -4423,48 +6135,44 @@ export const PracticeMode = () => {
                               <>
                                 {item.transcript && (
                                   <div className="space-y-2">
-                                    <div className="text-sm font-medium">Transcript</div>
-                                    <div className="rounded-md border bg-muted/30 p-3">
-                                      <p className="text-sm text-muted-foreground whitespace-pre-wrap">{item.transcript}</p>
+                                    <div className="text-xs font-semibold uppercase tracking-wider text-muted-foreground/70 flex items-center gap-1.5">
+                                      <FileText className="w-3 h-3" />
+                                      Transcript
+                                    </div>
+                                    <div className="rounded-xl border border-border/30 bg-muted/20 p-3 backdrop-blur-sm">
+                                      <p className="text-sm text-muted-foreground whitespace-pre-wrap leading-relaxed">{item.transcript}</p>
                                     </div>
                                   </div>
                                 )}
 
                                 {(item.metrics || item.microFeedback) && (
-                                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
-                                    <Card className="border-muted">
-                                      <CardContent className="pt-4">
-                                        <div className="text-xs text-muted-foreground">WPM</div>
-                                        <div className="text-xl font-semibold">{item.metrics?.wpm ?? 0}</div>
-                                      </CardContent>
-                                    </Card>
-                                    <Card className="border-muted">
-                                      <CardContent className="pt-4">
-                                        <div className="text-xs text-muted-foreground">Confidence</div>
-                                        <div className="text-xl font-semibold">{voiceConfidencePct ?? 0}%</div>
-                                      </CardContent>
-                                    </Card>
-                                    <Card className="border-muted">
-                                      <CardContent className="pt-4">
-                                        <div className="text-xs text-muted-foreground">Fillers</div>
-                                        <div className="text-xl font-semibold">{item.metrics?.filler_count ?? 0}</div>
-                                      </CardContent>
-                                    </Card>
+                                  <div className="grid grid-cols-3 gap-2">
+                                    {[
+                                      { label: 'WPM', value: item.metrics?.wpm ?? 0, icon: Activity },
+                                      { label: 'Confidence', value: `${voiceConfidencePct ?? 0}%`, icon: Gauge },
+                                      { label: 'Fillers', value: item.metrics?.filler_count ?? 0, icon: CircleDot },
+                                    ].map((metric) => (
+                                      <div key={metric.label} className="p-3 rounded-xl bg-muted/20 border border-border/20 text-center">
+                                        <metric.icon className="w-3.5 h-3.5 mx-auto text-muted-foreground/50 mb-1" />
+                                        <div className="text-lg font-bold">{metric.value}</div>
+                                        <div className="text-[10px] text-muted-foreground uppercase tracking-wider">{metric.label}</div>
+                                      </div>
+                                    ))}
                                   </div>
                                 )}
 
                                 {item.microFeedback?.correctness_score !== undefined && (
                                   <div className="flex flex-wrap items-center gap-2">
-                                    <Badge variant="secondary">
+                                    <Badge variant="secondary" className="rounded-xl">
                                       Correctness: {item.microFeedback.correctness_score}%
                                     </Badge>
                                     {typeof item.microFeedback.is_correct === 'boolean' && (
-                                      <Badge variant={item.microFeedback.is_correct ? 'default' : 'destructive'}>
+                                      <Badge variant={item.microFeedback.is_correct ? 'default' : 'destructive'} className="rounded-xl">
                                         {item.microFeedback.is_correct ? 'Correct' : 'Needs Improvement'}
                                       </Badge>
                                     )}
                                     {item.microFeedback.technical_accuracy && (
-                                      <Badge variant="outline">{item.microFeedback.technical_accuracy}</Badge>
+                                      <Badge variant="outline" className="rounded-xl">{item.microFeedback.technical_accuracy}</Badge>
                                     )}
                                   </div>
                                 )}
@@ -4475,29 +6183,32 @@ export const PracticeMode = () => {
                               <>
                                 {item.codeEvaluation && (
                                   <div className="flex flex-wrap items-center gap-2">
-                                    <Badge variant="secondary">Overall: {item.codeEvaluation.overall_score}%</Badge>
-                                    <Badge variant={item.codeEvaluation.is_correct ? 'default' : 'destructive'}>
-                                      {item.codeEvaluation.is_correct ? 'Accepted' : 'Not Accepted'}
+                                    <Badge variant="secondary" className="rounded-xl text-sm px-3 py-1">Overall: {item.codeEvaluation.overall_score}%</Badge>
+                                    <Badge variant={item.codeEvaluation.is_correct ? 'default' : 'destructive'} className="rounded-xl">
+                                      {item.codeEvaluation.is_correct ? '✅ Accepted' : '❌ Not Accepted'}
                                     </Badge>
                                     {testsTotal !== undefined && testsPassed !== undefined && (
-                                      <Badge variant="outline">Tests: {testsPassed}/{testsTotal}</Badge>
+                                      <Badge variant="outline" className="rounded-xl">Tests: {testsPassed}/{testsTotal}</Badge>
                                     )}
                                   </div>
                                 )}
 
                                 {item.codeEvaluation?.approach_feedback && (
                                   <div className="space-y-2">
-                                    <div className="text-sm font-medium">Approach Feedback</div>
-                                    <div className="rounded-md border bg-muted/30 p-3">
-                                      <p className="text-sm text-muted-foreground whitespace-pre-wrap">{item.codeEvaluation.approach_feedback}</p>
+                                    <div className="text-xs font-semibold uppercase tracking-wider text-muted-foreground/70 flex items-center gap-1.5">
+                                      <Lightbulb className="w-3 h-3" />
+                                      Approach Feedback
+                                    </div>
+                                    <div className="rounded-xl border border-border/30 bg-muted/20 p-3 backdrop-blur-sm">
+                                      <p className="text-sm text-muted-foreground whitespace-pre-wrap leading-relaxed">{item.codeEvaluation.approach_feedback}</p>
                                     </div>
                                   </div>
                                 )}
 
                                 {item.testResults && item.testResults.length > 0 && (
                                   <div className="space-y-2">
-                                    <div className="text-sm font-medium">Test Results</div>
-                                    <div className="rounded-md border bg-muted/30 p-3 space-y-1.5">
+                                    <div className="text-xs font-semibold uppercase tracking-wider text-muted-foreground/70">Test Results</div>
+                                    <div className="rounded-xl border border-border/30 bg-muted/20 p-3 space-y-1.5">
                                       <div className="text-sm font-medium text-muted-foreground">
                                         {item.testResults.filter((t) => t.passed).length}/{item.testResults.length} passed
                                       </div>
@@ -4514,7 +6225,6 @@ export const PracticeMode = () => {
                                   </div>
                                 )}
 
-                                {/* Fallback if no codeEvaluation */}
                                 {!item.codeEvaluation && (!item.testResults || item.testResults.length === 0) && (
                                   <p className="text-sm text-muted-foreground italic">Code evaluation data not available from server. Check the Score Breakdown above for overall results.</p>
                                 )}
@@ -4523,295 +6233,322 @@ export const PracticeMode = () => {
                           </CardContent>
                         </Card>
                       );
-                    })}
-                </CardContent>
-              </Card>
-            )}
+                    })
+                ) : (
+                  <div className="text-center py-12 text-muted-foreground">
+                    <Layers className="w-8 h-8 mx-auto mb-3 opacity-40" />
+                    <p className="text-sm">No detailed question evaluations available.</p>
+                    <p className="text-xs mt-1">Check the Score Breakdown above for overall results.</p>
+                  </div>
+                )}
+              </TabsContent>
 
-            {/* Fallback: Legacy Score Card (only if instant score fails) */}
-            {!sessionId && (
-              <Card className="border-2">
-                <CardHeader>
-                  <CardTitle className="text-2xl">Overall Performance</CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <div className="flex flex-col sm:flex-row items-center sm:justify-between gap-4">
-                    <div className="flex-1 w-full">
-                      <div className="flex flex-wrap items-baseline gap-2 sm:gap-3 mb-2 justify-center sm:justify-start">
-                        <span className={`text-4xl sm:text-6xl font-bold ${getScoreColor(score)}`}>
-                          {score}
-                        </span>
-                        <span className="text-xl sm:text-3xl text-muted-foreground">/100</span>
-                        <Badge className="text-base sm:text-xl px-3 sm:px-4 py-1 sm:py-2">{grade}</Badge>
-                      </div>
-                      <Progress value={score} className="h-3 mt-4" />
-                      <p className="text-xs text-muted-foreground mt-2 text-center sm:text-left">
-                        Based on average confidence score: {avgConfidence.toFixed(2)}{avgConfidence <= 1 ? ' (0-1 scale)' : '/10'}
-                      </p>
-                    </div>
-                    <div className="flex flex-col items-center gap-2 sm:ml-8">
-                      <div className="relative w-16 h-16">
-                        <Star className="w-16 h-16 text-gray-300 absolute" />
-                        <div
-                          className="overflow-hidden absolute inset-0"
-                          style={{ clipPath: `inset(0 ${100 - score}% 0 0)` }}
-                        >
-                          <Star className="w-16 h-16 text-yellow-500 fill-yellow-500" />
+              {/* TAB: Strengths & Improvements */}
+              <TabsContent value="strengths" className="mt-4 space-y-4 animate-in fade-in slide-in-from-bottom-2 duration-300">
+                <div className="grid md:grid-cols-2 gap-4">
+                  {/* Strengths */}
+                  <Card className="border-green-500/20 rounded-2xl overflow-hidden">
+                    <div className="h-0.5 bg-gradient-to-r from-green-500 via-emerald-400 to-green-500" />
+                    <CardHeader className="pb-3">
+                      <CardTitle className="flex items-center gap-2 text-green-600 dark:text-green-400">
+                        <div className="p-1.5 bg-green-500/10 rounded-lg">
+                          <CheckCircle2 className="w-5 h-5" />
                         </div>
-                      </div>
-                      <span className="text-xs text-muted-foreground font-medium">
-                        {score >= 80 ? 'Excellent!' : score >= 60 ? 'Good!' : score >= 40 ? 'Fair' : 'Keep Practicing'}
-                      </span>
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
-            )}
+                        Your Strengths
+                      </CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                      <ul className="space-y-2.5">
+                        {evaluation?.strengths?.items && Array.isArray(evaluation.strengths.items) && evaluation.strengths.items.length > 0 ? (
+                          evaluation.strengths.items.map((strength, idx) => (
+                            <li key={idx} className="flex items-start gap-2.5 p-2.5 rounded-xl bg-green-500/5 border border-green-500/10">
+                              <CheckCircle2 className="w-4 h-4 text-green-500 mt-0.5 flex-shrink-0" />
+                              <span className="text-sm leading-relaxed">{strength}</span>
+                            </li>
+                          ))
+                        ) : (
+                          <li className="text-sm text-muted-foreground p-2.5">No strengths data available</li>
+                        )}
+                      </ul>
+                    </CardContent>
+                  </Card>
 
-            {/* Strengths */}
-            <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2 text-green-600">
-                  <CheckCircle2 className="w-5 h-5" />
-                  Your Strengths
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                <ul className="space-y-2">
-                  {evaluation?.strengths?.items && Array.isArray(evaluation.strengths.items) && evaluation.strengths.items.length > 0 ? (
-                    evaluation.strengths.items.map((strength, idx) => (
-                      <li key={idx} className="flex items-start gap-2">
-                        <CheckCircle2 className="w-4 h-4 text-green-500 mt-0.5 flex-shrink-0" />
-                        <span className="text-sm">{strength}</span>
-                      </li>
-                    ))
-                  ) : (
-                    <li className="text-sm text-muted-foreground">No strengths data available</li>
-                  )}
-                </ul>
-              </CardContent>
-            </Card>
-
-            {/* Areas for Improvement */}
-            <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2 text-orange-600">
-                  <TrendingUp className="w-5 h-5" />
-                  Areas for Improvement
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                <ul className="space-y-2">
-                  {evaluation?.improvements?.items && Array.isArray(evaluation.improvements.items) && evaluation.improvements.items.length > 0 ? (
-                    evaluation.improvements.items.map((area, idx) => (
-                      <li key={idx} className="flex items-start gap-2">
-                        <Flame className="w-4 h-4 text-orange-500 mt-0.5 flex-shrink-0" />
-                        <span className="text-sm">{area}</span>
-                      </li>
-                    ))
-                  ) : (
-                    <li className="text-sm text-muted-foreground">No improvement areas data available</li>
-                  )}
-                </ul>
-              </CardContent>
-            </Card>
-
-            {/* Speech Summary */}
-            <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <BarChart3 className="w-5 h-5" />
-                  Speech Analytics Summary
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
-                  <div>
-                    <p className="text-sm text-muted-foreground mb-1">Average Speed</p>
-                    <p className="text-2xl font-bold">
-                      {evaluation?.metrics_summary?.avg_wpm || evaluation?.speech_summary?.average_wpm || 0}
-                      <span className="text-sm text-muted-foreground ml-1">WPM</span>
-                    </p>
-                  </div>
-                  <div>
-                    <p className="text-sm text-muted-foreground mb-1">Total Fillers</p>
-                    <p className="text-2xl font-bold">
-                      {evaluation?.metrics_summary?.total_fillers || evaluation?.speech_summary?.total_filler_count || 0}
-                    </p>
-                  </div>
-                  <div>
-                    <p className="text-sm text-muted-foreground mb-1">Avg Confidence</p>
-                    <p className="text-2xl font-bold">
-                      {((evaluation?.metrics_summary?.avg_confidence || evaluation?.speech_summary?.average_confidence || 0) * 100).toFixed(0)}%
-                    </p>
-                  </div>
-                  <div>
-                    <p className="text-sm text-muted-foreground mb-1">Longest Pause</p>
-                    <p className="text-2xl font-bold">
-                      {(evaluation?.metrics_summary?.longest_pause || 0).toFixed(1)}
-                      <span className="text-sm text-muted-foreground ml-1">sec</span>
-                    </p>
-                  </div>
-                  <div>
-                    <p className="text-sm text-muted-foreground mb-1">Duration</p>
-                    <p className="text-2xl font-bold">
-                      {formatTime(Math.floor(evaluation?.metrics_summary?.total_duration || 0))}
-                    </p>
-                  </div>
-                  <div>
-                    <p className="text-sm text-muted-foreground mb-1">Overtalk Count</p>
-                    <p className="text-2xl font-bold">
-                      {evaluation?.metrics_summary?.overtalked_count || 0}
-                    </p>
-                  </div>
+                  {/* Improvements */}
+                  <Card className="border-orange-500/20 rounded-2xl overflow-hidden">
+                    <div className="h-0.5 bg-gradient-to-r from-orange-500 via-amber-400 to-orange-500" />
+                    <CardHeader className="pb-3">
+                      <CardTitle className="flex items-center gap-2 text-orange-600 dark:text-orange-400">
+                        <div className="p-1.5 bg-orange-500/10 rounded-lg">
+                          <TrendingUp className="w-5 h-5" />
+                        </div>
+                        Areas for Improvement
+                      </CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                      <ul className="space-y-2.5">
+                        {evaluation?.improvements?.items && Array.isArray(evaluation.improvements.items) && evaluation.improvements.items.length > 0 ? (
+                          evaluation.improvements.items.map((area, idx) => (
+                            <li key={idx} className="flex items-start gap-2.5 p-2.5 rounded-xl bg-orange-500/5 border border-orange-500/10">
+                              <Flame className="w-4 h-4 text-orange-500 mt-0.5 flex-shrink-0" />
+                              <span className="text-sm leading-relaxed">{area}</span>
+                            </li>
+                          ))
+                        ) : (
+                          <li className="text-sm text-muted-foreground p-2.5">No improvement areas data available</li>
+                        )}
+                      </ul>
+                    </CardContent>
+                  </Card>
                 </div>
 
-                {evaluation?.learning_insight ? (
-                  <>
-                    <Separator className="my-4" />
-                    <div className="flex items-start justify-between gap-3">
-                      <div className="text-sm text-muted-foreground">Peer benchmark</div>
-                      <div className="text-sm font-medium text-foreground text-right max-w-[75%]">
-                        {evaluation.learning_insight}
+                {/* Fallback: Legacy Score Card (only if instant score fails) */}
+                {!sessionId && (
+                  <Card className="border border-border/30 rounded-2xl overflow-hidden">
+                    <div className="h-0.5 bg-gradient-to-r from-primary via-purple-500 to-primary" />
+                    <CardHeader>
+                      <CardTitle className="text-2xl">Overall Performance</CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                      <div className="flex flex-col sm:flex-row items-center sm:justify-between gap-4">
+                        <div className="flex-1 w-full">
+                          <div className="flex flex-wrap items-baseline gap-2 sm:gap-3 mb-2 justify-center sm:justify-start">
+                            <span className={`text-4xl sm:text-6xl font-black ${getScoreColor(score)}`}>
+                              {score}
+                            </span>
+                            <span className="text-xl sm:text-3xl text-muted-foreground">/100</span>
+                            <Badge className="text-base sm:text-xl px-3 sm:px-4 py-1 sm:py-2 rounded-xl font-bold">{grade}</Badge>
+                          </div>
+                          <Progress value={score} className="h-3 mt-4 rounded-full" />
+                          <p className="text-xs text-muted-foreground mt-2 text-center sm:text-left">
+                            Based on average confidence score: {avgConfidence.toFixed(2)}{avgConfidence <= 1 ? ' (0-1 scale)' : '/10'}
+                          </p>
+                        </div>
                       </div>
-                    </div>
-                  </>
-                ) : null}
-              </CardContent>
-            </Card>
+                    </CardContent>
+                  </Card>
+                )}
+              </TabsContent>
 
-            {/* Post-session confidence prompt (optional; disabled when backend feature flag is off) */}
-            {sessionId && sessionConfidenceStatus !== 'disabled' ? (
-              <Card>
-                <CardHeader>
-                  <CardTitle className="text-lg">How confident do you feel?</CardTitle>
-                  <CardDescription>Rate your overall confidence for this session (1–5).</CardDescription>
-                </CardHeader>
-                <CardContent>
-                  <div className="flex flex-wrap items-center gap-2">
-                    {[1, 2, 3, 4, 5].map((v) => {
-                      const active = (sessionConfidenceDraft ?? 0) === v;
-                      return (
+              {/* TAB: Speech Analytics */}
+              <TabsContent value="analytics" className="mt-4 space-y-4 animate-in fade-in slide-in-from-bottom-2 duration-300">
+                <Card className="border border-border/30 rounded-2xl overflow-hidden">
+                  <div className="h-0.5 bg-gradient-to-r from-cyan-500 via-blue-400 to-cyan-500" />
+                  <CardHeader>
+                    <CardTitle className="flex items-center gap-2">
+                      <div className="p-1.5 bg-cyan-500/10 rounded-lg">
+                        <BarChart3 className="w-5 h-5 text-cyan-500" />
+                      </div>
+                      Speech Analytics Summary
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+                      {[
+                        { label: 'Average Speed', value: `${evaluation?.metrics_summary?.avg_wpm || evaluation?.speech_summary?.average_wpm || 0}`, unit: 'WPM', icon: Activity, color: 'text-blue-500' },
+                        { label: 'Total Fillers', value: `${evaluation?.metrics_summary?.total_fillers || evaluation?.speech_summary?.total_filler_count || 0}`, unit: '', icon: CircleDot, color: 'text-amber-500' },
+                        { label: 'Avg Confidence', value: `${((evaluation?.metrics_summary?.avg_confidence || evaluation?.speech_summary?.average_confidence || 0) * 100).toFixed(0)}`, unit: '%', icon: Gauge, color: 'text-green-500' },
+                        { label: 'Longest Pause', value: `${(evaluation?.metrics_summary?.longest_pause || 0).toFixed(1)}`, unit: 'sec', icon: Timer, color: 'text-purple-500' },
+                        { label: 'Duration', value: formatTime(Math.floor(evaluation?.metrics_summary?.total_duration || 0)), unit: '', icon: Clock, color: 'text-cyan-500' },
+                        { label: 'Overtalk Count', value: `${evaluation?.metrics_summary?.overtalked_count || 0}`, unit: '', icon: Radio, color: 'text-rose-500' },
+                      ].map((metric) => (
+                        <div key={metric.label} className="p-4 rounded-2xl bg-muted/20 border border-border/20 hover:bg-muted/30 transition-colors group">
+                          <div className="flex items-center gap-2 mb-2">
+                            <metric.icon className={`w-4 h-4 ${metric.color} opacity-60 group-hover:opacity-100 transition-opacity`} />
+                            <p className="text-xs text-muted-foreground font-medium">{metric.label}</p>
+                          </div>
+                          <p className="text-2xl md:text-3xl font-black">
+                            {metric.value}
+                            {metric.unit && <span className="text-sm text-muted-foreground ml-1 font-medium">{metric.unit}</span>}
+                          </p>
+                        </div>
+                      ))}
+                    </div>
+
+                    {evaluation?.learning_insight ? (
+                      <>
+                        <Separator className="my-4" />
+                        <div className="flex items-start gap-3 p-4 rounded-2xl bg-primary/5 border border-primary/15">
+                          <GraduationCap className="w-5 h-5 text-primary mt-0.5 shrink-0" />
+                          <div>
+                            <div className="text-xs font-semibold uppercase tracking-wider text-primary/70 mb-1">Peer Benchmark</div>
+                            <div className="text-sm font-medium text-foreground leading-relaxed">
+                              {evaluation.learning_insight}
+                            </div>
+                          </div>
+                        </div>
+                      </>
+                    ) : null}
+                  </CardContent>
+                </Card>
+
+                {/* Post-session confidence prompt */}
+                {sessionId && sessionConfidenceStatus !== 'disabled' ? (
+                  <Card className="border border-border/30 rounded-2xl overflow-hidden">
+                    <div className="h-0.5 bg-gradient-to-r from-primary via-purple-400 to-primary" />
+                    <CardHeader>
+                      <CardTitle className="text-lg flex items-center gap-2">
+                        <div className="p-1.5 bg-primary/10 rounded-lg">
+                          <Brain className="w-5 h-5 text-primary" />
+                        </div>
+                        How confident do you feel?
+                      </CardTitle>
+                      <CardDescription>Rate your overall confidence for this session (1–5).</CardDescription>
+                    </CardHeader>
+                    <CardContent>
+                      <div className="flex flex-wrap items-center gap-2">
+                        {[1, 2, 3, 4, 5].map((v) => {
+                          const active = (sessionConfidenceDraft ?? 0) === v;
+                          return (
+                            <Button
+                              key={v}
+                              type="button"
+                              size="sm"
+                              variant={active ? 'default' : 'outline'}
+                              disabled={sessionConfidenceStatus === 'submitting'}
+                              onClick={() => submitSessionConfidenceBestEffort(sessionId, v)}
+                              className="min-w-12 h-10 rounded-xl font-bold"
+                            >
+                              {v}
+                            </Button>
+                          );
+                        })}
+                        <div className="flex-1" />
                         <Button
-                          key={v}
                           type="button"
                           size="sm"
-                          variant={active ? 'default' : 'outline'}
+                          variant="ghost"
                           disabled={sessionConfidenceStatus === 'submitting'}
-                          onClick={() => submitSessionConfidenceBestEffort(sessionId, v)}
-                          className="min-w-10"
+                          onClick={() => skipSessionConfidencePrompt(sessionId)}
+                          className="rounded-xl"
                         >
-                          {v}
+                          Skip
                         </Button>
-                      );
-                    })}
-
-                    <div className="flex-1" />
-
-                    <Button
-                      type="button"
-                      size="sm"
-                      variant="ghost"
-                      disabled={sessionConfidenceStatus === 'submitting'}
-                      onClick={() => skipSessionConfidencePrompt(sessionId)}
-                    >
-                      Skip
-                    </Button>
-                  </div>
-
-                  <div className="mt-2 text-xs text-muted-foreground">
-                    {sessionConfidenceStatus === 'saved'
-                      ? 'Thanks—saved.'
-                      : sessionConfidenceStatus === 'skipped'
-                        ? 'Skipped. You can still add a rating anytime.'
-                        : sessionConfidenceStatus === 'submitting'
-                          ? 'Saving…'
-                          : sessionConfidenceStatus === 'error'
-                            ? 'Not saved yet. Try again.'
-                            : ''}
-                  </div>
-                </CardContent>
-              </Card>
-            ) : null}
-
-            {/* Action Plan */}
-            {evaluation?.action_plan?.steps && Array.isArray(evaluation.action_plan.steps) && evaluation.action_plan.steps.length > 0 && (
-              <Card>
-                <CardHeader>
-                  <CardTitle className="flex items-center gap-2 text-blue-600">
-                    <Target className="w-5 h-5" />
-                    Your Action Plan
-                  </CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <ul className="space-y-3">
-                    {evaluation.action_plan.steps.map((step, idx) => (
-                      <li key={idx} className="flex items-start gap-3">
-                        <div className="flex-shrink-0 w-6 h-6 bg-blue-500 text-white rounded-full flex items-center justify-center text-sm font-bold">
-                          {idx + 1}
-                        </div>
-                        <span className="text-sm flex-1">{step}</span>
-                      </li>
-                    ))}
-                  </ul>
-                  {evaluation.practice_recommendation && (
-                    <div className="mt-4 p-3 bg-blue-500/10 border border-blue-500/20 rounded-lg">
-                      <p className="text-sm font-medium text-blue-600 dark:text-blue-400">
-                        💡 {evaluation.practice_recommendation}
-                      </p>
-                    </div>
-                  )}
-                </CardContent>
-              </Card>
-            )}
-
-            {/* Skipped Questions */}
-            {endedEarlyData?.skipped_questions && endedEarlyData.skipped_questions.length > 0 && (
-              <Card>
-                <CardHeader>
-                  <CardTitle className="text-lg flex items-center gap-2">
-                    <AlertCircle className="h-5 w-5 text-yellow-500" />
-                    Skipped Questions
-                  </CardTitle>
-                </CardHeader>
-                <CardContent className="space-y-2">
-                  {endedEarlyData.skipped_questions.map((q) => (
-                    <div key={q.question_number} className="p-3 bg-muted/30 rounded-lg border border-dashed border-border/40">
-                      <div className="flex items-center gap-2 mb-1">
-                        <span className="text-xs text-muted-foreground font-medium">Q{q.question_number}</span>
-                        {q.category && (
-                          <Badge variant="outline" className="text-[10px] px-1.5 py-0 capitalize">
-                            {q.category.replace('_', ' ')}
-                          </Badge>
-                        )}
                       </div>
-                      <p className="text-sm">{q.question}</p>
-                    </div>
-                  ))}
-                </CardContent>
-              </Card>
-            )}
+                      <div className="mt-2 text-xs text-muted-foreground">
+                        {sessionConfidenceStatus === 'saved'
+                          ? 'Thanks—saved.'
+                          : sessionConfidenceStatus === 'skipped'
+                            ? 'Skipped. You can still add a rating anytime.'
+                            : sessionConfidenceStatus === 'submitting'
+                              ? 'Saving…'
+                              : sessionConfidenceStatus === 'error'
+                                ? 'Not saved yet. Try again.'
+                                : ''}
+                      </div>
+                    </CardContent>
+                  </Card>
+                ) : null}
+              </TabsContent>
 
-            {/* Actions */}
-            <div className="flex gap-4 justify-center pb-8">
+              {/* TAB: Action Plan */}
+              <TabsContent value="plan" className="mt-4 space-y-4 animate-in fade-in slide-in-from-bottom-2 duration-300">
+                {evaluation?.action_plan?.steps && Array.isArray(evaluation.action_plan.steps) && evaluation.action_plan.steps.length > 0 && (
+                  <Card className="border border-border/30 rounded-2xl overflow-hidden">
+                    <div className="h-0.5 bg-gradient-to-r from-blue-500 via-indigo-400 to-blue-500" />
+                    <CardHeader>
+                      <CardTitle className="flex items-center gap-2 text-blue-600 dark:text-blue-400">
+                        <div className="p-1.5 bg-blue-500/10 rounded-lg">
+                          <Target className="w-5 h-5" />
+                        </div>
+                        Your Action Plan
+                      </CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                      <div className="space-y-3">
+                        {evaluation.action_plan.steps.map((step, idx) => (
+                          <div key={idx} className="flex items-start gap-3 p-3 rounded-xl bg-blue-500/5 border border-blue-500/10 hover:bg-blue-500/8 transition-colors">
+                            <div className="flex-shrink-0 w-8 h-8 bg-gradient-to-br from-blue-500 to-indigo-500 text-white rounded-xl flex items-center justify-center text-sm font-black shadow-md">
+                              {idx + 1}
+                            </div>
+                            <span className="text-sm flex-1 leading-relaxed pt-1">{step}</span>
+                          </div>
+                        ))}
+                      </div>
+                      {evaluation.practice_recommendation && (
+                        <div className="mt-4 p-4 bg-gradient-to-r from-blue-500/10 via-blue-500/5 to-transparent border border-blue-500/20 rounded-2xl">
+                          <p className="text-sm font-semibold text-blue-600 dark:text-blue-400 flex items-center gap-2">
+                            <Lightbulb className="w-4 h-4" />
+                            {evaluation.practice_recommendation}
+                          </p>
+                        </div>
+                      )}
+                    </CardContent>
+                  </Card>
+                )}
+
+                {/* Skipped Questions */}
+                {endedEarlyData?.skipped_questions && endedEarlyData.skipped_questions.length > 0 && (
+                  <Card className="border border-border/30 rounded-2xl overflow-hidden">
+                    <div className="h-0.5 bg-gradient-to-r from-yellow-500 via-amber-400 to-yellow-500" />
+                    <CardHeader>
+                      <CardTitle className="text-lg flex items-center gap-2">
+                        <div className="p-1.5 bg-yellow-500/10 rounded-lg">
+                          <AlertCircle className="h-5 w-5 text-yellow-500" />
+                        </div>
+                        Skipped Questions
+                      </CardTitle>
+                    </CardHeader>
+                    <CardContent className="space-y-2">
+                      {endedEarlyData.skipped_questions.map((q) => (
+                        <div key={q.question_number} className="p-3 bg-muted/20 rounded-xl border border-dashed border-border/40">
+                          <div className="flex items-center gap-2 mb-1">
+                            <span className="text-xs text-muted-foreground font-bold">Q{q.question_number}</span>
+                            {q.category && (
+                              <Badge variant="outline" className="text-[10px] px-1.5 py-0 capitalize rounded-lg">
+                                {q.category.replace('_', ' ')}
+                              </Badge>
+                            )}
+                          </div>
+                          <p className="text-sm">{q.question}</p>
+                        </div>
+                      ))}
+                    </CardContent>
+                  </Card>
+                )}
+
+                {!evaluation?.action_plan?.steps?.length && !endedEarlyData?.skipped_questions?.length && (
+                  <div className="text-center py-12 text-muted-foreground">
+                    <Target className="w-8 h-8 mx-auto mb-3 opacity-40" />
+                    <p className="text-sm">No action plan available yet.</p>
+                    <p className="text-xs mt-1">Complete more sessions to receive personalized recommendations.</p>
+                  </div>
+                )}
+              </TabsContent>
+            </Tabs>
+
+            {/* ── ACTION BUTTONS ── */}
+            <div className="flex flex-col sm:flex-row gap-3 justify-center pt-2">
+              {/* Download Report Button */}
+              <Button
+                size="lg"
+                variant="outline"
+                onClick={handleDownloadReport}
+                className="px-6 h-12 rounded-2xl border-2 border-primary/30 hover:border-primary/50 hover:bg-primary/5 shadow-lg hover:shadow-xl hover:shadow-primary/10 transition-all duration-300 font-semibold group"
+              >
+                <Download className="mr-2 w-5 h-5 text-primary group-hover:animate-bounce" />
+                Download Report
+              </Button>
+
               <Button
                 size="lg"
                 variant="outline"
                 onClick={handleRestart}
-                className="px-8"
+                className="px-6 h-12 rounded-2xl border-2 hover:bg-muted/50 shadow-lg transition-all duration-300 font-semibold"
               >
-                <RotateCcw className="mr-2" />
+                <RotateCcw className="mr-2 w-5 h-5" />
                 Practice Again
               </Button>
+
               <Button
                 size="lg"
-                className="px-8"
+                className="px-6 h-12 rounded-2xl shadow-xl shadow-primary/20 hover:shadow-2xl hover:shadow-primary/30 hover:scale-[1.02] active:scale-[0.98] transition-all duration-300 font-bold"
                 onClick={handleRestart}
               >
-                <Sparkles className="mr-2" />
+                <Sparkles className="mr-2 w-5 h-5" />
                 New Interview
               </Button>
             </div>
+
           </div>
         </ScrollArea>
       </div>

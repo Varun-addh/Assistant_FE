@@ -237,16 +237,16 @@ export const ApiKeySettings = () => {
                 </div>
 
                 <div className="flex items-center justify-between gap-2 px-1">
-                    <div className="flex items-center gap-2 text-[10px] text-muted-foreground">
-                        <Globe className="w-3.5 h-3.5" />
-                        <span>
+                    <div className="flex items-center gap-2 text-[10px] text-muted-foreground min-w-0">
+                        <Globe className="w-3.5 h-3.5 shrink-0" />
+                        <span className="break-words">
                             Groq/Gemini keys are typically free to create (free tiers) but may have rate limits/quotas.
                         </span>
                     </div>
                     <Button
                         variant="outline"
                         size="sm"
-                        className="h-7 px-2 text-[10px]"
+                        className="h-7 px-2 text-[10px] shrink-0"
                         onClick={() => setShowGuide((v) => !v)}
                     >
                         {showGuide ? "Hide guide" : "View guide"}

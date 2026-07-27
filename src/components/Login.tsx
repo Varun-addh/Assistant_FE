@@ -143,7 +143,7 @@ export function Login({ onSwitchToRegister }: { onSwitchToRegister?: () => void 
                 type="button"
                 onClick={openForgot}
                 disabled={loading || googleLoading}
-                className="text-xs text-muted-foreground hover:text-foreground transition-colors"
+                className="text-xs text-muted-foreground hover:text-foreground transition-colors py-2 px-1 min-h-[44px] flex items-center"
               >
                 Forgot password?
               </button>

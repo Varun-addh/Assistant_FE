@@ -14,7 +14,7 @@ import type { ResumeContext, ResumeUploadResponse } from '../types/resume';
 export const API_BASE_URL = STRATAX_API_BASE_URL;
 
 // ============================================================================
-// Practice Proctoring (Client-side camera; event-only backend)
+// Practice Proctoring
 // ============================================================================
 
 export type ProctoringSeverity = 'info' | 'warning' | 'violation';
@@ -35,7 +35,8 @@ export type PracticeSessionProctoringEventType =
   | 'CAMERA_STOPPED'
   | 'TAB_SWITCH'
   | 'WINDOW_MINIMIZED'
-  | 'SESSION_STARTED_WITH_PROCTORING';
+  | 'SESSION_STARTED_WITH_PROCTORING'
+  | 'MULTIPLE_FACES_DETECTED';
 
 export type ProctoringEventIn = {
   session_id: string;
@@ -52,9 +53,326 @@ export type PracticeSessionProctoringEventIn = {
   client_timestamp?: string;
 };
 
-export type ProctoringEventPostResult =
-  | { ok: true; status: number }
-  | { ok: false; status: number };
+export type PracticeSessionProctoringHeartbeatIn = {
+  session_id: string;
+  camera_active: boolean;
+  screen_active: boolean;
+  tab_active: boolean;
+  window_focused: boolean;
+  detection_active: boolean;
+  display_surface?: string | null;
+  client_timestamp?: string;
+};
+
+export type PracticeProctoringAction = 'none' | 'warn' | 'terminate' | string;
+
+export interface PracticeProctoringRecentEvent {
+  event_type?: string;
+  timestamp?: string;
+  message?: string;
+  metadata?: Record<string, unknown>;
+  [key: string]: unknown;
+}
+
+export interface PracticeProctoringSnapshot {
+  status: string;
+  risk_level?: string | null;
+  action?: PracticeProctoringAction | null;
+  message?: string | null;
+  total_violations?: number;
+  serious_violations?: number;
+  remaining_total_violations?: number | null;
+  remaining_serious_violations?: number | null;
+  event_counts?: Record<string, number>;
+  recent_events?: PracticeProctoringRecentEvent[];
+  terminated_reason?: string | null;
+  monitoring_metadata?: Record<string, unknown> | null;
+  last_heartbeat_at?: string | null;
+  heartbeat_stale?: boolean;
+}
+
+export type PracticeProctoringApiResult = {
+  ok: boolean;
+  status: number;
+  snapshot?: PracticeProctoringSnapshot | null;
+  raw?: unknown;
+};
+
+const DEFAULT_SERIOUS_VIOLATION_LIMIT = 3;
+const DEFAULT_TOTAL_VIOLATION_LIMIT = 5;
+
+const ACTIONABLE_PROCTORING_EVENT_TYPES = new Set([
+  'camera_stopped',
+  'device_detected',
+  'mobile_phone_detected',
+  'monitoring_interrupted',
+  'multiple_faces_detected',
+  'phone_detected',
+  'screen_stopped',
+  'tab_switch',
+  'window_blur',
+  'window_minimized',
+]);
+
+const SERIOUS_PROCTORING_EVENT_TYPES = new Set([
+  'camera_stopped',
+  'device_detected',
+  'monitoring_interrupted',
+  'multiple_faces_detected',
+  'screen_stopped',
+]);
+
+function normalizeProctoringEventType(value?: string | null): string {
+  const normalized = typeof value === 'string' ? value.trim().toLowerCase() : '';
+  if (normalized === 'mobile_phone_detected' || normalized === 'phone_detected') return 'device_detected';
+  if (normalized === 'window_minimized') return 'window_blur';
+  return normalized;
+}
+
+function sumMatchingProctoringEventCounts(
+  eventCounts: Record<string, number> | undefined,
+  matcher: (eventType: string) => boolean
+): number {
+  if (!eventCounts) return 0;
+
+  let total = 0;
+  for (const [rawType, count] of Object.entries(eventCounts)) {
+    if (!Number.isFinite(count) || count <= 0) continue;
+    if (matcher(normalizeProctoringEventType(rawType))) {
+      total += count;
+    }
+  }
+
+  return total;
+}
+
+function countMatchingRecentProctoringEvents(
+  recentEvents: PracticeProctoringRecentEvent[] | undefined,
+  matcher: (eventType: string) => boolean
+): number {
+  if (!recentEvents?.length) return 0;
+
+  let total = 0;
+  for (const event of recentEvents) {
+    const eventType = normalizeProctoringEventType(event.event_type);
+    if (eventType && matcher(eventType)) {
+      total += 1;
+    }
+  }
+
+  return total;
+}
+
+function inferSeriousViolationCount(options: {
+  current?: number;
+  remaining?: number;
+  eventCounts?: Record<string, number>;
+  recentEvents?: PracticeProctoringRecentEvent[];
+}): number | undefined {
+  if (typeof options.current === 'number' && options.current >= 0) return options.current;
+
+  if (typeof options.remaining === 'number' && options.remaining >= 0) {
+    return Math.max(DEFAULT_SERIOUS_VIOLATION_LIMIT - options.remaining, 0);
+  }
+
+  const fromEventCounts = sumMatchingProctoringEventCounts(
+    options.eventCounts,
+    (eventType) => SERIOUS_PROCTORING_EVENT_TYPES.has(eventType)
+  );
+  if (fromEventCounts > 0) return fromEventCounts;
+
+  const fromRecentEvents = countMatchingRecentProctoringEvents(
+    options.recentEvents,
+    (eventType) => SERIOUS_PROCTORING_EVENT_TYPES.has(eventType)
+  );
+  if (fromRecentEvents > 0) return fromRecentEvents;
+
+  return undefined;
+}
+
+function inferTotalViolationCount(options: {
+  current?: number;
+  remaining?: number;
+  eventCounts?: Record<string, number>;
+  recentEvents?: PracticeProctoringRecentEvent[];
+}): number | undefined {
+  if (typeof options.current === 'number' && options.current >= 0) return options.current;
+
+  if (typeof options.remaining === 'number' && options.remaining >= 0) {
+    return Math.max(DEFAULT_TOTAL_VIOLATION_LIMIT - options.remaining, 0);
+  }
+
+  const fromEventCounts = sumMatchingProctoringEventCounts(
+    options.eventCounts,
+    (eventType) => ACTIONABLE_PROCTORING_EVENT_TYPES.has(eventType)
+  );
+  if (fromEventCounts > 0) return fromEventCounts;
+
+  const fromRecentEvents = countMatchingRecentProctoringEvents(
+    options.recentEvents,
+    (eventType) => ACTIONABLE_PROCTORING_EVENT_TYPES.has(eventType)
+  );
+  if (fromRecentEvents > 0) return fromRecentEvents;
+
+  return undefined;
+}
+
+function asUnknownRecord(value: unknown): Record<string, unknown> | null {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
+  return value as Record<string, unknown>;
+}
+
+function asStringOrNull(value: unknown): string | null | undefined {
+  if (value === null) return null;
+  if (typeof value === 'string') return value;
+  return undefined;
+}
+
+function asNumberOrUndefined(value: unknown): number | undefined {
+  if (typeof value === 'number' && Number.isFinite(value)) return value;
+  if (typeof value === 'string') {
+    const trimmed = value.trim();
+    if (!trimmed) return undefined;
+    const n = Number(trimmed);
+    if (Number.isFinite(n)) return n;
+  }
+  return undefined;
+}
+
+function coerceNumberMap(value: unknown): Record<string, number> | undefined {
+  const record = asUnknownRecord(value);
+  if (!record) return undefined;
+
+  const entries = Object.entries(record)
+    .map(([key, raw]) => {
+      const n = asNumberOrUndefined(raw);
+      return n === undefined ? null : [key, n] as const;
+    })
+    .filter((entry): entry is readonly [string, number] => entry !== null);
+
+  if (entries.length === 0) return undefined;
+  return Object.fromEntries(entries);
+}
+
+function coerceRecentEvents(value: unknown): PracticeProctoringRecentEvent[] | undefined {
+  if (!Array.isArray(value)) return undefined;
+
+  const events = value
+    .map((entry) => {
+      const record = asUnknownRecord(entry);
+      if (!record) return null;
+
+      return {
+        ...record,
+        event_type: asStringOrNull(record.event_type ?? record.type ?? record.event ?? record.name) ?? undefined,
+        timestamp: asStringOrNull(record.timestamp ?? record.created_at ?? record.time) ?? undefined,
+        message: asStringOrNull(record.message ?? record.detail ?? record.description) ?? undefined,
+      } satisfies PracticeProctoringRecentEvent;
+    })
+    .filter((entry) => entry !== null);
+
+  return events.length > 0 ? (events as PracticeProctoringRecentEvent[]) : undefined;
+}
+
+export function coercePracticeProctoringSnapshot(raw: unknown): PracticeProctoringSnapshot | null {
+  const root = asUnknownRecord(raw);
+  if (!root) return null;
+
+  const payload =
+    asUnknownRecord(root.proctoring) ??
+    asUnknownRecord(root.proctoring_status) ??
+    asUnknownRecord(root.snapshot) ??
+    asUnknownRecord(root.status_snapshot) ??
+    asUnknownRecord(root.data) ??
+    root;
+
+  const remaining =
+    asUnknownRecord(payload.remaining) ??
+    asUnknownRecord(payload.remaining_counts) ??
+    null;
+
+  const status = asStringOrNull(payload.status ?? payload.state) ?? undefined;
+  const riskLevel = asStringOrNull(payload.risk_level ?? payload.risk) ?? undefined;
+  const action = asStringOrNull(payload.action) ?? undefined;
+  const message = asStringOrNull(payload.message ?? payload.detail ?? payload.description) ?? undefined;
+  const totalViolations = asNumberOrUndefined(payload.total_violations ?? payload.violation_count ?? payload.total_count);
+  const seriousViolations = asNumberOrUndefined(payload.serious_violations ?? payload.serious_count);
+  const remainingTotal = asNumberOrUndefined(
+    payload.remaining_total_violations ?? remaining?.total_violations ?? remaining?.total
+  );
+  const remainingSerious = asNumberOrUndefined(
+    payload.remaining_serious_violations ?? remaining?.serious_violations ?? remaining?.serious
+  );
+  const terminatedReason = asStringOrNull(
+    payload.terminated_reason ?? payload.termination_reason ?? payload.reason
+  );
+  const lastHeartbeatAt = asStringOrNull(payload.last_heartbeat_at ?? payload.heartbeat_at ?? payload.last_heartbeat);
+  const heartbeatStale = typeof payload.heartbeat_stale === 'boolean' ? payload.heartbeat_stale : undefined;
+  const eventCounts = coerceNumberMap(payload.event_counts ?? payload.counts);
+  const recentEvents = coerceRecentEvents(payload.recent_events ?? payload.events);
+  const monitoringMetadata =
+    asUnknownRecord(payload.monitoring_metadata) ??
+    asUnknownRecord(payload.metadata) ??
+    undefined;
+  const inferredSeriousViolations = inferSeriousViolationCount({
+    current: seriousViolations,
+    remaining: remainingSerious,
+    eventCounts,
+    recentEvents,
+  });
+  const inferredTotalViolations = inferTotalViolationCount({
+    current: totalViolations,
+    remaining: remainingTotal,
+    eventCounts,
+    recentEvents,
+  });
+
+  if (
+    !status &&
+    !riskLevel &&
+    !action &&
+    !message &&
+    totalViolations === undefined &&
+    seriousViolations === undefined &&
+    remainingTotal === undefined &&
+    remainingSerious === undefined &&
+    !terminatedReason &&
+    !eventCounts &&
+    !recentEvents &&
+    !monitoringMetadata &&
+    !lastHeartbeatAt &&
+    heartbeatStale === undefined
+  ) {
+    return null;
+  }
+
+  return {
+    status: status ?? 'unknown',
+    risk_level: riskLevel,
+    action: action ?? undefined,
+    message: message,
+    total_violations: inferredTotalViolations,
+    serious_violations: inferredSeriousViolations,
+    remaining_total_violations: remainingTotal,
+    remaining_serious_violations: remainingSerious,
+    event_counts: eventCounts,
+    recent_events: recentEvents,
+    terminated_reason: terminatedReason,
+    monitoring_metadata: monitoringMetadata ?? null,
+    last_heartbeat_at: lastHeartbeatAt,
+    heartbeat_stale: heartbeatStale,
+  };
+}
+
+async function parsePracticeProctoringApiResult(res: Response): Promise<PracticeProctoringApiResult> {
+  const raw = await res.json().catch(() => null);
+  return {
+    ok: res.ok,
+    status: res.status,
+    snapshot: coercePracticeProctoringSnapshot(raw),
+    raw,
+  };
+}
 
 /**
  * Best-effort proctoring event ingest.
@@ -65,7 +383,7 @@ export type ProctoringEventPostResult =
  */
 export async function postPracticeProctoringEvent(
   payload: ProctoringEventIn
-): Promise<ProctoringEventPostResult> {
+): Promise<PracticeProctoringApiResult> {
   if (!payload?.session_id) throw new Error('session_id is required');
   if (!payload?.event_type) throw new Error('event_type is required');
 
@@ -83,7 +401,7 @@ export async function postPracticeProctoringEvent(
     throwOnError: false,
   });
 
-  return { ok: res.ok, status: res.status };
+  return await parsePracticeProctoringApiResult(res);
 }
 
 /**
@@ -92,7 +410,7 @@ export async function postPracticeProctoringEvent(
  */
 export async function postPracticeSessionProctoringEvent(
   payload: PracticeSessionProctoringEventIn
-): Promise<ProctoringEventPostResult> {
+): Promise<PracticeProctoringApiResult> {
   if (!payload?.session_id) throw new Error('session_id is required');
   if (!payload?.event_type) throw new Error('event_type is required');
 
@@ -109,7 +427,46 @@ export async function postPracticeSessionProctoringEvent(
     throwOnError: false,
   });
 
-  return { ok: res.ok, status: res.status };
+  return await parsePracticeProctoringApiResult(res);
+}
+
+export async function postPracticeSessionProctoringHeartbeat(
+  payload: PracticeSessionProctoringHeartbeatIn
+): Promise<PracticeProctoringApiResult> {
+  if (!payload?.session_id) throw new Error('session_id is required');
+
+  const body = {
+    camera_active: !!payload.camera_active,
+    screen_active: !!payload.screen_active,
+    tab_active: !!payload.tab_active,
+    window_focused: !!payload.window_focused,
+    detection_active: !!payload.detection_active,
+    display_surface: payload.display_surface ?? null,
+    client_timestamp: payload.client_timestamp ?? new Date().toISOString(),
+  };
+
+  const sid = encodeURIComponent(payload.session_id);
+  const res = await strataxFetch(`${API_BASE_URL}/api/practice/session/${sid}/proctoring/heartbeat`, {
+    method: 'POST',
+    body: JSON.stringify(body),
+    throwOnError: false,
+  });
+
+  return await parsePracticeProctoringApiResult(res);
+}
+
+export async function getPracticeSessionProctoringStatus(
+  sessionId: string
+): Promise<PracticeProctoringApiResult> {
+  if (!sessionId) throw new Error('sessionId is required');
+
+  const sid = encodeURIComponent(sessionId);
+  const res = await strataxFetch(`${API_BASE_URL}/api/practice/session/${sid}/proctoring/status`, {
+    method: 'GET',
+    throwOnError: false,
+  });
+
+  return await parsePracticeProctoringApiResult(res);
 }
 
 // ============================================================================
@@ -123,6 +480,9 @@ export type UploadPracticeSessionMediaResult = {
   storage_url?: string;
   [key: string]: unknown;
 };
+
+const PRACTICE_MEDIA_UPLOAD_RETRY_LIMIT = 1;
+const PRACTICE_MEDIA_UPLOAD_RETRY_DELAY_MS = 900;
 
 export async function uploadPracticeSessionMedia(options: {
   sessionId: string;
@@ -144,12 +504,53 @@ export async function uploadPracticeSessionMedia(options: {
   form.append('file', file, options.filename ?? `${media_type}.webm`);
 
   const sid = encodeURIComponent(sessionId);
-  const res = await strataxFetch(`${API_BASE_URL}/api/practice/session/${sid}/media`, {
-    method: 'POST',
-    body: form,
-  });
 
-  return (await res.json().catch(() => ({}))) as UploadPracticeSessionMediaResult;
+  for (let attempt = 0; attempt <= PRACTICE_MEDIA_UPLOAD_RETRY_LIMIT; attempt += 1) {
+    const res = await strataxFetch(`${API_BASE_URL}/api/practice/session/${sid}/media`, {
+      method: 'POST',
+      body: form,
+      throwOnError: false,
+    });
+
+    if (res.ok) {
+      return (await res.json().catch(() => ({}))) as UploadPracticeSessionMediaResult;
+    }
+
+    const detail = await res.json().catch(() => null);
+
+    if (res.status === 413 && attempt < PRACTICE_MEDIA_UPLOAD_RETRY_LIMIT) {
+      await new Promise((resolve) => setTimeout(resolve, PRACTICE_MEDIA_UPLOAD_RETRY_DELAY_MS));
+      continue;
+    }
+
+    if (res.status === 413) {
+      throw new StrataxApiError(
+        'Recording upload was too large to store automatically.',
+        {
+          status: res.status,
+          detail:
+            detail ??
+            {
+              message: 'Recording upload was too large to store automatically.',
+              media_type,
+              bytes: file.size,
+            },
+        }
+      );
+    }
+
+    const errorDetail = detail?.detail ?? detail;
+    const message = typeof errorDetail === 'string'
+      ? errorDetail
+      : errorDetail?.message || `Upload failed: ${res.status}`;
+
+    throw new StrataxApiError(message, { status: res.status, detail: errorDetail });
+  }
+
+  throw new StrataxApiError('Recording upload failed unexpectedly.', {
+    status: 0,
+    detail: { media_type, bytes: file.size },
+  });
 }
 
 export function getPracticeSessionMediaUrl(sessionId: string, mediaId: string | number): string {
@@ -257,6 +658,7 @@ export interface Question {
   test_cases?: TestCase[];              // Input/output validation
   constraints?: string[];               // Time/space complexity requirements
   hints?: string[];                     // Progressive hints for users
+  auto_start_recording?: boolean;
 
   // Legacy field for backward compatibility
   id?: number;
@@ -335,6 +737,73 @@ export interface Evaluation {
   };
   areas_for_improvement?: string[];
 }
+
+export type StrategyAction =
+  | 'ASK_QUESTION'
+  | 'FOLLOW_UP'
+  | 'INCREASE_DIFFICULTY'
+  | 'DECREASE_DIFFICULTY'
+  | 'GIVE_FEEDBACK'
+  | 'END_SESSION'
+  | (string & {});
+
+export type StrategyCoachingStyle = 'supportive' | 'balanced' | 'challenging' | (string & {});
+export type StrategyFollowUpDepth = 'none' | 'light' | 'deep' | (string & {});
+export type StrategySource = 'llm' | 'fallback_rules' | 'guardrail' | (string & {});
+
+export interface StrategyDecisionTraceFollowUpBudget {
+  used?: number;
+  max?: number;
+  remaining?: number;
+  [key: string]: unknown;
+}
+
+export interface StrategyDecisionTrace {
+  proposed_action?: string;
+  proposed_source?: string;
+  final_action?: string;
+  final_source?: string;
+  guardrail?: unknown;
+  overall_score?: number;
+  correctness_score?: number;
+  transcript_word_count?: number;
+  remaining_questions?: number;
+  answered_questions?: number;
+  current_difficulty?: string;
+  last_strategy_action?: string;
+  recent_strategy_actions?: string[];
+  pressure_mode?: string;
+  missed_key_points?: string[];
+  follow_up_budget?: StrategyDecisionTraceFollowUpBudget;
+  [key: string]: unknown;
+}
+
+export interface Strategy {
+  action?: StrategyAction;
+  reason?: string;
+  coaching_style?: StrategyCoachingStyle;
+  follow_up_depth?: StrategyFollowUpDepth;
+  target_difficulty?: string;
+  source?: StrategySource;
+  learning_focus?: string[];
+  decision_trace?: StrategyDecisionTrace;
+  [key: string]: unknown;
+}
+
+const EMPTY_SPEECH_METRICS: SpeechMetrics = {
+  filler_count: 0,
+  wpm: 0,
+  longest_silence: 0,
+  confidence_score: 0,
+  overtalked: false,
+  duration: 0,
+};
+
+const EMPTY_MICRO_FEEDBACK: MicroFeedback = {
+  delivery_tips: [],
+  pace_feedback: '',
+  overall_note: '',
+};
 
 // ============================================================================
 // Practice Insights (optional UI surface)
@@ -485,13 +954,274 @@ export interface CodeEvaluationFeedback {
 }
 
 export interface SubmitCodeResponse {
-  test_results: CodeTestResult[];
-  evaluation: CodeEvaluationFeedback;
+  test_results?: CodeTestResult[];
+  evaluation?: CodeEvaluationFeedback | null;
   tts_audio_url?: string;           // AI feedback audio
   next_question?: Question;         // If interview continues
   complete?: boolean;               // If interview is done
   evaluation_report?: Evaluation;   // Final report if complete
   progress?: string;                // e.g., "2/5"
+  requires_acknowledgment?: boolean;
+  current_question_id?: number;
+  strategy?: Strategy;
+}
+
+function asBooleanOrUndefined(value: unknown): boolean | undefined {
+  if (typeof value === 'boolean') return value;
+  if (typeof value === 'number') return value !== 0;
+  if (typeof value === 'string') {
+    const normalized = value.trim().toLowerCase();
+    if (normalized === 'true') return true;
+    if (normalized === 'false') return false;
+  }
+  return undefined;
+}
+
+function coerceStringArray(value: unknown): string[] {
+  if (Array.isArray(value)) {
+    return value
+      .map((entry) => (typeof entry === 'string' ? entry.trim() : ''))
+      .filter(Boolean);
+  }
+
+  if (typeof value === 'string' && value.trim()) {
+    return [value.trim()];
+  }
+
+  return [];
+}
+
+function coerceStrategyDecisionTraceFollowUpBudget(
+  value: unknown
+): StrategyDecisionTraceFollowUpBudget | undefined {
+  const record = asUnknownRecord(value);
+  if (!record) return undefined;
+
+  const used = asNumberOrUndefined(record.used);
+  const max = asNumberOrUndefined(record.max);
+  const remaining = asNumberOrUndefined(record.remaining);
+
+  if (used === undefined && max === undefined && remaining === undefined) return undefined;
+
+  return {
+    ...record,
+    used,
+    max,
+    remaining,
+  } satisfies StrategyDecisionTraceFollowUpBudget;
+}
+
+function coerceStrategyDecisionTrace(value: unknown): StrategyDecisionTrace | undefined {
+  const record = asUnknownRecord(value);
+  if (!record) return undefined;
+
+  const trace: StrategyDecisionTrace = {
+    ...record,
+    proposed_action: asStringOrNull(record.proposed_action ?? record.proposedAction) ?? undefined,
+    proposed_source: asStringOrNull(record.proposed_source ?? record.proposedSource) ?? undefined,
+    final_action: asStringOrNull(record.final_action ?? record.finalAction) ?? undefined,
+    final_source: asStringOrNull(record.final_source ?? record.finalSource) ?? undefined,
+    guardrail: record.guardrail,
+    overall_score: asNumberOrUndefined(record.overall_score ?? record.overallScore ?? record.score),
+    correctness_score: asNumberOrUndefined(record.correctness_score ?? record.correctnessScore),
+    transcript_word_count: asNumberOrUndefined(record.transcript_word_count ?? record.transcriptWordCount),
+    remaining_questions: asNumberOrUndefined(record.remaining_questions ?? record.remainingQuestions),
+    answered_questions: asNumberOrUndefined(record.answered_questions ?? record.answeredQuestions),
+    current_difficulty: asStringOrNull(record.current_difficulty ?? record.currentDifficulty) ?? undefined,
+    last_strategy_action: asStringOrNull(record.last_strategy_action ?? record.lastStrategyAction) ?? undefined,
+    recent_strategy_actions: coerceStringArray(record.recent_strategy_actions ?? record.recentStrategyActions),
+    pressure_mode: asStringOrNull(record.pressure_mode ?? record.pressureMode) ?? undefined,
+    missed_key_points: coerceStringArray(record.missed_key_points ?? record.missedKeyPoints),
+    follow_up_budget: coerceStrategyDecisionTraceFollowUpBudget(
+      record.follow_up_budget ?? record.followUpBudget
+    ),
+  };
+
+  const hasAnySignal =
+    trace.proposed_action !== undefined ||
+    trace.proposed_source !== undefined ||
+    trace.final_action !== undefined ||
+    trace.final_source !== undefined ||
+    trace.guardrail !== undefined ||
+    trace.overall_score !== undefined ||
+    trace.correctness_score !== undefined ||
+    trace.transcript_word_count !== undefined ||
+    trace.remaining_questions !== undefined ||
+    trace.answered_questions !== undefined ||
+    trace.current_difficulty !== undefined ||
+    trace.last_strategy_action !== undefined ||
+    (trace.recent_strategy_actions?.length ?? 0) > 0 ||
+    trace.pressure_mode !== undefined ||
+    (trace.missed_key_points?.length ?? 0) > 0 ||
+    trace.follow_up_budget !== undefined;
+
+  return hasAnySignal ? trace : undefined;
+}
+
+function coerceStrategy(value: unknown): Strategy | undefined {
+  const record = asUnknownRecord(value);
+  if (!record) return undefined;
+
+  const strategy: Strategy = {
+    ...record,
+    action: (asStringOrNull(record.action) ?? undefined) as StrategyAction | undefined,
+    reason: asStringOrNull(record.reason ?? record.explanation ?? record.message) ?? undefined,
+    coaching_style: (asStringOrNull(record.coaching_style ?? record.coachingStyle) ?? undefined) as
+      | StrategyCoachingStyle
+      | undefined,
+    follow_up_depth: (asStringOrNull(record.follow_up_depth ?? record.followUpDepth) ?? undefined) as
+      | StrategyFollowUpDepth
+      | undefined,
+    target_difficulty: asStringOrNull(record.target_difficulty ?? record.targetDifficulty ?? record.difficulty) ?? undefined,
+    source: (asStringOrNull(record.source) ?? undefined) as StrategySource | undefined,
+    learning_focus: coerceStringArray(record.learning_focus ?? record.learningFocus),
+    decision_trace: coerceStrategyDecisionTrace(record.decision_trace ?? record.decisionTrace),
+  };
+
+  const hasAnySignal =
+    strategy.action !== undefined ||
+    strategy.reason !== undefined ||
+    strategy.coaching_style !== undefined ||
+    strategy.follow_up_depth !== undefined ||
+    strategy.target_difficulty !== undefined ||
+    strategy.source !== undefined ||
+    (strategy.learning_focus?.length ?? 0) > 0 ||
+    strategy.decision_trace !== undefined;
+
+  return hasAnySignal ? strategy : undefined;
+}
+
+function coerceCodeTestResults(value: unknown): CodeTestResult[] | undefined {
+  if (!Array.isArray(value)) return undefined;
+
+  const results = value
+    .map((entry, index) => {
+      const record = asUnknownRecord(entry);
+      if (!record) return null;
+
+      return {
+        test_case_number:
+          asNumberOrUndefined(record.test_case_number ?? record.testCaseNumber ?? record.index ?? record.id) ??
+          index + 1,
+        passed: asBooleanOrUndefined(record.passed ?? record.success ?? record.ok) ?? false,
+        input: asStringOrNull(record.input) ?? '',
+        expected_output: asStringOrNull(record.expected_output ?? record.expectedOutput ?? record.expected) ?? '',
+        actual_output: asStringOrNull(record.actual_output ?? record.actualOutput ?? record.actual) ?? '',
+        error_message: asStringOrNull(record.error_message ?? record.errorMessage ?? record.error) ?? undefined,
+        execution_time_ms: asNumberOrUndefined(
+          record.execution_time_ms ?? record.executionTimeMs ?? record.runtime_ms ?? record.runtimeMs
+        ),
+      } satisfies CodeTestResult;
+    })
+    .filter((entry) => entry !== null) as CodeTestResult[];
+
+  return results.length > 0 ? results : undefined;
+}
+
+function coerceCodeEvaluationFeedback(value: unknown): CodeEvaluationFeedback | null {
+  const record = asUnknownRecord(value);
+  if (!record) return null;
+
+  const scores = asUnknownRecord(record.scores) ?? asUnknownRecord(record.score_breakdown) ?? null;
+  const complexity = asUnknownRecord(record.complexity) ?? null;
+
+  const correctnessScore = asNumberOrUndefined(
+    record.correctness_score ?? scores?.correctness_score ?? scores?.correctness
+  );
+  const codeQualityScore = asNumberOrUndefined(
+    record.code_quality_score ?? scores?.code_quality_score ?? scores?.code_quality ?? scores?.quality
+  );
+  const efficiencyScore = asNumberOrUndefined(
+    record.efficiency_score ?? scores?.efficiency_score ?? scores?.efficiency ?? scores?.performance
+  );
+  const overallScore = asNumberOrUndefined(
+    record.overall_score ?? record.total_score ?? record.score ?? record.overall
+  );
+  const testCasesPassed = asNumberOrUndefined(
+    record.test_cases_passed ?? record.tests_passed ?? record.passed_tests
+  );
+  const testCasesTotal = asNumberOrUndefined(
+    record.test_cases_total ?? record.tests_total ?? record.total_tests
+  );
+
+  const hasAnySignal =
+    correctnessScore !== undefined ||
+    codeQualityScore !== undefined ||
+    efficiencyScore !== undefined ||
+    overallScore !== undefined ||
+    typeof record.approach_feedback === 'string' ||
+    typeof record.feedback === 'string' ||
+    typeof record.summary === 'string' ||
+    testCasesPassed !== undefined ||
+    testCasesTotal !== undefined ||
+    Array.isArray(record.optimization_suggestions) ||
+    Array.isArray(record.code_quality_notes);
+
+  if (!hasAnySignal) return null;
+
+  return {
+    correctness_score: correctnessScore ?? 0,
+    code_quality_score: codeQualityScore ?? 0,
+    efficiency_score: efficiencyScore ?? 0,
+    overall_score: overallScore ?? correctnessScore ?? codeQualityScore ?? efficiencyScore ?? 0,
+    approach_feedback:
+      asStringOrNull(record.approach_feedback ?? record.feedback ?? record.summary ?? record.analysis) ?? '',
+    code_quality_notes: coerceStringArray(record.code_quality_notes ?? record.quality_notes),
+    time_complexity: asStringOrNull(record.time_complexity ?? complexity?.time) ?? '',
+    space_complexity: asStringOrNull(record.space_complexity ?? complexity?.space) ?? '',
+    edge_cases_handled: coerceStringArray(record.edge_cases_handled ?? record.handled_edge_cases),
+    edge_cases_missed: coerceStringArray(record.edge_cases_missed ?? record.missed_edge_cases),
+    optimization_suggestions: coerceStringArray(record.optimization_suggestions ?? record.suggestions),
+    alternative_approaches: coerceStringArray(record.alternative_approaches ?? record.alternatives),
+    best_practices_violated: coerceStringArray(record.best_practices_violated ?? record.violations),
+    is_correct: asBooleanOrUndefined(record.is_correct ?? record.passed ?? record.accepted) ?? false,
+    test_cases_passed: testCasesPassed ?? 0,
+    test_cases_total: testCasesTotal ?? 0,
+  };
+}
+
+function normalizeSubmitCodeResponse(raw: unknown): SubmitCodeResponse {
+  const root = asUnknownRecord(raw) ?? {};
+  const nested =
+    asUnknownRecord(root.data) ??
+    asUnknownRecord(root.result) ??
+    asUnknownRecord(root.payload) ??
+    null;
+  const source = nested ?? root;
+
+  const testResults =
+    coerceCodeTestResults(
+      source.test_results ?? source.testResults ?? source.tests ?? source.test_cases ?? source.results
+    ) ??
+    coerceCodeTestResults(
+      root.test_results ?? root.testResults ?? root.tests ?? root.test_cases ?? root.results
+    );
+
+  const evaluation =
+    coerceCodeEvaluationFeedback(
+      source.evaluation ?? source.code_evaluation ?? source.codeEvaluation ?? source.feedback ?? source.code_feedback
+    ) ??
+    coerceCodeEvaluationFeedback(
+      root.evaluation ?? root.code_evaluation ?? root.codeEvaluation ?? root.feedback ?? root.code_feedback
+    );
+
+  const nextQuestion = asUnknownRecord(source.next_question ?? root.next_question) as unknown as Question | null;
+  const evaluationReport = asUnknownRecord(source.evaluation_report ?? root.evaluation_report) as unknown as Evaluation | null;
+
+  return {
+    test_results: testResults ?? [],
+    evaluation,
+    tts_audio_url: asStringOrNull(source.tts_audio_url ?? root.tts_audio_url) ?? undefined,
+    next_question: nextQuestion ?? undefined,
+    complete: asBooleanOrUndefined(source.complete ?? root.complete),
+    evaluation_report: evaluationReport ?? undefined,
+    progress: asStringOrNull(source.progress ?? root.progress) ?? undefined,
+    requires_acknowledgment: asBooleanOrUndefined(
+      source.requires_acknowledgment ?? root.requires_acknowledgment
+    ),
+    current_question_id: asNumberOrUndefined(source.current_question_id ?? root.current_question_id),
+    strategy: coerceStrategy(source.strategy ?? root.strategy),
+  };
 }
 
 export interface StartInterviewResponse {
@@ -542,6 +1272,8 @@ export interface SubmitAnswerResponse {
   evaluation_report?: Evaluation;
   progress?: string;  // e.g., "2/5", "3/5"
   requires_acknowledgment?: boolean;  // NEW - If true, user must click "Next Question" button
+  current_question_id?: number;
+  strategy?: Strategy;
 
   // Optional runtime extensions
   evaluation_trace?: EvaluationTrace;
@@ -550,14 +1282,83 @@ export interface SubmitAnswerResponse {
 }
 
 export interface AcknowledgeFeedbackResponse {
-  next_question: Question;
+  next_question?: Question;
   tts_audio_url?: string;
-  progress: string;  // e.g., "3/5", "4/5"
+  progress?: string;  // e.g., "3/5", "4/5"
   complete: boolean;  // If true, no more questions
   evaluation_report?: Evaluation;  // Final evaluation if complete=true
+  auto_start_recording?: boolean;
+  strategy?: Strategy;
 
   // Optional runtime extensions
   pressure?: Pressure;
+}
+
+function normalizeSubmitAnswerResponse(raw: unknown): SubmitAnswerResponse {
+  const root = asUnknownRecord(raw) ?? {};
+  const nested =
+    asUnknownRecord(root.data) ??
+    asUnknownRecord(root.result) ??
+    asUnknownRecord(root.payload) ??
+    null;
+  const source = nested ?? root;
+
+  const transcript = asStringOrNull(source.transcript ?? root.transcript) ?? '';
+  const metrics =
+    (asUnknownRecord(source.metrics ?? root.metrics) as unknown as SpeechMetrics | null) ??
+    EMPTY_SPEECH_METRICS;
+  const microFeedback =
+    (asUnknownRecord(source.micro_feedback ?? root.micro_feedback) as unknown as MicroFeedback | null) ??
+    EMPTY_MICRO_FEEDBACK;
+
+  return {
+    transcript,
+    metrics,
+    micro_feedback: microFeedback,
+    next_question: (asUnknownRecord(source.next_question ?? root.next_question) as unknown as Question | null) ?? undefined,
+    tts_audio_url: asStringOrNull(source.tts_audio_url ?? root.tts_audio_url) ?? undefined,
+    complete: asBooleanOrUndefined(source.complete ?? root.complete),
+    evaluation_report:
+      (asUnknownRecord(source.evaluation_report ?? root.evaluation_report) as unknown as Evaluation | null) ??
+      undefined,
+    progress: asStringOrNull(source.progress ?? root.progress) ?? undefined,
+    requires_acknowledgment: asBooleanOrUndefined(
+      source.requires_acknowledgment ?? root.requires_acknowledgment
+    ),
+    current_question_id: asNumberOrUndefined(source.current_question_id ?? root.current_question_id),
+    strategy: coerceStrategy(source.strategy ?? root.strategy),
+    evaluation_trace:
+      (asUnknownRecord(source.evaluation_trace ?? root.evaluation_trace) as unknown as EvaluationTrace | null) ??
+      undefined,
+    trajectory: (asUnknownRecord(source.trajectory ?? root.trajectory) as unknown as Trajectory | null) ?? undefined,
+    pressure: (asUnknownRecord(source.pressure ?? root.pressure) as unknown as Pressure | null) ?? undefined,
+  };
+}
+
+function normalizeAcknowledgeFeedbackResponse(raw: unknown): AcknowledgeFeedbackResponse {
+  const root = asUnknownRecord(raw) ?? {};
+  const nested =
+    asUnknownRecord(root.data) ??
+    asUnknownRecord(root.result) ??
+    asUnknownRecord(root.payload) ??
+    null;
+  const source = nested ?? root;
+
+  return {
+    next_question:
+      (asUnknownRecord(source.next_question ?? root.next_question) as unknown as Question | null) ?? undefined,
+    tts_audio_url: asStringOrNull(source.tts_audio_url ?? root.tts_audio_url) ?? undefined,
+    progress: asStringOrNull(source.progress ?? root.progress) ?? undefined,
+    complete: asBooleanOrUndefined(source.complete ?? root.complete) ?? false,
+    evaluation_report:
+      (asUnknownRecord(source.evaluation_report ?? root.evaluation_report) as unknown as Evaluation | null) ??
+      undefined,
+    auto_start_recording: asBooleanOrUndefined(
+      source.auto_start_recording ?? root.auto_start_recording
+    ),
+    strategy: coerceStrategy(source.strategy ?? root.strategy),
+    pressure: (asUnknownRecord(source.pressure ?? root.pressure) as unknown as Pressure | null) ?? undefined,
+  };
 }
 
 export interface PracticeModeStatus {
@@ -859,7 +1660,8 @@ export async function submitAnswer(
     // Don't set Content-Type header - browser sets it automatically with boundary
   });
 
-  return await response.json();
+  const raw = await response.json();
+  return normalizeSubmitAnswerResponse(raw);
 }
 
 /**
@@ -873,9 +1675,12 @@ export async function acknowledgeFeedback(
   console.log('🔔 [API] Acknowledging feedback for session:', sessionId, 'question:', questionId);
 
   const requestBody = {
+    session_id: sessionId,
+    question_id: questionId,
+    feedback_read: true,
     sessionId: sessionId,
     questionId: questionId,
-    feedbackRead: true
+    feedbackRead: true,
   };
   console.log('📤 [API] Request body:', JSON.stringify(requestBody));
 
@@ -912,7 +1717,7 @@ export async function acknowledgeFeedback(
     questionText: data.next_question?.question_text?.substring(0, 50),
   });
 
-  return data;
+  return normalizeAcknowledgeFeedbackResponse(data);
 }
 
 /**
@@ -957,7 +1762,8 @@ export async function submitCode(
     console.log('📡 [API] Submit code response status:', response.status, response.statusText);
 
     if (response.ok) {
-      const data = (await response.json()) as SubmitCodeResponse;
+      const raw = await response.json().catch(() => null);
+      const data = normalizeSubmitCodeResponse(raw);
       console.log('✅ [API] Code submission response:', {
         testsPassed: data.test_results?.filter((t: CodeTestResult) => t.passed).length,
         testsTotal: data.test_results?.length,

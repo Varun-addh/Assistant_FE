@@ -2915,10 +2915,10 @@ export const InterviewAssistant = () => {
               <Button
                 variant="ghost"
                 size="sm"
-                className="h-8 w-8 p-0 hover:bg-white/10"
+                className="h-10 w-10 p-0 hover:bg-white/10 touch-manipulation"
                 onClick={() => setIsMobileSidebarOpen(true)}
               >
-                <Menu className="h-4 w-4" />
+                <Menu className="h-5 w-5" />
               </Button>
             </div>
 
@@ -4055,7 +4055,7 @@ export const InterviewAssistant = () => {
             </header>
 
             {/* Content Section */}
-            <div ref={mainScrollRef} className={`ia-main-scroll flex-1 overflow-y-auto overflow-x-hidden scroll-professional px-0 py-2 md:px-6 md:py-6 ${showBottomSearchBar ? "pb-40 md:pb-44 ia-main-scroll-footer" : ""
+            <div ref={mainScrollRef} className={`ia-main-scroll flex-1 overflow-y-auto overflow-x-hidden scroll-professional px-3 py-2 md:px-6 md:py-6 ${showBottomSearchBar ? "pb-40 md:pb-44 ia-main-scroll-footer" : ""
               }`} style={{ scrollbarGutter: 'stable', overscrollBehaviorX: 'none', WebkitOverflowScrolling: 'touch' }}>
               <div className="max-w-4xl mx-auto w-full overflow-x-hidden">
 

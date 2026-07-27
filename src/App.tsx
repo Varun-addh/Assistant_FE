@@ -24,14 +24,25 @@ import { useEffect } from "react";
 const queryClient = new QueryClient();
 
 /**
- * Redirects `/` and `/docs` requests to the static docs entrypoint.
- * In production, Firebase Hosting redirects `/` to `/docs` (docs/info opens first).
+ * Redirects `/` to the static landing page.
+ * In production, Firebase Hosting serves `/landing.html` at `/`.
+ * Locally, Vite serves the SPA for `/`, so we force-load the static landing page.
+ */
+const LandingRedirect = () => {
+  useEffect(() => {
+    if (window.location.pathname === '/') {
+      window.location.replace('/landing.html');
+    }
+  }, []);
+  return null;
+};
+
+/**
+ * Redirects `/docs` to the static docs entrypoint.
  * Locally, Vite serves the SPA for `/docs`, so we force-load the static docs HTML.
  */
 const DocsRedirect = () => {
   useEffect(() => {
-    // Locally, Vite serves the SPA for `/docs`, so force the browser to load the
-    // static docs file from `public/docs/index.html`.
     if (window.location.pathname !== '/docs/index.html') {
       window.location.replace('/docs/index.html');
     }
@@ -67,7 +78,7 @@ const App = () => (
             <Route path="/auth/google/callback" element={<GoogleCallback />} />
             <Route path="/auth/verify-email" element={<VerifyEmail />} />
             <Route path="/auth/reset-password" element={<ResetPassword />} />
-            <Route path="/" element={<DocsRedirect />} />
+            <Route path="/" element={<LandingRedirect />} />
             {/* Legacy alias for the landing page. */}
             <Route path="/landing" element={<Index />} />
             <Route path="/app" element={

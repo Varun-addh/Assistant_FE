@@ -15,7 +15,7 @@ import {
 } from '@/components/ui/chart';
 import { CartesianGrid, Line, LineChart, XAxis, YAxis } from 'recharts';
 import { useToast } from '@/hooks/use-toast';
-import { useNavigate } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 import {
   TrendingUp,
   TrendingDown,
@@ -38,9 +38,51 @@ import {
   type NextSessionPlan,
 } from '@/lib/progressApi';
 
+type PracticeProgressRefreshHint = {
+  sessionId?: string | null;
+  completedAt: string;
+};
+
+const PRACTICE_PROGRESS_REFRESH_HINT_STORAGE_KEY = 'practice_progress_refresh_hint';
+const PRACTICE_PROGRESS_REFRESH_EVENT = 'practice:session-complete';
+const PRACTICE_PROGRESS_REFRESH_HINT_MAX_AGE_MS = 2 * 60 * 1000;
+const PRACTICE_PROGRESS_REFRESH_TOLERANCE_MS = 30 * 1000;
+
+const parseTimestamp = (value?: string | null): number | null => {
+  if (typeof value !== 'string' || !value.trim()) return null;
+  const parsed = Date.parse(value);
+  return Number.isFinite(parsed) ? parsed : null;
+};
+
+const readPracticeProgressRefreshHint = (): PracticeProgressRefreshHint | null => {
+  if (typeof window === 'undefined') return null;
+
+  try {
+    const raw = window.localStorage.getItem(PRACTICE_PROGRESS_REFRESH_HINT_STORAGE_KEY);
+    if (!raw) return null;
+
+    const parsed = JSON.parse(raw) as PracticeProgressRefreshHint | null;
+    if (!parsed || typeof parsed !== 'object' || typeof parsed.completedAt !== 'string') return null;
+    return parsed;
+  } catch {
+    return null;
+  }
+};
+
+const clearPracticeProgressRefreshHint = () => {
+  if (typeof window === 'undefined') return;
+
+  try {
+    window.localStorage.removeItem(PRACTICE_PROGRESS_REFRESH_HINT_STORAGE_KEY);
+  } catch {
+    // Ignore storage failures.
+  }
+};
+
 export default function Progress() {
   const { toast } = useToast();
   const navigate = useNavigate();
+  const location = useLocation();
 
   const aliveRef = useRef(true);
   const retryCountRef = useRef(0);
@@ -66,44 +108,109 @@ export default function Progress() {
 
   // Auto-refresh when page becomes visible (e.g. user switches tabs back)
   useEffect(() => {
+    const reloadProgressData = () => {
+      retryCountRef.current = 0;
+      lastKnownAttemptsRef.current = null;
+      if (retryTimerRef.current) {
+        window.clearTimeout(retryTimerRef.current);
+        retryTimerRef.current = null;
+      }
+      loadProgressData();
+    };
+
     const handleVisibilityChange = () => {
       if (document.visibilityState === 'visible') {
-        retryCountRef.current = 0;
-        lastKnownAttemptsRef.current = null;
-        loadProgressData();
+        reloadProgressData();
       }
     };
+
+    const handleWindowFocus = () => {
+      reloadProgressData();
+    };
+
+    const handlePageShow = () => {
+      reloadProgressData();
+    };
+
+    const handlePracticeSessionComplete = () => {
+      reloadProgressData();
+    };
+
     document.addEventListener('visibilitychange', handleVisibilityChange);
-    return () => document.removeEventListener('visibilitychange', handleVisibilityChange);
+    window.addEventListener('focus', handleWindowFocus);
+    window.addEventListener('pageshow', handlePageShow);
+    window.addEventListener(PRACTICE_PROGRESS_REFRESH_EVENT, handlePracticeSessionComplete as EventListener);
+
+    return () => {
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+      window.removeEventListener('focus', handleWindowFocus);
+      window.removeEventListener('pageshow', handlePageShow);
+      window.removeEventListener(PRACTICE_PROGRESS_REFRESH_EVENT, handlePracticeSessionComplete as EventListener);
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [lookbackDays]);
+  }, [lookbackDays, location.key]);
 
   useEffect(() => {
-    // Switching lookback should reset retry.
     retryCountRef.current = 0;
+    lastKnownAttemptsRef.current = null;
+    if (retryTimerRef.current) {
+      window.clearTimeout(retryTimerRef.current);
+      retryTimerRef.current = null;
+    }
     loadProgressData();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [lookbackDays]);
+  }, [lookbackDays, location.key]);
 
   const loadProgressData = async () => {
     setLoading(true);
     try {
       const [summaryData, heatmapData, planData] = await Promise.all([
         getProgressSummary(lookbackDays),
-        getProgressHeatmap(90), // Always use 90 days for heatmap
+        getProgressHeatmap(90, undefined, 500), // Always use 90 days for heatmap
         getNextSessionPlan(),
       ]);
 
       if (!aliveRef.current) return;
 
+      const rawSummaryAttempts = summaryData.attempts ?? 0;
+      const heatmapAttemptEstimate = estimateAttemptsFromHeatmap(heatmapData);
+      const derivedExtremes = deriveDimensionExtremes(heatmapData);
+      const normalizedSummary: ProgressSummary = {
+        ...summaryData,
+        attempts: Math.max(rawSummaryAttempts, heatmapAttemptEstimate),
+        best_dimension: summaryData.best_dimension ?? derivedExtremes.best,
+        worst_dimension: summaryData.worst_dimension ?? derivedExtremes.worst,
+      };
+
+      const refreshHint = readPracticeProgressRefreshHint();
+      const refreshHintTimestamp = parseTimestamp(refreshHint?.completedAt ?? null);
+      const refreshHintExpired =
+        refreshHintTimestamp === null ||
+        Date.now() - refreshHintTimestamp > PRACTICE_PROGRESS_REFRESH_HINT_MAX_AGE_MS;
+      const lastCompletedTimestamp = parseTimestamp(normalizedSummary.last_completed_at ?? null);
+      const summaryCaughtUpToRecentCompletion =
+        refreshHintTimestamp !== null &&
+        lastCompletedTimestamp !== null &&
+        lastCompletedTimestamp + PRACTICE_PROGRESS_REFRESH_TOLERANCE_MS >= refreshHintTimestamp;
+      const heatmapCaughtUpToSummary = rawSummaryAttempts <= 0 || heatmapAttemptEstimate >= rawSummaryAttempts;
+
+      if (refreshHint && (refreshHintExpired || (summaryCaughtUpToRecentCompletion && heatmapCaughtUpToSummary))) {
+        clearPracticeProgressRefreshHint();
+      }
+
       console.log('[Progress] Loaded data:', {
-        summary: summaryData,
+        summary: normalizedSummary,
         heatmap: heatmapData,
         plan: planData,
-        hasProgress: (summaryData.attempts ?? 0) > 0 || Boolean(summaryData.last_completed_at),
+        hasProgress: (normalizedSummary.attempts ?? 0) > 0 || Boolean(normalizedSummary.last_completed_at),
+        rawSummaryAttempts,
+        heatmapAttemptEstimate,
+        recentCompletionHint: refreshHint,
+        summaryCaughtUpToRecentCompletion,
+        heatmapCaughtUpToSummary,
       });
 
-      setSummary(summaryData);
+      setSummary(normalizedSummary);
       setHeatmap(heatmapData);
       setNextPlan(planData);
 
@@ -111,19 +218,31 @@ export default function Progress() {
       // Trigger retry if:
       //  a) Zero progress detected at all (first visit after a session), OR
       //  b) We previously saw N attempts and still see N (stale read — backend hasn't committed yet)
-      const currentAttempts = summaryData.attempts ?? 0;
+      const currentAttempts = normalizedSummary.attempts ?? 0;
       const hasAnyProgressSignal =
         currentAttempts > 0 ||
-        Boolean(summaryData.last_completed_at) ||
-        (summaryData.average_overall_score ?? 0) > 0 ||
+        Boolean(normalizedSummary.last_completed_at) ||
+        (normalizedSummary.average_overall_score ?? 0) > 0 ||
         heatmapData.some((p) => (p.attempts ?? 0) > 0);
 
       const lastKnown = lastKnownAttemptsRef.current;
       const looksSameAsLast = lastKnown !== null && currentAttempts === lastKnown && currentAttempts > 0;
+      const chartsMissingWhileSummaryExists = currentAttempts > 0 && heatmapData.length === 0;
+      const heatmapLooksBehindSummary = rawSummaryAttempts > 0 && heatmapAttemptEstimate < rawSummaryAttempts;
+      const shouldRetryForRecentCompletion =
+        Boolean(refreshHint) &&
+        !refreshHintExpired &&
+        (!summaryCaughtUpToRecentCompletion || !heatmapCaughtUpToSummary);
 
       const shouldRetry =
-        retryCountRef.current < 3 &&
-        (!hasAnyProgressSignal || looksSameAsLast);
+        retryCountRef.current < 5 &&
+        (
+          !hasAnyProgressSignal ||
+          looksSameAsLast ||
+          chartsMissingWhileSummaryExists ||
+          heatmapLooksBehindSummary ||
+          shouldRetryForRecentCompletion
+        );
 
       if (shouldRetry) {
         retryCountRef.current += 1;
@@ -201,6 +320,45 @@ export default function Progress() {
   };
 
   const normalizeKey = (value: string): string => value.toLowerCase().trim().replace(/[^a-z0-9]+/g, '_');
+
+  const estimateAttemptsFromHeatmap = (points: HeatmapPoint[]): number => {
+    const byWeek = new Map<string, number>();
+
+    for (const point of points) {
+      const week = point.week_start;
+      const attempts = point.attempts ?? 0;
+      if (!week || attempts <= 0) continue;
+
+      byWeek.set(week, Math.max(byWeek.get(week) ?? 0, attempts));
+    }
+
+    return Array.from(byWeek.values()).reduce((sum, value) => sum + value, 0);
+  };
+
+  const deriveDimensionExtremes = (points: HeatmapPoint[]): { best: string | null; worst: string | null } => {
+    const aggregates = new Map<string, { total: number; count: number }>();
+
+    for (const point of points) {
+      const key = normalizeKey(point.dimension);
+      if (!key) continue;
+
+      const current = aggregates.get(key) ?? { total: 0, count: 0 };
+      aggregates.set(key, {
+        total: current.total + (point.avg_score ?? 0),
+        count: current.count + 1,
+      });
+    }
+
+    const ranked = Array.from(aggregates.entries())
+      .filter(([, value]) => value.count > 0)
+      .map(([key, value]) => ({ key, avg: value.total / value.count }))
+      .sort((left, right) => right.avg - left.avg);
+
+    return {
+      best: ranked[0]?.key ?? null,
+      worst: ranked[ranked.length - 1]?.key ?? null,
+    };
+  };
 
   const hasAnyProgressSignal =
     Boolean(summary?.last_completed_at) ||
@@ -317,7 +475,7 @@ export default function Progress() {
 
   const header = (
     <div className="border-b bg-background/70 backdrop-blur supports-[backdrop-filter]:bg-background/60">
-      <div className="container mx-auto max-w-7xl px-4 sm:px-6 py-4">
+      <div className="container mx-auto max-w-7xl px-3 sm:px-6 py-4">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <div className="min-w-0">
             <div className="flex items-center gap-2">
@@ -472,7 +630,7 @@ export default function Progress() {
   );
 
   const dataView = summary ? (
-    <div className="space-y-6 pb-10">
+    <div className="space-y-4 sm:space-y-6 pb-10">
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-4">
         {/* Overview */}
         <Card className="lg:col-span-7 border-2">
@@ -491,14 +649,14 @@ export default function Progress() {
             </CardDescription>
           </CardHeader>
           <CardContent>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <div className="sm:col-span-2 rounded-xl border bg-gradient-to-br from-primary/10 to-primary/5 p-5">
+            <div className="grid grid-cols-1 gap-3 sm:gap-4">
+              <div className="rounded-xl border bg-gradient-to-br from-primary/10 to-primary/5 p-4 sm:p-5">
                 <div className="flex items-end justify-between gap-4">
                   <div className="space-y-1">
                     <div className="text-sm text-muted-foreground">Average Overall Score</div>
                     <div className="flex items-end gap-2">
                       <div
-                        className={`text-4xl sm:text-5xl font-bold tracking-tight ${getScoreColor(summary.average_overall_score ?? 0)}`}
+                        className={`text-3xl sm:text-5xl font-bold tracking-tight ${getScoreColor(summary.average_overall_score ?? 0)}`}
                       >
                         {typeof summary.average_overall_score === 'number'
                           ? summary.average_overall_score.toFixed(0)
@@ -630,7 +788,7 @@ export default function Progress() {
           <CardContent>
             <ChartContainer
               config={chartConfig}
-              className="h-[280px] w-full"
+              className="h-[220px] sm:h-[280px] w-full"
             >
               <LineChart data={timeSeries} margin={{ left: 8, right: 16, top: 8, bottom: 8 }}>
                 <CartesianGrid vertical={false} />
@@ -684,9 +842,9 @@ export default function Progress() {
             </CardTitle>
             <CardDescription>Scores by dimension per week — darker = higher score</CardDescription>
           </CardHeader>
-          <CardContent className="-mx-2 sm:mx-0">
-            <div className="overflow-x-auto">
-              <table className="w-full text-sm">
+          <CardContent className="-mx-1 sm:mx-0">
+            <div className="overflow-x-auto -mx-1 sm:mx-0">
+              <table className="w-full text-sm min-w-[360px]">
                 <thead>
                   <tr className="border-b">
                     <th className="text-left text-xs text-muted-foreground font-medium py-2 px-2 sm:px-3 w-20">Week</th>
@@ -739,7 +897,7 @@ export default function Progress() {
     <div className="h-[var(--app-height)] min-h-[var(--app-height)] flex flex-col overflow-hidden">
       {header}
       <ScrollArea className="flex-1">
-        <div className="container mx-auto max-w-7xl px-4 sm:px-6 py-6">
+        <div className="container mx-auto max-w-7xl px-3 sm:px-6 py-4 sm:py-6">
           {content}
         </div>
       </ScrollArea>

@@ -92,7 +92,7 @@ export default function Auth() {
         </div>
 
         {/* Right Side - Auth Form */}
-        <div className="w-full lg:w-1/2 flex items-start justify-center px-6 py-12 lg:h-screen lg:overflow-y-auto" style={{ WebkitOverflowScrolling: 'touch' }}>
+        <div className="w-full lg:w-1/2 flex items-start justify-center px-4 sm:px-6 py-6 sm:py-12 lg:h-screen lg:overflow-y-auto" style={{ WebkitOverflowScrolling: 'touch' }}>
           <motion.div
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}

@@ -126,6 +126,7 @@ function hasExplicitByokConnectionFlag(): boolean {
 export type BuildHeadersOptions = {
   json?: boolean;
   forceGeminiAsPrimary?: boolean;
+  includeUserKeys?: boolean;
 };
 
 export function buildStrataxHeaders(options?: BuildHeadersOptions): HeadersInit {
@@ -154,7 +155,7 @@ export function buildStrataxHeaders(options?: BuildHeadersOptions): HeadersInit 
   // - user explicitly connected keys (api_keys_connected=true)
   // This supports Quick Start/BYOK flows without requiring JWT while still
   // avoiding accidental attachment from stale localStorage in true demo mode.
-  const allowUserKeys = !!jwt || hasExplicitByokConnectionFlag();
+  const allowUserKeys = options?.includeUserKeys !== false && (!!jwt || hasExplicitByokConnectionFlag());
   const { groqKey, geminiKey } = allowUserKeys ? getUserKeys() : {};
   if (groqKey) headers["X-API-Key"] = groqKey;
   if (geminiKey) headers["X-Gemini-Key"] = geminiKey;
@@ -199,6 +200,31 @@ function persistEffectiveSessionId(info: { sessionId?: string; recovered?: boole
 
   try {
     window.dispatchEvent(new CustomEvent("stratax:session", { detail: info }));
+  } catch {
+    // ignore
+  }
+}
+
+function readGuestIdentityHeader(res: Response): string | undefined {
+  return (
+    res.headers.get(STRATAX_GUEST_ID_HEADER) ||
+    res.headers.get(STRATAX_GUEST_ID_HEADER.toLowerCase()) ||
+    undefined
+  )?.trim() || undefined;
+}
+
+function persistGuestIdentityHeader(guestId?: string) {
+  if (!guestId || typeof window === 'undefined') return;
+
+  try {
+    localStorage.setItem(STRATAX_GUEST_ID_STORAGE_KEY, guestId);
+    localStorage.setItem('stratax_user_id', guestId);
+  } catch {
+    // ignore
+  }
+
+  try {
+    window.dispatchEvent(new CustomEvent('stratax:guest-id', { detail: { guestId } }));
   } catch {
     // ignore
   }
@@ -271,12 +297,15 @@ function dispatchDemoEvents(opts: {
 
 export async function strataxFetch(
   pathOrUrl: string,
-  init: RequestInit & { json?: boolean; throwOnError?: boolean } = {}
+  init: RequestInit & { json?: boolean; throwOnError?: boolean; includeUserKeys?: boolean } = {}
 ): Promise<Response> {
   const url = pathOrUrl.startsWith("http") ? pathOrUrl : `${STRATAX_API_BASE_URL}${pathOrUrl}`;
 
   const wantsJsonHeader = init.json !== false;
-  const defaultHeaders = buildStrataxHeaders({ json: wantsJsonHeader });
+  const defaultHeaders = buildStrataxHeaders({
+    json: wantsJsonHeader,
+    includeUserKeys: init.includeUserKeys,
+  });
 
   const mergedHeaders: Record<string, string> = {
     ...(defaultHeaders as Record<string, string>),
@@ -295,6 +324,7 @@ export async function strataxFetch(
 
   const sessionInfo = readSessionHeaders(res);
   persistEffectiveSessionId(sessionInfo);
+  persistGuestIdentityHeader(readGuestIdentityHeader(res));
 
   if (!res.ok) {
     // If caller wants to handle non-OK status codes themselves, do not consume the body.
@@ -376,7 +406,7 @@ export async function strataxFetch(
 
 export async function strataxFetchJson<T>(
   pathOrUrl: string,
-  init: RequestInit & { json?: boolean } = {}
+  init: RequestInit & { json?: boolean; includeUserKeys?: boolean } = {}
 ): Promise<T> {
   const res = await strataxFetch(pathOrUrl, init);
   return (await res.json()) as T;

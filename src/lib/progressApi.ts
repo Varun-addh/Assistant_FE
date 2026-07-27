@@ -23,6 +23,9 @@ export interface ProgressSummary {
 
 type RawProgressSummary = Record<string, unknown>;
 
+const PROGRESS_RECORD_KEYS = ['summary', 'progress', 'stats', 'analytics', 'result', 'payload', 'data', 'report'] as const;
+const PROGRESS_ARRAY_KEYS = ['points', 'heatmap', 'data', 'items', 'rows', 'results', 'buckets', 'weeks', 'series'] as const;
+
 const asNumber = (value: unknown, fallback = 0): number => {
   if (typeof value === 'number' && Number.isFinite(value)) return value;
   if (typeof value === 'string') {
@@ -35,6 +38,11 @@ const asNumber = (value: unknown, fallback = 0): number => {
 const asStringOrNull = (value: unknown): string | null => {
   if (typeof value === 'string') return value;
   return null;
+};
+
+const asRecord = (value: unknown): Record<string, unknown> | null => {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
+  return value as Record<string, unknown>;
 };
 
 const asNumberOrNull = (value: unknown): number | null => {
@@ -60,37 +68,260 @@ const coerceDimensionName = (value: unknown): string | null => {
   return null;
 };
 
+const collectProgressRecordCandidates = (raw: unknown): Record<string, unknown>[] => {
+  const root = asRecord(raw);
+  if (!root) return [];
+
+  const visited = new Set<Record<string, unknown>>();
+  const candidates: Record<string, unknown>[] = [];
+
+  const push = (record: Record<string, unknown> | null) => {
+    if (!record || visited.has(record)) return;
+    visited.add(record);
+    candidates.push(record);
+  };
+
+  push(root);
+
+  for (const key of PROGRESS_RECORD_KEYS) {
+    const nested = asRecord(root[key]);
+    push(nested);
+    if (!nested) continue;
+
+    for (const nestedKey of PROGRESS_RECORD_KEYS) {
+      push(asRecord(nested[nestedKey]));
+    }
+  }
+
+  return candidates;
+};
+
+const selectProgressSummaryPayload = (raw: unknown): RawProgressSummary => {
+  const candidates = collectProgressRecordCandidates(raw);
+  if (candidates.length === 0) return {};
+
+  const summaryFieldNames = [
+    'attempts',
+    'attempt_count',
+    'attempts_count',
+    'total_attempts',
+    'completed_attempts',
+    'completed_sessions',
+    'completed_session_count',
+    'session_count',
+    'sessions_count',
+    'total_sessions',
+    'sessions',
+    'count',
+    'average_overall_score',
+    'avg_overall_score',
+    'average_score',
+    'avg_score',
+    'last_completed_at',
+    'last_attempt_at',
+    'last_session_at',
+  ];
+
+  return (candidates.find((candidate) => summaryFieldNames.some((field) => candidate[field] !== undefined)) ?? candidates[0]) as RawProgressSummary;
+};
+
+const coerceWeekStart = (value: unknown): string => {
+  if (typeof value === 'string' && value.trim()) return value.trim();
+
+  const record = asRecord(value);
+  if (!record) return '';
+
+  return (
+    asStringOrNull(record.week_start) ??
+    asStringOrNull(record.weekStart) ??
+    asStringOrNull(record.week_of) ??
+    asStringOrNull(record.weekOf) ??
+    asStringOrNull(record.start_of_week) ??
+    asStringOrNull(record.startOfWeek) ??
+    asStringOrNull(record.bucket_start) ??
+    asStringOrNull(record.bucketStart) ??
+    asStringOrNull(record.week) ??
+    asStringOrNull(record.date) ??
+    asStringOrNull(record.label) ??
+    ''
+  );
+};
+
+const coerceHeatmapAttempts = (value: unknown, fallback = 0): number => {
+  const record = asRecord(value);
+  if (record) {
+    return asNumber(
+      record.attempts ??
+      record.attempt_count ??
+      record.attempts_count ??
+      record.total_attempts ??
+      record.completed_attempts ??
+      record.completed_sessions ??
+      record.count ??
+      record.sessions,
+      fallback
+    );
+  }
+
+  return asNumber(value, fallback);
+};
+
+const coerceHeatmapScore = (value: unknown): number => {
+  const record = asRecord(value);
+  if (record) {
+    return asNumber(
+      record.avg_score ??
+      record.avgScore ??
+      record.score ??
+      record.average ??
+      record.average_score ??
+      record.averageScore ??
+      record.mean_score ??
+      record.meanScore ??
+      record.value,
+      NaN
+    );
+  }
+
+  return asNumber(value, NaN);
+};
+
+const normalizeHeatmapEntry = (entry: unknown, defaultDimension?: string): HeatmapPoint[] => {
+  const obj = asRecord(entry);
+  if (!obj) return [];
+
+  const week_start = coerceWeekStart(obj);
+  const directDimension =
+    coerceDimensionName(obj.dimension) ??
+    coerceDimensionName(obj.dimension_name) ??
+    coerceDimensionName(obj.metric) ??
+    coerceDimensionName(obj.skill) ??
+    coerceDimensionName(obj.category) ??
+    coerceDimensionName(obj.name) ??
+    (defaultDimension && defaultDimension.trim() ? defaultDimension.trim() : null);
+
+  const directScore = coerceHeatmapScore(obj);
+  const directAttempts = coerceHeatmapAttempts(obj, 0);
+
+  if (week_start && directDimension && !Number.isNaN(directScore)) {
+    return [{ week_start, dimension: directDimension, avg_score: directScore, attempts: directAttempts }];
+  }
+
+  const nestedDimensions =
+    asRecord(obj.dimensions) ??
+    asRecord(obj.dimension_scores) ??
+    asRecord(obj.scores) ??
+    asRecord(obj.metrics) ??
+    null;
+
+  if (!week_start || !nestedDimensions) return [];
+
+  const points: HeatmapPoint[] = [];
+  for (const [dimension, rawValue] of Object.entries(nestedDimensions)) {
+    const avg_score = coerceHeatmapScore(rawValue);
+    if (Number.isNaN(avg_score)) continue;
+
+    const attempts = coerceHeatmapAttempts(rawValue, directAttempts);
+    points.push({
+      week_start,
+      dimension,
+      avg_score,
+      attempts,
+    });
+  }
+
+  return points;
+};
+
+const extractHeatmapEntries = (raw: unknown): HeatmapPoint[] => {
+  const directArrays: unknown[][] = [];
+
+  if (Array.isArray(raw)) {
+    directArrays.push(raw);
+  }
+
+  const recordCandidates = collectProgressRecordCandidates(raw);
+  for (const record of recordCandidates) {
+    for (const key of PROGRESS_ARRAY_KEYS) {
+      const arrayValue = record[key];
+      if (Array.isArray(arrayValue)) {
+        directArrays.push(arrayValue);
+      }
+    }
+  }
+
+  const parsedFromArrays = directArrays.flatMap((entries) => entries.flatMap((entry) => normalizeHeatmapEntry(entry)));
+  if (parsedFromArrays.length > 0) return parsedFromArrays;
+
+  for (const record of recordCandidates) {
+    const groupedPoints: HeatmapPoint[] = [];
+
+    for (const [key, value] of Object.entries(record)) {
+      if ((PROGRESS_RECORD_KEYS as readonly string[]).includes(key) || (PROGRESS_ARRAY_KEYS as readonly string[]).includes(key)) {
+        continue;
+      }
+      if (!Array.isArray(value)) continue;
+
+      groupedPoints.push(...value.flatMap((entry) => normalizeHeatmapEntry(entry, key)));
+    }
+
+    if (groupedPoints.length > 0) return groupedPoints;
+  }
+
+  return [];
+};
+
 const coerceProgressSummary = (
   raw: unknown,
   lookbackDays: number,
   domain?: string
 ): ProgressSummary => {
-  const root = (raw ?? {}) as Record<string, unknown>;
-  // Backend may wrap this in { summary: {...} } or { data: {...} }.
-  const payload = ((root.summary ?? root.data ?? root) ?? {}) as RawProgressSummary;
+  const payload = selectProgressSummaryPayload(raw);
 
   const attempts = asNumber(
-    payload.attempts ?? payload.attempt_count ?? payload.total_attempts ?? payload.sessions,
+    payload.attempts ??
+      payload.attempt_count ??
+      payload.attempts_count ??
+      payload.total_attempts ??
+      payload.completed_attempts ??
+      payload.completed_sessions ??
+      payload.completed_session_count ??
+      payload.session_count ??
+      payload.sessions_count ??
+      payload.total_sessions ??
+      payload.sessions ??
+      payload.count,
     0
   );
 
   const average_overall_score =
     asNumberOrNull(
       payload.average_overall_score ??
+      payload.overall_average_score ??
+      payload.overall_average ??
       payload.avg_overall_score ??
+      payload.avgOverallScore ??
       payload.avg_score ??
       payload.average_score ??
-      payload.overall_avg
+      payload.averageScore ??
+      payload.overall_avg ??
+      payload.mean_score ??
+      payload.meanScore
     ) ?? null;
 
   const last_completed_at =
     asStringOrNull(payload.last_completed_at) ??
+    asStringOrNull(payload.completed_at) ??
     asStringOrNull(payload.last_attempt_at) ??
-    asStringOrNull(payload.last_session_at);
+    asStringOrNull(payload.last_session_at) ??
+    asStringOrNull(payload.updated_at) ??
+    asStringOrNull(payload.generated_at);
 
-  const best_dimension = coerceDimensionName(payload.best_dimension ?? payload.best ?? payload.top_dimension);
+  const best_dimension = coerceDimensionName(
+    payload.best_dimension ?? payload.best ?? payload.top_dimension ?? payload.strongest_dimension ?? payload.best_skill
+  );
   const worst_dimension = coerceDimensionName(
-    payload.worst_dimension ?? payload.worst ?? payload.bottom_dimension
+    payload.worst_dimension ?? payload.worst ?? payload.bottom_dimension ?? payload.weakest_dimension ?? payload.worst_skill
   );
 
   const lookback_days = asNumber(payload.lookback_days, lookbackDays);
@@ -118,8 +349,71 @@ export interface HeatmapPoint {
 // Intentionally flexible: backend returns `{ plan: object | null }` and the plan shape may evolve.
 export type NextSessionPlan = Record<string, unknown>;
 
+const coerceStringArrayLoose = (value: unknown): string[] => {
+  if (Array.isArray(value)) {
+    return value
+      .filter((item): item is string => typeof item === 'string')
+      .map((item) => item.trim())
+      .filter(Boolean);
+  }
+
+  if (typeof value === 'string' && value.trim()) {
+    return value
+      .split(/\n|(?<=\.)\s+/)
+      .map((item) => item.trim())
+      .filter(Boolean);
+  }
+
+  return [];
+};
+
+const coerceBooleanOrUndefined = (value: unknown): boolean | undefined => {
+  if (typeof value === 'boolean') return value;
+  if (typeof value === 'number') return value !== 0;
+  if (typeof value === 'string') {
+    const normalized = value.trim().toLowerCase();
+    if (normalized === 'true') return true;
+    if (normalized === 'false') return false;
+  }
+  return undefined;
+};
+
+const coerceNumberMap = (value: unknown): Record<string, number> | undefined => {
+  const record = asRecord(value);
+  if (!record) return undefined;
+
+  const entries = Object.entries(record)
+    .map(([key, raw]) => {
+      const parsed = asNumberOrNull(raw);
+      return parsed === null ? null : [key, parsed] as const;
+    })
+    .filter((entry): entry is readonly [string, number] => entry !== null);
+
+  return entries.length > 0 ? Object.fromEntries(entries) : undefined;
+};
+
+const coerceUnknownArray = (value: unknown): unknown[] | undefined => {
+  return Array.isArray(value) ? value : undefined;
+};
+
+const coerceNextSessionPlanValue = (value: unknown): NextSessionPlan | null => {
+  if (value === null || value === undefined) return null;
+
+  const record = asRecord(value);
+  if (record) return record;
+
+  const list = coerceStringArrayLoose(value);
+  if (list.length > 0) {
+    return { focus: list };
+  }
+
+  return null;
+};
+
 export interface SessionScore {
+  source?: 'runtime' | 'db' | (string & {});
   session_id?: string;
+  complete?: boolean;
   overall_score: number;
   dimension_scores: {
     correctness: number;
@@ -128,14 +422,29 @@ export interface SessionScore {
     structure: number;
     [key: string]: number;
   };
-  why?: string;
-  improvement_plan?: string[];
-  next_session_plan?: string[];
+  why: string[];
+  improvement_plan: string[];
+  next_session_plan?: NextSessionPlan | null;
   evaluation_report?: unknown;
 
   // Optional runtime extensions (may be absent on older backends)
   evaluation_trace?: unknown;
   trajectory?: unknown;
+
+  screen_recording_url?: string;
+  camera_recording_url?: string;
+  violation_count?: number;
+  total_violation_count?: number;
+  serious_violation_count?: number;
+  risk_level?: string | null;
+  terminated_reason?: string | null;
+  heartbeat_stale?: boolean;
+  last_heartbeat_at?: string | null;
+  remaining_total_before_termination?: number | null;
+  remaining_serious_before_termination?: number | null;
+  events?: unknown[];
+  recent_events?: unknown[];
+  event_counts?: Record<string, number>;
 
   // Live Practice additions
   media?: {
@@ -144,7 +453,14 @@ export interface SessionScore {
     [key: string]: unknown;
   };
   proctoring_summary?: {
+    status?: string;
+    risk_level?: string;
     violation_count?: number;
+    total_violations?: number;
+    serious_violations?: number;
+    event_counts?: Record<string, number>;
+    recent_events?: unknown[];
+    terminated_reason?: string;
     events?: unknown[];
     [key: string]: unknown;
   };
@@ -155,6 +471,8 @@ type RawSessionScore = {
   overall_score?: unknown;
   dimension_scores?: unknown;
   dimensions?: unknown;
+  source?: unknown;
+  complete?: unknown;
   why?: unknown;
   explanation?: unknown;
   reasoning?: unknown;
@@ -171,6 +489,23 @@ type RawSessionScore = {
 
   evaluation_trace?: unknown;
   trajectory?: unknown;
+
+  screen_recording_url?: unknown;
+  camera_recording_url?: unknown;
+  violation_count?: unknown;
+  total_violation_count?: unknown;
+  total_violations?: unknown;
+  serious_violation_count?: unknown;
+  serious_violations?: unknown;
+  risk_level?: unknown;
+  terminated_reason?: unknown;
+  heartbeat_stale?: unknown;
+  last_heartbeat_at?: unknown;
+  remaining_total_before_termination?: unknown;
+  remaining_serious_before_termination?: unknown;
+  event_counts?: unknown;
+  recent_events?: unknown;
+  events?: unknown;
 
   media?: unknown;
   proctoring_summary?: unknown;
@@ -195,10 +530,13 @@ export async function getProgressSummary(
   if (domain) {
     params.set('domain', domain);
   }
+  params.set('_t', String(Date.now()));
   const raw = (await strataxFetchJson(
     `${API_BASE_URL}/api/practice/progress/summary?${params.toString()}`,
     {
       method: 'GET',
+      includeUserKeys: false,
+      cache: 'no-store',
       headers: {
         'Cache-Control': 'no-cache',
         'Pragma': 'no-cache'
@@ -214,16 +552,19 @@ export async function getProgressSummary(
  * Get heatmap data showing performance across dimensions over time
  * @param lookbackDays Number of days to look back (default: 90)
  * @param domain Optional domain filter
+ * @param maxPoints Limit output size 1–5000 (default: 500)
  */
 export async function getProgressHeatmap(
   lookbackDays: number = 90,
-  domain?: string
+  domain?: string,
+  maxPoints: number = 500
 ): Promise<HeatmapPoint[]> {
   const params = new URLSearchParams();
   params.set('lookback_days', String(lookbackDays));
   if (domain) {
     params.set('domain', domain);
   }
+  params.set('max_points', String(maxPoints));
   // Cache-bust to ensure fresh data
   params.set('_t', String(Date.now()));
 
@@ -231,6 +572,8 @@ export async function getProgressHeatmap(
     `${API_BASE_URL}/api/practice/progress/heatmap?${params.toString()}`,
     {
       method: 'GET',
+      includeUserKeys: false,
+      cache: 'no-store',
       headers: {
         'Cache-Control': 'no-cache',
         'Pragma': 'no-cache'
@@ -240,41 +583,13 @@ export async function getProgressHeatmap(
 
   console.log('📊 [Progress API] Heatmap raw response:', response);
 
-  // Backend may return either `{ points: [...] }` or the points array directly, or under data/heatmap.
-  let pointsRaw: unknown[] = [];
-  if (Array.isArray(response)) {
-    pointsRaw = response;
-  } else if (response && typeof response === 'object') {
-    const obj = response as Record<string, unknown>;
-    pointsRaw = Array.isArray(obj.points) ? obj.points :
-      Array.isArray(obj.heatmap) ? obj.heatmap :
-        Array.isArray(obj.data) ? obj.data :
-          Array.isArray(obj.items) ? obj.items : [];
+  const points = extractHeatmapEntries(response);
+
+  if (points.length === 0 && response && typeof response === 'object') {
+    console.warn('📊 [Progress API] Could not normalize any heatmap points from response:', response);
   }
 
-  if (!Array.isArray(pointsRaw)) return [];
-
-  return pointsRaw
-    .map((p): HeatmapPoint | null => {
-      if (!p || typeof p !== 'object') return null;
-      const obj = p as Record<string, unknown>;
-      const week_start = typeof obj.week_start === 'string'
-        ? obj.week_start
-        : (typeof obj.week === 'string' ? obj.week : (typeof obj.date === 'string' ? obj.date : ''));
-      const dimension = typeof obj.dimension === 'string'
-        ? obj.dimension
-        : (typeof obj.metric === 'string' ? obj.metric : (typeof obj.name === 'string' ? obj.name : ''));
-      const avg_score = asNumber(obj.avg_score ?? obj.score ?? obj.average ?? obj.avg_overall_score ?? obj.average_score, NaN);
-      const attempts = asNumber(obj.attempts ?? obj.count ?? obj.attempt_count ?? obj.sessions, 0);
-
-      // If missing critical data, skip this point
-      if (!week_start || !dimension || Number.isNaN(avg_score)) {
-        console.warn('📊 [Progress API] Dropped heatmap point due to missing/invalid fields:', obj);
-        return null;
-      }
-      return { week_start, dimension, avg_score, attempts };
-    })
-    .filter((x): x is HeatmapPoint => x !== null);
+  return points;
 }
 
 /**
@@ -295,6 +610,8 @@ export async function getNextSessionPlan(
     `${API_BASE_URL}/api/practice/progress/next-session?${params.toString()}`,
     {
       method: 'GET',
+      includeUserKeys: false,
+      cache: 'no-store',
       headers: {
         'Cache-Control': 'no-cache',
         'Pragma': 'no-cache'
@@ -318,32 +635,12 @@ export async function getNextSessionPlan(
 export async function getSessionScore(sessionId: string): Promise<SessionScore> {
   const raw = (await strataxFetchJson(
     `${API_BASE_URL}/api/practice/session/${sessionId}/score`,
-    { method: 'GET' }
+    { method: 'GET', includeUserKeys: false }
   )) as unknown;
 
   console.log('📊 [Session Score] Raw API response:', raw);
 
   const data = (raw ?? {}) as RawSessionScore;
-
-  const asNumber = (value: unknown, fallback = 0): number => {
-    if (typeof value === 'number' && Number.isFinite(value)) return value;
-    if (typeof value === 'string') {
-      const n = Number(value);
-      if (Number.isFinite(n)) return n;
-    }
-    return fallback;
-  };
-
-  const asString = (value: unknown): string | undefined => {
-    if (typeof value === 'string') return value;
-    return undefined;
-  };
-
-  const asStringArray = (value: unknown): string[] | undefined => {
-    if (!Array.isArray(value)) return undefined;
-    const items = value.filter((x) => typeof x === 'string').map((x) => x.trim()).filter(Boolean);
-    return items.length > 0 ? items : undefined;
-  };
 
   const coerceDimensionScores = (value: unknown): SessionScore['dimension_scores'] | null => {
     if (!value || typeof value !== 'object') return null;
@@ -374,27 +671,23 @@ export async function getSessionScore(sessionId: string): Promise<SessionScore> 
     coerceDimensionScores(data.dimensions) ??
     ({ correctness: 0, delivery: 0, clarity: 0, structure: 0 } as SessionScore['dimension_scores']);
 
-  const improvement_plan = asStringArray(data.improvement_plan) ?? asStringArray(data.action_plan);
-  const next_session_plan = asStringArray(data.next_session_plan) ?? asStringArray(data.next_steps) ?? asStringArray(data.recommendations);
+  const improvement_plan = coerceStringArrayLoose(data.improvement_plan ?? data.action_plan);
+  const next_session_plan = coerceNextSessionPlanValue(
+    data.next_session_plan ?? data.next_steps ?? data.recommendations
+  );
 
-  // Try multiple keys for the "why" explanation
-  let why = asString(data.why)
-    ?? asString(data.explanation)
-    ?? asString(data.reasoning)
-    ?? asString(data.score_reasoning)
-    ?? asString(data.summary)
-    ?? asString(data.feedback_summary);
-
-  // Try array-shaped reasons → join into a single string
-  if (!why) {
-    const reasonsArr = asStringArray(data.reasons) ?? asStringArray(data.why);
-    if (reasonsArr && reasonsArr.length > 0) {
-      why = reasonsArr.join(' ');
-    }
-  }
+  let why = coerceStringArrayLoose(
+    data.why ??
+    data.reasons ??
+    data.explanation ??
+    data.reasoning ??
+    data.score_reasoning ??
+    data.summary ??
+    data.feedback_summary
+  );
 
   // Auto-generate from dimension scores if nothing else was provided
-  if (!why && dimension_scores) {
+  if (why.length === 0 && dimension_scores) {
     const overall = asNumber(data.overall_score, 0);
     const sorted = Object.entries(dimension_scores)
       .filter(([, v]) => typeof v === 'number' && v > 0)
@@ -402,14 +695,74 @@ export async function getSessionScore(sessionId: string): Promise<SessionScore> 
     if (sorted.length >= 2) {
       const best = sorted[0];
       const worst = sorted[sorted.length - 1];
-      why = `Your overall score is ${overall.toFixed(0)}/100. Your strongest area was ${best[0]} (${best[1].toFixed(0)}%), while ${worst[0]} (${worst[1].toFixed(0)}%) needs the most improvement.`;
+      why = [
+        `Your overall score is ${overall.toFixed(0)}/100.`,
+        `Your strongest area was ${best[0]} (${best[1].toFixed(0)}%).`,
+        `${worst[0]} (${worst[1].toFixed(0)}%) needs the most improvement.`,
+      ];
     }
   }
 
-  console.log('📊 [Session Score] Parsed:', { overall: asNumber(data.overall_score, 0), why, improvement_plan, next_session_plan });
+  const screen_recording_url =
+    asStringOrNull(data.screen_recording_url) ??
+    asStringOrNull(asRecord(data.media)?.screen_recording_url) ??
+    undefined;
+  const camera_recording_url =
+    asStringOrNull(data.camera_recording_url) ??
+    asStringOrNull(asRecord(data.media)?.camera_recording_url) ??
+    undefined;
+
+  const proctoringSummaryRecord = asRecord(data.proctoring_summary);
+  const event_counts =
+    coerceNumberMap(data.event_counts) ??
+    coerceNumberMap(proctoringSummaryRecord?.event_counts) ??
+    undefined;
+  const recent_events = coerceUnknownArray(data.recent_events) ?? coerceUnknownArray(proctoringSummaryRecord?.recent_events);
+  const events = coerceUnknownArray(data.events) ?? coerceUnknownArray(proctoringSummaryRecord?.events);
+  const risk_level =
+    asStringOrNull(data.risk_level) ??
+    asStringOrNull(proctoringSummaryRecord?.risk_level) ??
+    null;
+  const terminated_reason =
+    asStringOrNull(data.terminated_reason) ??
+    asStringOrNull(proctoringSummaryRecord?.terminated_reason) ??
+    null;
+  const violation_count =
+    asNumberOrNull(data.violation_count ?? proctoringSummaryRecord?.violation_count) ??
+    undefined;
+  const total_violation_count =
+    asNumberOrNull(data.total_violation_count ?? data.total_violations ?? proctoringSummaryRecord?.total_violations) ??
+    violation_count ??
+    undefined;
+  const serious_violation_count =
+    asNumberOrNull(data.serious_violation_count ?? data.serious_violations ?? proctoringSummaryRecord?.serious_violations) ??
+    undefined;
+  const heartbeat_stale =
+    coerceBooleanOrUndefined(data.heartbeat_stale ?? proctoringSummaryRecord?.heartbeat_stale) ??
+    undefined;
+  const last_heartbeat_at =
+    asStringOrNull(data.last_heartbeat_at ?? proctoringSummaryRecord?.last_heartbeat_at) ??
+    null;
+  const remaining_total_before_termination =
+    asNumberOrNull(data.remaining_total_before_termination ?? proctoringSummaryRecord?.remaining_total_before_termination) ??
+    null;
+  const remaining_serious_before_termination =
+    asNumberOrNull(data.remaining_serious_before_termination ?? proctoringSummaryRecord?.remaining_serious_before_termination) ??
+    null;
+
+  console.log('📊 [Session Score] Parsed:', {
+    overall: asNumber(data.overall_score, 0),
+    why,
+    improvement_plan,
+    next_session_plan,
+    source: data.source,
+    complete: data.complete,
+  });
 
   return {
-    session_id: asString(data.session_id) ?? sessionId,
+    source: (asStringOrNull(data.source) ?? undefined) as SessionScore['source'],
+    session_id: asStringOrNull(data.session_id) ?? sessionId,
+    complete: coerceBooleanOrUndefined(data.complete) ?? undefined,
     overall_score: asNumber(data.overall_score, 0),
     dimension_scores,
     why,
@@ -418,7 +771,41 @@ export async function getSessionScore(sessionId: string): Promise<SessionScore> 
     evaluation_report: data.evaluation_report,
     evaluation_trace: data.evaluation_trace,
     trajectory: data.trajectory,
-    media: (data.media && typeof data.media === 'object') ? (data.media as any) : undefined,
-    proctoring_summary: (data.proctoring_summary && typeof data.proctoring_summary === 'object') ? (data.proctoring_summary as any) : undefined,
+    screen_recording_url,
+    camera_recording_url,
+    violation_count,
+    total_violation_count,
+    serious_violation_count,
+    risk_level,
+    terminated_reason,
+    heartbeat_stale,
+    last_heartbeat_at,
+    remaining_total_before_termination,
+    remaining_serious_before_termination,
+    event_counts,
+    recent_events,
+    events,
+    media: (screen_recording_url || camera_recording_url)
+      ? {
+          ...(asRecord(data.media) ?? {}),
+          screen_recording_url,
+          camera_recording_url,
+        }
+      : undefined,
+    proctoring_summary: {
+      ...(proctoringSummaryRecord ?? {}),
+      risk_level: risk_level ?? undefined,
+      violation_count,
+      total_violations: total_violation_count,
+      serious_violations: serious_violation_count,
+      event_counts,
+      recent_events,
+      events,
+      terminated_reason: terminated_reason ?? undefined,
+      heartbeat_stale,
+      last_heartbeat_at: last_heartbeat_at ?? undefined,
+      remaining_total_before_termination: remaining_total_before_termination ?? undefined,
+      remaining_serious_before_termination: remaining_serious_before_termination ?? undefined,
+    },
   };
 }

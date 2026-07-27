@@ -263,7 +263,7 @@ export function Register({ onSwitchToLogin }: { onSwitchToLogin?: () => void }) 
                   type="button"
                   onClick={onSwitchToLogin}
                   disabled={loading}
-                  className="text-purple-500 hover:text-purple-400 font-medium transition-colors inline-flex items-center gap-1 group"
+                  className="text-purple-500 hover:text-purple-400 font-medium transition-colors inline-flex items-center gap-1 group py-2 min-h-[44px]"
                 >
                   Sign in
                   <ArrowRight className="h-3 w-3 group-hover:translate-x-1 transition-transform" />

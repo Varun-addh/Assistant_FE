@@ -1,385 +1,734 @@
-# Frontend Technical Documentation (InterviewAstfe / Stratax AI)
+# Frontend Technical Documentation
 
-This document describes the frontend (Vite + React + TypeScript) codebase: how it boots, routes, authenticates, talks to the backend, and implements core features (Interview Assistant, Code Runner, Mock Interview, Architecture Generator), plus PWA/service worker and icon pipeline.
+This document describes the current frontend architecture for InterviewAstfe / Stratax AI.
 
----
-
-## 1) Tech Stack
-
-- **Runtime/UI**: React 18, TypeScript, Vite
-- **Styling**: TailwindCSS + shadcn/ui (Radix primitives)
-- **Animation**: framer-motion
-- **State/data**:
-  - Local React state for most UI and flows
-  - TanStack Query provider is wired in, but much of the fetching is direct `fetch()` wrappers.
-- **PWA**: Web manifest + custom service worker (`public/sw.js`)
-- **Hosting**: Firebase Hosting (serves `dist/`, SPA rewrite to `index.html`)
+It reflects the code that exists today in the Vite + React + TypeScript application, including bootstrap, routing, shared providers, backend wrappers, feature modules, persistence, global browser events, and PWA or static-docs behavior.
 
 ---
 
-## 2) Repo Layout (Frontend-Relevant)
+## 1. Tech Stack
 
-- `index.html`: Vite entry HTML (includes meta theme color / icons)
-- `public/`
-  - `manifest.webmanifest`: PWA manifest
-  - `sw.js`: service worker (cache + offline)
-  - `icons/`: generated icons + source
-- `src/`
-  - `main.tsx`: app bootstrap + providers + SW registration
-  - `App.tsx`: router + global modals/providers
-  - `pages/`: top-level route pages
-  - `components/`: feature components (assistant, runner, auth, etc.)
-  - `context/`: React contexts (auth)
-  - `lib/`: API clients, backend wrappers, utilities, feature-specific API modules
-  - `hooks/`: custom hooks (toast, speech recognition, theme, etc.)
-- `scripts/`: build-time tooling (icon generation)
+Current stack:
+
+- Runtime and UI: React 18, TypeScript, Vite
+- Styling: TailwindCSS, shadcn/ui, Radix UI primitives
+- Animation: framer-motion
+- Charts: Recharts
+- Data access: direct wrapper-based fetch calls via `strataxClient.ts` and feature API modules
+- Shared provider only: TanStack Query is mounted in the app shell, but most feature fetching is still direct-wrapper based rather than query-driven
+- PWA: manifest + custom service worker + install prompt context
+- Hosting target: static hosting such as Firebase Hosting, with SPA rewrites plus a static docs entry under `public/docs`
 
 ---
 
-## 3) Application Bootstrap
+## 2. Frontend Layout
 
-### Entry point
+Relevant frontend directories:
 
-- The application starts in `src/main.tsx`.
-- Providers/wrappers:
-  - `AuthProvider` provides user + token state and auth actions.
-  - `ErrorBoundary` wraps the UI to prevent hard crashes.
-  - `App` renders routing and global UI.
-  - `EvaluationOverlayHost` mounts overlay UI for evaluation features.
+```text
+src/
+  App.tsx
+  main.tsx
+  overlayHost.tsx
+  pages/
+  components/
+  context/
+  hooks/
+  lib/
+  types/
+public/
+  docs/index.html
+  manifest.webmanifest
+  sw.js
+  icons/
+  splash/
+scripts/
+  generate-icons.mjs
+  generate-splash.mjs
+  generate-byok-demo-video.mjs
+```
 
-### Service worker registration
+Important layout notes:
 
-`src/main.tsx` registers `public/sw.js` on `window.load` **only in production**. In development, it proactively unregisters SWs to avoid stale cache issues.
-
----
-
-## 4) Routing
-
-Defined in `src/App.tsx` using `react-router-dom`.
-
-### Routes
-
-- `/` → Landing page (`src/pages/Index.tsx`)
-- `/login` → Auth page (`src/pages/Auth.tsx`) wrapped with `ProtectedRoute requireAuth={false}`
-- `/auth/google/callback` → OAuth callback page (`src/pages/GoogleCallback.tsx`)
-- `/app` → Main assistant UI (`src/components/InterviewAssistant.tsx`)
-- `/run` → Code Runner page (`src/pages/Runner.tsx`) guarded by `ProtectedRoute`
-- `/architecture` → Architecture generator page (`src/pages/Architecture.tsx`) guarded by `ProtectedRoute`
-- `/progress` → Progress page (`src/pages/Progress.tsx`) guarded by `ProtectedRoute`
-- `*` → Not Found (`src/pages/NotFound.tsx`)
-
-### Route guards
-
-`src/components/ProtectedRoute.tsx`:
-- Shows a loading spinner while auth state is being resolved.
-- If `requireAuth=true` and there’s no user → redirects to `/login`.
-- If `requireAuth=false` and user exists → redirects to `/app`.
+- `src/pages` contains route-level wrappers and standalone auth or utility pages.
+- `src/components` contains most feature logic.
+- `src/lib` contains backend clients, rendering helpers, storage helpers, and deprecated browser-side runner stubs.
+- `public/docs/index.html` is a separate static documentation experience and is not rendered by React.
 
 ---
 
-## 5) Authentication
+## 3. Bootstrap and App Shell
 
-### Auth state
+### 3.1 Entry Point
 
-`src/context/AuthContext.tsx`:
-- Stores:
-  - `user` (id, email, full_name, tier)
-  - `token` (JWT from `localStorage`)
-  - `loading` (bootstrapping state)
-- Key behaviors:
-  - On mount/token change: if `token` exists it calls `/auth/me`.
-  - Login/register store JWT and basic user identifiers in `localStorage`.
-  - Logout clears `token`, `user`, and storage keys.
+`src/main.tsx` is the runtime entry point.
 
-### OAuth (Google)
+Provider and wrapper order:
 
-- `loginWithGoogle()` opens a popup to `${API_BASE_URL}/auth/google`.
-- Popup returns to `/auth/google/callback` which posts a `window.postMessage` back to the opener.
-- On success: token/user fields are stored and `user` is set.
+- `AuthProvider`
+- `ErrorBoundary`
+- `App`
+- `EvaluationOverlayHost`
 
-### API base URL alignment
+Bootstrap behavior:
 
-AuthContext uses:
-- `VITE_AUTH_API_URL` if set, else falls back to `STRATAX_API_BASE_URL`.
+- `setupAuthListener()` is called before render so global `auth:logout` events can redirect users to `/login`.
+- `EvaluationOverlayHost` mounts a global evaluation overlay controller that other components can trigger without prop drilling.
+- Service worker registration happens only in production.
+- In development, service workers are proactively unregistered to prevent stale asset caches.
 
-This matters because JWT must be recognized by the same backend you use for `/api/*` endpoints.
+### 3.2 App Shell
 
-### Global logout listener
+`src/App.tsx` mounts the global shell.
 
-`src/lib/authHelpers.ts` provides `setupAuthListener()` which listens for `auth:logout` events and redirects to `/login`. It is invoked in `src/main.tsx`.
+Global shell providers and surfaces:
 
----
+- `QueryClientProvider`
+- `TooltipProvider`
+- `PwaInstallProvider`
+- `Toaster`
+- `UpgradeModal`
+- `DemoGateModal`
+- `RateLimitWarning`
+- `BrowserRouter`
 
-## 6) API Layer
+This file also owns the routing table and static docs redirection behavior.
 
-There are **two main styles** of backend calling:
+### 3.3 Static Docs and Landing Behavior
 
-1) **Unified fetch wrapper** (preferred / newer): `src/lib/strataxClient.ts`
-2) **Auth-specific helper**: `src/lib/authApi.ts` + `src/lib/authHelpers.ts`
+The current frontend no longer uses `/` as the React landing page.
 
-### 6.1 `strataxClient.ts` (unified client)
+Current behavior:
 
-Core responsibilities:
-- Computes `STRATAX_API_BASE_URL` from `VITE_API_BASE_URL` (fallback: hosted default).
-- Builds consistent headers:
-  - `Authorization: Bearer <jwt>` (if token exists)
-  - Stable guest identity headers:
-    - `X-Stratax-Guest-Id`
-    - `X-Client-Id`
-    - `X-User-ID` (aligned with guest id)
-  - Optional BYOK headers **only when authenticated**:
-    - `X-API-Key`
-    - `X-Gemini-Key`
-- Emits window events for demo gating / rate limiting (`demo:limit-reached`, `demo:unavailable`).
-- Captures effective session id from response headers (`X-Stratax-Session-Id`) and persists it.
+- `/` redirects to the static docs entry at `/docs/index.html`
+- `/docs/*` also redirects to the static docs entry
+- `/landing` is the React marketing and landing page in `src/pages/Index.tsx`
 
-### 6.2 `api.ts` (core product endpoints)
-
-`src/lib/api.ts` wraps product endpoints using `strataxFetch()` and `buildStrataxHeaders()`.
-
-Important calls used throughout the app:
-- `apiCreateSession()` → `POST /api/session`
-- `apiSubmitQuestion()` → `POST /api/question` (non-stream)
-- `apiSubmitQuestionStream()` → `POST /api/question` with streaming body
-- `apiGetHistory()` → `GET /api/session/{sessionId}/chat` (gracefully handles 404 as empty)
-- `apiGetSessions()` → `GET /api/sessions` (backend may return `{ items: [...] }`)
-- `apiDeleteSession()` → `DELETE /api/session/{sessionId}` (404 treated as already deleted)
-- `apiUpdateSessionTitle()` → `PUT /api/session/{sessionId}/title`
-- `apiExecuteCode()` → `POST /api/code/execute` (backend-only code execution + optional tracing)
-
-#### Session id handling
-- `apiSubmitQuestion()` attempts to read session id from headers and attach it to the returned JSON if missing.
-- Some UI flows also “adopt” a session id returned by the backend in response payload.
-
-### 6.3 `authApi.ts` (authenticated helper)
-
-`src/lib/authApi.ts` provides a generic `apiCall()` that:
-- Adds JWT if present
-- Adds guest identity headers
-- Handles:
-  - `401`: clears auth *only when it looks like JWT/session expiry*
-  - `429`: dispatches `ratelimit:exceeded`
-
-This is mainly useful for endpoints under `/auth/*` and auth-gated flows.
+This split is intentional and should be preserved when editing routes or hosting rewrites.
 
 ---
 
-## 7) Core Feature Modules
+## 4. Routing
 
-### 7.1 Interview Assistant (`/app`)
+Routes are defined in `src/App.tsx`.
 
-Primary component: `src/components/InterviewAssistant.tsx`
+| Route | Component | Access | Notes |
+| --- | --- | --- | --- |
+| `/` | `DocsRedirect` | public | Forces static docs HTML |
+| `/landing` | `src/pages/Index.tsx` | public | React marketing and feature page |
+| `/login` | `src/pages/Auth.tsx` | guest-only | Wrapped with `ProtectedRoute requireAuth={false}` |
+| `/auth/google/callback` | `src/pages/GoogleCallback.tsx` | public | OAuth popup callback bridge |
+| `/auth/verify-email` | `src/pages/VerifyEmail.tsx` | public | Email verification flow |
+| `/auth/reset-password` | `src/pages/ResetPassword.tsx` | public | Password reset flow |
+| `/app` | `src/components/InterviewAssistant.tsx` | protected | Main authenticated workspace |
+| `/run` | `src/pages/Runner.tsx` | protected | Wrapper around `CodeRunner` |
+| `/architecture` | `src/pages/Architecture.tsx` | protected | Wrapper around `ArchitectureGenerator` |
+| `/progress` | `src/pages/Progress.tsx` | protected | Progress analytics dashboard |
+| `/docs/*` | `DocsRedirect` | public | Forces static docs HTML |
+| `*` | `src/pages/NotFound.tsx` | public | Catch-all fallback |
+
+### 4.1 Route Guard Behavior
+
+`src/components/ProtectedRoute.tsx` provides route gating.
+
+Behavior:
+
+- Shows a loading spinner while auth state is resolving.
+- Redirects unauthenticated users away from protected routes.
+- Redirects authenticated users away from guest-only routes such as `/login`.
+
+---
+
+## 5. Shared State, Context, and Hooks
+
+### 5.1 Auth Context
+
+`src/context/AuthContext.tsx` owns frontend auth state.
+
+Stored state:
+
+- `user`
+- `token`
+- `loading`
+
+Core behaviors:
+
+- On mount or token change, calls `/auth/me` when a JWT exists.
+- Stores `token`, `userId`, and `tier` in `localStorage` after login or registration.
+- Supports popup-based Google login using `window.open` and `postMessage`.
+- Avoids force logout for transient backend or network failures when `/auth/me` fails for non-auth reasons.
+
+### 5.2 PWA Install Context
+
+`src/context/PwaInstallContext.tsx` wraps installability state.
 
 Responsibilities:
-- Owns the main multi-mode UI:
-  - Answer (default)
-  - Mirror (Feedback)
-  - Intelligence
-  - Mock Interview
-  - Practice
-- Manages chat sessions:
-  - Creates/loads a session id
-  - Loads history for a session
-  - Saves some UI state to `localStorage` (tab, mode, sidebar open, etc.)
-- Calls `apiSubmitQuestion()` or `apiSubmitQuestionStream()` depending on streaming.
 
-#### Answer vs Mirror mode
-- **Answer**: submit just the question.
-- **Mirror**: requires `user_answer` (draft answer) as input.
-  - If missing, the UI opens a dialog to collect it before submitting.
+- Tracks deferred `beforeinstallprompt` events.
+- Detects standalone mode with `display-mode` and iOS `navigator.standalone`.
+- Detects iOS separately to provide Share -> Add to Home Screen instructions.
+- Exposes `promptInstall()` and user-facing install helper text.
 
-#### History and persistence
-- Session id is stored under a localStorage key (`ia_session_id`).
-- The component has resilience logic for “session not found” by clearing the stored id and creating a new session.
+### 5.3 Custom Hooks
 
-### 7.2 Code Runner (`/run`)
+| Hook | Purpose |
+| --- | --- |
+| `use-toast.ts` | App-wide toast helpers |
+| `use-mobile.tsx` | Mobile viewport and device checks |
+| `useSpeechRecognition.ts` | Web Speech API wrapper for continuous recognition |
+| `useTeleprompterStream.ts` | Word-chunk streaming for teleprompter display |
+| `useTheme.ts` | Theme persistence and dark-mode handling |
 
-Key files:
+Implementation notes:
+
+- `useSpeechRecognition` is a browser capability wrapper and degrades safely when unsupported.
+- `useTeleprompterStream` is used for progressive text reveal rather than server streaming.
+
+---
+
+## 6. API and Backend Integration Layers
+
+### 6.1 `strataxClient.ts`
+
+`src/lib/strataxClient.ts` is the main fetch wrapper used by current frontend features.
+
+Responsibilities:
+
+- Resolves `STRATAX_API_BASE_URL` from `VITE_API_BASE_URL`.
+- Builds headers consistently for JSON and non-JSON requests.
+- Attaches JWT auth when available.
+- Attaches stable guest identity headers.
+
+Stable guest identity headers:
+
+- `X-Stratax-Guest-Id`
+- `X-Client-Id`
+- `X-User-ID`
+
+Additional wrapper behavior:
+
+- Attaches BYOK provider keys only when allowed by auth or explicit BYOK connection state.
+- Captures `X-Stratax-Session-Id` response headers and stores the effective session id.
+- Emits global browser events for auth expiry, demo gating, BYOK requirements, and session tracking.
+- Throws `StrataxApiError` for normalized non-OK responses when `throwOnError !== false`.
+
+Important design detail:
+
+- Guest identity is intentionally stable via local storage so sessions and history do not bounce across requests when cookies are unreliable.
+
+### 6.2 `authApi.ts` and `authHelpers.ts`
+
+These files provide auth-specific helpers outside the unified client.
+
+`authApi.ts` responsibilities:
+
+- Wraps `/auth/*` endpoints.
+- Handles password reset and email verification helpers.
+- Emits `auth:logout`, `ratelimit:warning`, and `ratelimit:exceeded`.
+
+`authHelpers.ts` responsibilities:
+
+- Provides token helpers.
+- Installs the global `auth:logout` listener used during bootstrap.
+
+### 6.3 Feature API Modules
+
+| File | Responsibility |
+| --- | --- |
+| `src/lib/api.ts` | Main product API layer for assistant Q and A, history, intelligence search, code execution, profile upload, and Mermaid rendering |
+| `src/lib/mockInterviewApi.ts` | Mock interview session lifecycle, hints, progress, summaries, and history |
+| `src/lib/practiceModeApi.ts` | Practice sessions, code and voice responses, proctoring events, proctoring snapshots, and live session helpers |
+| `src/lib/practiceProctoring.ts` | Client-side proctoring controller with heartbeat, status polling, face detection, and event posting |
+| `src/lib/progressApi.ts` | Progress summary, heatmap, and next-session recommendation normalization |
+| `src/lib/architectureApi.ts` | Architecture generation, recommended views, available views, Mermaid rendering, and markdown download |
+| `src/lib/resumeContextStorage.ts` | Persisted `ResumeContext` helpers |
+| `src/lib/intelligenceConfig.ts` | Interview Intelligence feature gates sourced from env or defaults |
+| `src/lib/utils.ts` | Shared class utility plus PDF export pipeline and Mermaid export helpers |
+| `src/lib/runner.ts` | Deprecated browser-side Judge0-style runner stub |
+| `src/lib/pyodideRunner.ts` | Deprecated browser-side Pyodide runner stub |
+
+### 6.4 Global Browser Events
+
+The frontend uses browser events as a cross-cutting coordination mechanism.
+
+| Event | Emitted By | Purpose |
+| --- | --- | --- |
+| `auth:logout` | `strataxClient.ts`, `authApi.ts`, `authHelpers.ts` | Centralized forced logout flow |
+| `ratelimit:exceeded` | `App.tsx`, `authApi.ts` | Upgrade or rate-limit UI |
+| `ratelimit:warning` | `authApi.ts` | Early warning for quota exhaustion |
+| `demo:limit-reached` | `strataxClient.ts`, `practiceProctoring.ts` | Guest or demo gating modal flow |
+| `demo:unavailable` | `strataxClient.ts` | Demo unavailable modal flow |
+| `byok:required` | `strataxClient.ts` | Opens or prompts API key onboarding or settings |
+| `stratax:session` | `strataxClient.ts` | Broadcasts effective session id updates |
+| `practice:screen-share-lock` | `PracticeMode.tsx` | Prevents unsafe navigation during locked Live Practice flows |
+
+---
+
+## 7. Route Pages and What They Do
+
+### 7.1 `src/pages/Index.tsx`
+
+This is the React landing page mounted at `/landing`.
+
+Responsibilities:
+
+- Renders the marketing-style feature overview.
+- Shows `UserProfile` in the fixed header when authenticated.
+- Clears stale body scroll-lock styles on mount to recover from modal or overlay crashes.
+
+### 7.2 `src/pages/Auth.tsx`
+
+Auth shell page that switches between the `Login` and `Register` components.
+
+It is presentation-heavy and designed as a split-screen auth experience.
+
+### 7.3 `src/pages/GoogleCallback.tsx`
+
+Popup-only OAuth bridge page.
+
+Responsibilities:
+
+- Reads auth payload from query params.
+- Posts success or failure back to `window.opener`.
+- Closes itself after handoff.
+
+### 7.4 `src/pages/VerifyEmail.tsx`
+
+Token-driven email verification page.
+
+Responsibilities:
+
+- Reads `token` from query params.
+- Calls `verifyEmailToken()`.
+- Shows success or error state and navigation actions.
+
+### 7.5 `src/pages/ResetPassword.tsx`
+
+Password reset page.
+
+Responsibilities:
+
+- Reads the reset token from query params.
+- Validates password length and confirmation client-side.
+- Submits through `resetPasswordWithToken()`.
+
+### 7.6 `src/pages/Runner.tsx`
+
+Thin wrapper around `CodeRunner`.
+
+### 7.7 `src/pages/Architecture.tsx`
+
+Thin wrapper around `ArchitectureGenerator`.
+
+### 7.8 `src/pages/Progress.tsx`
+
+Analytics dashboard page for practice history and recommendations.
+
+### 7.9 `src/pages/NotFound.tsx`
+
+Fallback route surface.
+
+---
+
+## 8. Core Feature Modules
+
+### 8.1 Interview Assistant Workspace
+
+Primary file: `src/components/InterviewAssistant.tsx`
+
+This is the main authenticated workspace under `/app`.
+
+Main tabs:
+
+- Answer
+- Intelligence
+- Mock Interview
+- Practice
+
+Responsibilities:
+
+- Creates and adopts session ids.
+- Loads session history and caches history and session lists locally.
+- Persists workspace state such as selected tab, question mode, sidebar state, and answer visibility.
+- Supports deep-link-like tab opening through router location state using `openTab`.
+- Coordinates answer generation, PDF export, onboarding, BYOK prompts, session deletion, and history archive behavior.
+
+Notable implementation details:
+
+- Listens for `practice:screen-share-lock` and applies navigation restrictions while Live Practice requires focus.
+- Uses local caches such as `ia_sessions_cache`, `ia_history_cache`, and per-session archive keys.
+- Maintains deleted-session blacklists to smooth eventual-consistency issues from backend deletes.
+
+### 8.2 Answer Rendering, Mermaid, and PDF Export
+
+Primary files:
+
+- `src/components/AnswerCard.tsx`
+- `src/components/MermaidEditor.tsx`
+- `src/lib/utils.ts`
+
+Responsibilities:
+
+- Renders answers with structured formatting and content-aware blocks.
+- Supports Mermaid diagrams, code blocks, copy actions, edit or compare flows, and download flows.
+- Uses backend-first Mermaid rendering with fallback handling for reliability.
+- Supports PDF export for answers and archived sessions.
+
+Important PDF and Mermaid details:
+
+- Mermaid source is preserved on DOM nodes via `data-mermaid-source`.
+- PDF generation loads `html2pdf.js` on demand.
+- Mermaid diagrams are converted to PNG or sanitized SVG-compatible content for reliable PDF rendering.
+- `utils.ts` includes special handling for `foreignObject` conversion so SVG text survives export.
+
+### 8.3 Interview Intelligence
+
+Primary file: `src/components/InterviewIntelligence.tsx`
+
+Key API entry points:
+
+- `apiGetTopics`
+- `apiGetQuestionsByTopic`
+- `apiSearchQuestions`
+- `apiSearchQuestionsEnhanced`
+- `apiGetCompanies`
+- `apiGetHistoryTabs`
+- `apiSaveHistoryTab`
+- `apiDeleteHistoryTab`
+- `apiDeleteAllHistory`
+
+Responsibilities:
+
+- Supports topic browsing and query-driven search.
+- Supports enhanced search with credibility filters, company filters, reranking, and query expansion flags.
+- Maintains its own saved history-tab model.
+- Attempts richer streaming or status UX and falls back to HTTP search flow when needed.
+- Refreshes or manually saves history tabs when backend responses do not return a `tab_id`.
+
+### 8.4 Code Runner and Evaluation Overlay
+
+Primary files:
+
 - `src/components/CodeRunner.tsx`
 - `src/components/MonacoEditor.tsx`
+- `src/components/ExecutionVisualizer.tsx`
+- `src/components/OutputExplanation.tsx`
+- `src/overlayHost.tsx`
+
+Current execution model:
+
+- Code execution is backend-only via `apiExecuteCode()`.
+- Browser-side runners in `runner.ts` and `pyodideRunner.ts` are deprecated and should not be reintroduced into active feature code.
 
 Capabilities:
-- Runs code by calling the backend endpoint `POST /api/code/execute`.
-- No browser-side execution (no Pyodide, no direct Judge0/RapidAPI calls).
-- Stores code, stdin, outputs, timer config, etc. in `localStorage`.
-- Output panels show stdout/stderr and any backend-provided timing/memory.
 
-#### Backend execution contract (frontend-facing)
+- Multi-language editing and execution.
+- Saved code, stdin, language, and result state in local storage.
+- Python trace visualization with step timeline and locals inspection.
+- Separate runner session id stored in local storage.
+- Notes panel, timer, and shortcut affordances for interview practice.
 
-Request (frontend → backend):
-- `language`: runner language id (e.g. `python`)
-- `code`: source
-- `stdin`: optional input
-- `trace`: optional boolean (frontend enables this for Python Visualize)
-- `trace_max_events`: optional number (limits trace volume)
-- `explain_trace`: optional boolean (when `true`, backend adds per-line explanations)
-- `explain_max_lines`: optional number (default backend-side; frontend currently uses `200`)
+Evaluation overlay behavior:
 
-Response (backend → frontend):
-- `stdout`, `stderr`, `time_seconds`, `memory_kb`
-- `trace_events[]` (Python-only today):
-  - `step`, `line`, `event`
-  - `locals` (backend-filtered/sanitized; frontend also hides system locals by default)
-  - `explanation` (optional short explanation for that executed line)
-- `line_explanations` (optional): map of `{ "<lineNumber>": "explanation" }` for quick lookup
+- `overlayHost.tsx` exposes a global controller.
+- Evaluations stream into `EvaluationOverlay`.
+- Results are cached locally under `eval_cache_v1`.
 
-#### Visualize (debugger-style)
+### 8.5 Mock Interview
 
-The Visualize tab in `src/components/CodeRunner.tsx` provides a “debugger grade” experience:
-- Timeline of steps with click-to-jump
-- Scrubber (range slider) + prev/next step controls
-- Current line preview (line number + source line)
-- Locals panel rendered as a table with:
-  - Search
-  - Changed-only vs All toggle
-  - Hide/Show system locals toggle
+Primary files:
 
-#### Trace explanations
-
-When backend returns explanations:
-- Timeline rows show a short explanation (when present)
-- State panel shows an **Explanation** block
-- The UI prefers `trace_events[].explanation` and falls back to `line_explanations[line]`
-
-#### Security note
-
-All code execution is backend-mediated:
-- Never ship sandbox keys (Judge0/RapidAPI/etc.) to the browser.
-- Avoid `VITE_*` secrets entirely—Vite embeds them into the client bundle.
-
-### 7.3 Mock Interview
-
-Key files:
 - `src/components/MockInterviewMode.tsx`
 - `src/lib/mockInterviewApi.ts`
 
-Capabilities:
-- Runs a session-based mock interview with:
-  - Setup phase
-  - Interview questions
-  - Feedback
-  - Summary
-  - History view
+Phases:
+
+- Setup
+- Interview
+- Feedback
+- Summary
+- History
+
+Responsibilities:
+
 - Supports voice input via `useSpeechRecognition`.
-- Persists mock session state into `localStorage` so the user can resume.
+- Supports coding answers through `apiExecuteCode()`.
+- Tracks hints, follow-ups, feedback trajectory, per-question history, and progress data.
+- Persists resumable session state in local storage.
 
-### 7.4 Architecture Generator (`/architecture`)
+Resume behavior:
 
-Key files:
+- Loads saved resume context from `resumeContextStorage.ts`.
+- Reuses `ResumeUpload` for claim-aware interview setup.
+
+### 8.6 Practice Mode
+
+Primary files:
+
+- `src/components/PracticeMode.tsx`
+- `src/components/RoundSelection.tsx`
+- `src/components/InterviewCodeEditor.tsx`
+- `src/components/InstantScoreBreakdown.tsx`
+- `src/components/RoundInfoGuide.tsx`
+- `src/lib/practiceModeApi.ts`
+- `src/lib/practiceProctoring.ts`
+
+Capabilities:
+
+- Session-based practice for voice and coding questions.
+- Required live media gate for camera and screen capture.
+- Explicit Live Practice consent before start.
+- Optional proctoring on top of required media capture.
+- Per-question voice recording, code execution, and completion summaries.
+- Next-session handoff from the Progress page.
+
+Proctoring model:
+
+- Backend snapshots are authoritative through `PracticeProctoringSnapshot`.
+- The client controller posts events, heartbeats, and status checks.
+- The UI surfaces three escalation levels.
+
+Escalation levels:
+
+- Banner warning
+- Serious or final warning modal
+- Termination summary on completion
+
+Additional proctoring details:
+
+- The compact badge auto-expands on issues with debounce and minimum visible timing.
+- Screen-share lock emits `practice:screen-share-lock` to block unsafe navigation.
+
+Recording behavior:
+
+- Voice questions may auto-start recording.
+- Auto-start waits for TTS audio to finish before beginning recording.
+- Countdown begins when recording actually starts, not when the question renders.
+
+### 8.7 Architecture Generator
+
+Primary files:
+
 - `src/pages/Architecture.tsx`
 - `src/components/ArchitectureGenerator.tsx`
+- `src/components/MermaidEditor.tsx`
 - `src/lib/architectureApi.ts`
 
-High-level:
-- Presents an architecture generation UI.
-- Submits to backend architecture generation APIs (see `architectureApi.ts`).
+Capabilities:
+
+- Validates user-provided system descriptions.
+- Loads available architecture views.
+- Requests AI-recommended views.
+- Generates multi-view architecture packages.
+- Renders Mermaid diagrams for each view.
+- Supports user level, diagram style, theme, and explanation toggles.
+- Downloads generated architecture markdown.
+
+### 8.8 Progress Dashboard
+
+Primary files:
+
+- `src/pages/Progress.tsx`
+- `src/lib/progressApi.ts`
+
+Responsibilities:
+
+- Loads progress summary, heatmap and trend inputs, and next-session recommendation data.
+- Shows attempts, score summary, best or worst dimension, and recommendation UI.
+- Starts targeted practice by writing `practice_next_session_plan` and navigating back into `/app`.
+
+Current resilience behavior:
+
+- `progressApi.ts` accepts multiple backend wrapper shapes instead of assuming one summary schema.
+- Heatmap parsing can normalize grouped or nested backend response forms.
+- Requests use cache-busting and `no-store`.
+- `Progress.tsx` derives fallback attempts and best or worst dimensions from heatmap rows when summary data is stale.
+- The page retries when charts lag behind overview counts.
+
+### 8.9 Account, Onboarding, and Upgrade Surfaces
+
+Key components:
+
+- `UserProfile.tsx`
+- `ApiKeySettings.tsx`
+- `BYOKOnboarding.tsx`
+- `OnboardingOverlay.tsx`
+- `UnlockAnswerEngine.tsx`
+- `UpgradeModal.tsx`
+- `DemoGateModal.tsx`
+- `RateLimitWarning.tsx`
+- `PoweredByBadge.tsx`
+
+These components coordinate:
+
+- User identity and tier display.
+- Gemini and Groq BYOK setup.
+- Onboarding completion state.
+- Demo and rate-limit gating.
+- Answer engine upsell and unlock flows.
 
 ---
 
-## 8) PWA (Manifest + Service Worker)
+## 9. Persistence Model
 
-### Manifest
+The frontend relies heavily on `localStorage` for continuity.
 
-`public/manifest.webmanifest`:
-- `start_url: /`, `display: standalone`
-- Sets `background_color` and `theme_color` (also used for Android splash background matching).
-- Declares icons:
-  - Standard: `stratax-ai-192.png`, `stratax-ai-512.png`
-- Uses query-string cache busting (e.g. `?v=15`).
+### 9.1 Identity and Auth
 
-### Service worker
+- `token`
+- `userId`
+- `tier`
+- `stratax_guest_id`
+- `stratax_user_id`
+- `stratax_effective_session_id`
 
-`public/sw.js`:
-- Cache name is versioned (e.g. `stratax-ai-v15`).
-- Pre-caches a minimal list of shell assets (index, manifest, icons).
-- **Resilient install**: caches assets individually; a single failed fetch does not block SW installation.
-- Fetch strategy:
-  - Same-origin GET only
-  - SPA navigation fallback to `/index.html`
-  - Cache-first for static assets
+### 9.2 Interview Assistant Workspace
 
-Operational note: when you change icons or caching logic, bump BOTH the icon query param and `CACHE_NAME` to minimize stale-client issues.
+- `ia_session_id`
+- `ia_question_mode`
+- `ia_active_main_tab`
+- `ia_desktop_sidebar_open`
+- `ia_sessions_cache`
+- `ia_deleted_sessions`
+- `ia_history_cache`
+- `ia_last_question`
+- `ia_last_answer`
+- `ia_show_answer`
+- Per-session archive keys such as `ia_history_archive_<sessionId>`
+
+### 9.3 BYOK and Onboarding
+
+- `user_api_key`
+- `gemini_api_key`
+- `api_keys_connected`
+- Onboarding completion flags
+- `pwa_install_banner_dismissed_until`
+
+### 9.4 Mock Interview
+
+- `mock_interview_user_id`
+- `mock_interview_session`
+- `mock_interview_history_<userId>`
+- `mock_interview_stats`
+
+### 9.5 Practice and Progress
+
+- `practice_next_session_plan`
+- `practice_last_domain`
+- Practice-session confidence state keys
+- `stratax_resume_context`
+
+### 9.6 Code Runner and Evaluation
+
+- `ia_runner_session_id`
+- `code-runner-source`
+- `code-runner-stdin`
+- `code-runner-language`
+- `code-runner-result`
+- `code-runner-explanation`
+- `code-runner-trace-events`
+- `code-runner-trace-enabled`
+- `code-runner-trace-max-events`
+- `code-runner-timer-seconds`
+- `code-runner-timer-active`
+- `interview-notes`
+- `eval_cache_v1`
+
+### 9.7 Theme and Miscellaneous UI
+
+- `theme`
 
 ---
 
-## 9) Icon Generation Pipeline
+## 10. PWA, Docs, Build Tooling, and Environment
 
-`script`: `scripts/generate-icons.mjs` (Sharp)
+### 10.1 PWA Runtime Behavior
 
-Purpose:
-- Takes `public/icons/source.png` and generates:
-  - PWA icons (192/512)
-  - Maskable icons (192/512)
-  - `apple-touch-icon.png`
+Relevant files:
 
-Key behaviors:
-- `--background auto` samples edge colors from the source image to choose a background that avoids visible borders.
-- Outputs are flattened and alpha is removed (`flatten()` + `removeAlpha()`), since some Android launchers can render alpha edges as dark/black artifacts.
-- Supports a small `--bleed-crop` to trim subtle source borders before resizing.
+- `public/manifest.webmanifest`
+- `public/sw.js`
+- `src/context/PwaInstallContext.tsx`
+- `src/main.tsx`
 
-Common commands:
+Current behavior:
+
+- Service worker registers only in production.
+- Development explicitly unregisters service workers.
+- Install prompting is controlled from React via `beforeinstallprompt`.
+- Standalone detection supports both regular browsers and iOS Safari.
+
+### 10.2 Static Docs Surface
+
+Relevant files:
+
+- `public/docs/index.html`
+- `src/App.tsx`
+
+Current behavior:
+
+- Static docs are served separately from the React route tree.
+- `/` and `/docs/*` redirect to `/docs/index.html`.
+- This is intentional and should be preserved when editing routes or hosting rewrites.
+
+### 10.3 Build and Asset Scripts
+
+Important scripts from `package.json`:
+
+- `npm run dev`
+- `npm run build`
+- `npm run preview`
 - `npm run icons:generate`
-- `npm run icons:generate -- --background auto --maskable-scale 0.78 --bleed-crop 0.03`
+- `npm run icons:generate:circle`
+- `npm run splash:generate`
+- `npm run generate:byok-video`
 
----
+### 10.4 Environment Variables
 
-## 10) Environment Variables
-
-Frontend env vars (Vite):
+Current frontend environment variables:
 
 - `VITE_API_BASE_URL`
-  - Base URL for product APIs via `STRATAX_API_BASE_URL`.
 - `VITE_AUTH_API_URL`
-  - Base URL for auth endpoints; should typically match `VITE_API_BASE_URL`.
+
+`VITE_AUTH_API_URL` should generally align with the same backend used by `VITE_API_BASE_URL` so JWT validation and product APIs remain consistent.
 
 ---
 
-## 11) Build, Run, Deploy
+## 11. Error Handling and Conventions
 
-### Local dev
-- `npm install`
-- `npm run dev`
+### 11.1 Error Handling Patterns
 
-### Build
-- `npm run build` (outputs `dist/`)
+- Prefer `strataxFetch()` and `buildStrataxHeaders()` for new backend calls.
+- Treat 404 history or session misses gracefully where possible instead of crashing the UI.
+- Do not force logout on every 401. Logout only when the response clearly indicates JWT or session expiry.
+- Emit UI-driving browser events for cross-cutting concerns instead of prop drilling global state.
+- Wrap media, storage, and service worker actions in best-effort `try/catch` blocks.
 
-### Firebase Hosting
-Firebase config serves `dist` and rewrites all routes to `index.html` for SPA behavior.
+### 11.2 Current Architectural Conventions
 
----
+- Pages are thin wrappers. Feature logic lives in components.
+- The app uses direct wrapper-based data fetching more than React Query.
+- Backend-only execution is the current rule for code running and evaluation.
+- Client-side runner files in `src/lib/runner.ts` and `src/lib/pyodideRunner.ts` are intentionally deprecated.
+- Mermaid rendering should prefer the backend rendering path. Browser-side Mermaid is fallback-only and carefully constrained.
 
-## 12) Troubleshooting Runbook
+### 11.3 Sensitive Data Rule
 
-### PWA icon changes not showing
-- Android/browser aggressively caches icons and manifest.
-- Recommended:
-  - Bump icon query param in `manifest.webmanifest`.
-  - Bump `CACHE_NAME` in `public/sw.js`.
-  - (Device) Clear site data OR uninstall PWA + reinstall.
-
-### Android splash “border/edges”
-- The splash background comes from `theme_color` / `background_color` and OS-level rules.
-- Best mitigation: set `manifest.webmanifest` colors to match the icon edge/background color.
-
-### “Installing…” but app never completes
-- If SW install fails due to a missing precache asset, installation can stall.
-- This repo’s SW caches assets individually to reduce that risk.
-- If it still happens:
-  - Verify `public/sw.js` `ASSETS` URLs exist post-build.
-  - Bump cache name and reinstall.
-
-### Auth loops / 401 handling
-- The code tries to avoid logging users out for non-JWT-related 401s (e.g., invalid BYOK key).
-- Ensure `VITE_AUTH_API_URL` and `VITE_API_BASE_URL` point to the same backend if JWT validation is failing.
+- Do not put execution-provider secrets or sandbox credentials into Vite environment variables.
+- Any `VITE_*` value is shipped to the browser bundle.
 
 ---
 
-## 13) Notes on Code Conventions
+## 12. Summary
 
-- Local storage keys are used heavily for UX persistence (sessions, tabs, runner settings).
-- The codebase uses a mix of:
-  - direct `fetch()` (auth context)
-  - `api.ts` wrappers around `strataxFetch`
-  - `authApi.ts` wrappers
+The frontend is organized around a small set of shared runtime layers and a feature-heavy component tree.
 
-If you want a single consistent path going forward, prefer routing all new calls through `strataxFetch` + `buildStrataxHeaders`.
+Key takeaways:
+
+- `main.tsx` and `App.tsx` provide the shell, providers, and routing.
+- `strataxClient.ts` is the main integration point for backend requests, session headers, and global browser events.
+- `InterviewAssistant.tsx` is the main product workspace.
+- Specialized feature modules handle intelligence search, Live Practice, mock interviews, architecture generation, code execution, and analytics.
+- Static docs and the React app intentionally coexist as separate entry experiences.
+
+When extending the frontend, prefer building on the existing routing, storage, and backend-wrapper patterns rather than introducing parallel abstractions.
