@@ -476,120 +476,12 @@ export const AnswerCard = ({ answer, question, mode, streaming = true, onEdit, o
   };
 
   // Add sequential connection numbers to Mermaid diagrams
-  const addConnectionNumbers = (mermaidCode: string): string => {
-    let code = mermaidCode;
-    let connectionCounter = 1;
-
-    // First, handle bidirectional arrows (they should be processed first)
-    code = code.replace(/([A-Za-z0-9_\[\]()\s&\/-]+?)\s*<-->\s*([A-Za-z0-9_\[\]()\s&\/-]+?)(?=\s*$|\s*\n|\s*classDef|\s*class\s)/gm, (match, from, to) => {
-      const cleanFrom = from.trim();
-      const cleanTo = to.trim();
-      if (cleanFrom && cleanTo && !cleanFrom.includes('classDef') && !cleanTo.includes('classDef')) {
-        const numbered = `${cleanFrom} -- ${connectionCounter} --> ${cleanTo}\n${cleanTo} -- ${connectionCounter + 1} --> ${cleanFrom}`;
-        connectionCounter += 2;
-        return numbered;
-      }
-      return match;
-    });
-
-    // Then handle simple arrows, but only if they don't already have labels
-    code = code.replace(/([A-Za-z0-9_\[\]()\s&\/-]+?)\s*-->\s*([A-Za-z0-9_\[\]()\s&\/-]+?)(?=\s*$|\s*\n|\s*classDef|\s*class\s)/gm, (match, from, to) => {
-      const cleanFrom = from.trim();
-      const cleanTo = to.trim();
-
-      // Skip if this connection already has a label (contains -- text -->)
-      if (match.includes('--') && match.includes('-->') && !match.includes('<-->')) {
-        return match;
-      }
-
-      if (cleanFrom && cleanTo && !cleanFrom.includes('classDef') && !cleanTo.includes('classDef')) {
-        const numbered = `${cleanFrom} -- ${connectionCounter} --> ${cleanTo}`;
-        connectionCounter++;
-        return numbered;
-      }
-      return match;
-    });
-
-    return code;
-  };
 
   // Fix common Mermaid edge syntax mistakes in user-provided diagrams
-  const fixCommonMermaidEdgeSyntax = (src: string): string => {
-    let out = src;
-    // 1) A <--> B  =>  A --> B\nB --> A
-    out = out.replace(/(^|\n)\s*([^\n]+?)\s*<-->\s*([^\n]+?)\s*(?=\n|$)/g, (_m, lead, a, b) => {
-      const left = String(a).trim();
-      const right = String(b).trim();
-      return `${lead}${left} --> ${right}\n${right} --> ${left}`;
-    });
-    // 2) A <- label -> B  => two labeled arrows
-    out = out.replace(/(^|\n)\s*([^\n]+?)\s*<-\s*([^>\n]+?)\s*->\s*([^\n]+?)\s*(?=\n|$)/g, (_m, lead, a, label, b) => {
-      const left = String(a).trim();
-      const right = String(b).trim();
-      const lbl = String(label).trim();
-      return `${lead}${left} -- ${lbl} --> ${right}\n${right} -- ${lbl} --> ${left}`;
-    });
-    // 3) A --> B (Label)  =>  A -- Label --> B
-    out = out.replace(/(^|\n)\s*([^\n]+?)\s*-->\s*([^\n(]+?)\s*\(([^)]+)\)\s*(?=\n|$)/g, (_m, lead, a, b, label) => {
-      const left = String(a).trim();
-      const right = String(b).trim();
-      const lbl = String(label).trim();
-      return `${lead}${left} -- ${lbl} --> ${right}`;
-    });
-    // 4) A --(Label)--> B  =>  A -- Label --> B
-    out = out.replace(/(^|\n)\s*([^\n]+?)\s*--\s*\(([^)]+)\)\s*-->\s*([^\n]+?)\s*(?=\n|$)/g, (_m, lead, a, label, b) => {
-      const left = String(a).trim();
-      const right = String(b).trim();
-      const lbl = String(label).trim();
-      return `${lead}${left} -- ${lbl} --> ${right}`;
-    });
-    return out;
-  };
 
   // Detect crow's-foot ER syntax and convert to erDiagram
-  const crowFootToErDiagram = (src: string): string => {
-    const t = (src || '').trim();
-    if (!t) return t;
-    const relLineRegex = /(^|\n)\s*[A-Za-z_][\w]*\s+(\|\||\|o|o\||\{o|o\{|\{\}|\}\{|\}\}|o\{|\}o|\}\||\|\{)\s*-{1,2}\s*(\|\||\|o|o\||\{o|o\{|\{\}|\}\{|\}\}|o\{|\}o|\}\||\|\{)\s+[A-Za-z_][\w]*/;
-    const hasCrow = relLineRegex.test(t);
-    const hasEntityBlocks = /(\n|^)\s*[A-Za-z_][A-Za-z0-9_]*\s*\{[\s\S]*?\}/.test(t);
-    if (!hasCrow && !hasEntityBlocks) return t;
-    const ensureErDirective = (body: string) => {
-      if (/^erDiagram\b/.test(body)) return body;
-      const lines = body.split(/\r?\n/);
-      const withoutDirective = lines.filter((l, idx) => idx !== 0 || !(/^\s*(flowchart|graph)\b/.test(l))).join('\n');
-      return `erDiagram\n${withoutDirective}`.trim();
-    };
-    const sanitizeBlocks = (body: string): string => {
-      return body.replace(/(^|\n)\s*([A-Za-z_][A-Za-z0-9_]*)\s*\{([\s\S]*?)\}/g, (_m, lead, entity, inner) => {
-        const cleaned: string[] = [];
-        inner.split(/\r?\n/).forEach((raw) => {
-          let line = raw.trim();
-          if (!line) return;
-          if (/^(KEY|UNIQUE|INDEX)\b/i.test(line)) return;
-          if (/^"[^"]*"$/.test(line)) return; // pure quoted comment line
-          line = line.replace(/\s+"[^"]*"$/g, ''); // strip trailing quotes
-          line = line.replace(/\b(unique|optional)\b/gi, '').replace(/\s{2,}/g, ' ').trim();
-          const keyOnly = /^([A-Za-z_][\w]*)\s+(PK|FK|pk|fk)$/.exec(line);
-          if (keyOnly) {
-            line = `VARCHAR ${keyOnly[1]} ${keyOnly[2].toUpperCase()}`;
-          }
-          const parts = line.split(/\s+/);
-          if (parts.length >= 1 && parts[0] && (parts.length === 1 || ["PK", "FK", "pk", "fk"].includes(parts[1]))) {
-            const name = parts[0];
-            const rest = parts.slice(1).map(s => s.toUpperCase()).join(' ');
-            line = `VARCHAR ${name}${rest ? ' ' + rest : ''}`;
-          }
-          cleaned.push(`  ${line}`);
-        });
-        return `${lead}${entity} {\n${cleaned.join('\n')}\n}`;
-      });
-    };
-    return ensureErDirective(sanitizeBlocks(t));
-  };
 
   // Helper retained if needed later
-  const isErDiagramCode = (src: string): boolean => /^erDiagram\b/.test(crowFootToErDiagram(src).trim());
 
   // Remove code fences/BOM and HTML wrappers that can sneak into blocks
   const stripMermaidFences = (s: string): string => {
@@ -605,7 +497,6 @@ export const AnswerCard = ({ answer, question, mode, streaming = true, onEdit, o
     return t.trim();
   };
 
-  const containsSubgraph = (s: string): boolean => /(^|\n)\s*subgraph\b/.test(s);
 
   // 🛡️ SANITIZE: Strip CSS/HTML markup from Mermaid code
   const sanitizeMermaidCode = (code: string): string => {
@@ -646,224 +537,6 @@ export const AnswerCard = ({ answer, question, mode, streaming = true, onEdit, o
   };
 
   // PROACTIVE APPROACH: Comprehensive Mermaid syntax validation and correction
-  const validateAndFixMermaidSyntax = (mermaidCode: string): { isValid: boolean; fixedCode: string; errors: string[] } => {
-    const errors: string[] = [];
-    let fixed = mermaidCode.trim();
-
-    // EARLY: If it's ER-style content, force erDiagram directive
-    const maybeEr = crowFootToErDiagram(fixed);
-    if (maybeEr !== fixed) {
-      fixed = maybeEr;
-    }
-
-    // ER-specific fast path: skip flowchart/class validations
-    if (fixed.startsWith('erDiagram')) {
-      // Normalize line endings and trim trailing spaces
-      fixed = fixed.replace(/\r\n?/g, '\n').replace(/[ \t]+$/gm, '');
-      // Ensure consistent two-space indentation inside entity blocks
-      fixed = fixed.replace(/(^|\n)([A-Za-z_][A-Za-z0-9_]*)\s*\{([\s\S]*?)\}/g, (_m, lead, entity, inner) => {
-        const lines = (inner || '').split(/\n/)
-          .map(l => l.trim())
-          .filter(l => !!l);
-        const body = lines.map(l => `  ${l}`).join('\n');
-        return `${lead}${entity} {\n${body}\n}`;
-      });
-      return { isValid: true, fixedCode: fixed, errors: [] };
-    }
-
-    // Validation 1: Check for diagram type declaration
-    if (!fixed.startsWith('flowchart') && !fixed.startsWith('graph') && !fixed.startsWith('sequenceDiagram') && !fixed.startsWith('classDiagram') && !fixed.startsWith('erDiagram')) {
-      if (fixed.includes('-->') || fixed.includes('--') || fixed.includes('subgraph')) {
-        errors.push('Missing diagram type declaration');
-        // Prefer erDiagram if ER markers exist
-        if (/^erDiagram\b/.test(maybeEr)) {
-          fixed = maybeEr;
-        } else {
-          fixed = 'flowchart TD\n' + fixed;
-        }
-      }
-    }
-
-    // Validation 2: Check for incomplete arrows
-    const incompleteArrows = fixed.match(/-->\s*$/gm) || [];
-    if (incompleteArrows.length > 0) {
-      errors.push(`Found ${incompleteArrows.length} incomplete arrows`);
-      fixed = fixed.replace(/-->\s*$/gm, '');
-    }
-
-    // Validation 3: Check for malformed arrows
-    const malformedArrows = fixed.match(/-->\s*-->/g) || [];
-    if (malformedArrows.length > 0) {
-      errors.push(`Found ${malformedArrows.length} malformed arrows`);
-      fixed = fixed.replace(/-->\s*-->/g, '-->');
-    }
-
-    // Validation 4: Check for proper subgraph syntax
-    const subgraphErrors = fixed.match(/subgraph\s+(\w+)\s*\[/g) || [];
-    if (subgraphErrors.length > 0) {
-      errors.push(`Found ${subgraphErrors.length} malformed subgraph declarations`);
-      fixed = fixed.replace(/subgraph\s+(\w+)\s*\[/g, 'subgraph $1[');
-    }
-
-    // Validation 5: Check for classDef placement
-    const classDefLines = fixed.split('\n').filter(line => line.trim().startsWith('classDef'));
-    const nonClassDefLines = fixed.split('\n').filter(line => !line.trim().startsWith('classDef'));
-
-    if (classDefLines.length > 0) {
-      // Check if classDef is at the end
-      const lastNonEmptyLine = nonClassDefLines.filter(line => line.trim()).pop();
-      const firstClassDefLine = classDefLines[0];
-      if (lastNonEmptyLine && firstClassDefLine && fixed.indexOf(firstClassDefLine) < fixed.indexOf(lastNonEmptyLine)) {
-        errors.push('classDef statements should be at the end');
-        fixed = nonClassDefLines.join('\n') + '\n' + classDefLines.join('\n');
-      }
-    }
-
-    // Validation 6: Check for class applications
-    const classLines = fixed.split('\n').filter(line => line.trim().includes(':::'));
-    const nonClassLines = fixed.split('\n').filter(line => !line.trim().includes(':::'));
-
-    if (classLines.length > 0) {
-      // Check if class applications are after classDef
-      const classDefIndex = fixed.indexOf('classDef');
-      const classIndex = fixed.indexOf(':::');
-      if (classDefIndex !== -1 && classIndex !== -1 && classIndex < classDefIndex) {
-        errors.push('Class applications should be after classDef statements');
-        fixed = nonClassLines.join('\n') + '\n' + classLines.join('\n');
-      }
-    }
-
-    // Validation 7: Check for empty lines and normalize
-    const emptyLines = fixed.split('\n').filter(line => !line.trim());
-    if (emptyLines.length > 0) {
-      errors.push(`Found ${emptyLines.length} empty lines`);
-      fixed = fixed.split('\n').filter(line => line.trim()).join('\n');
-    }
-
-    // Validation 8: Fix inline comments (Mermaid doesn't support inline comments with %)
-    const commentErrors = fixed.match(/\s+%\s+[^\n]*/g) || [];
-    if (commentErrors.length > 0) {
-      errors.push(`Found ${commentErrors.length} inline comments that need to be on separate lines`);
-      // Move inline comments to separate lines
-      fixed = fixed.replace(/\s+%\s+([^\n]*)/g, (match, comment) => {
-        return '\n  %% ' + comment.trim();
-      });
-    }
-
-    // Validation 9: Fix classDef formatting issues
-    // Check for classDef statements that might have formatting issues
-    const classDefFormatLines = fixed.split('\n').filter(line => line.trim().startsWith('classDef'));
-    classDefFormatLines.forEach((line, index) => {
-    });
-
-    // Deduplicate classDef statements
-    const uniqueClassDefs = new Map<string, string>();
-    fixed.split('\n').forEach(line => {
-      const trimmed = line.trim();
-      if (trimmed.startsWith('classDef ')) {
-        const parts = trimmed.split(/\s+/);
-        if (parts.length > 1) {
-          const name = parts[1];
-          uniqueClassDefs.set(name, trimmed);
-        }
-      }
-    });
-
-    if (uniqueClassDefs.size > 0 && classDefLines.length > uniqueClassDefs.size) {
-      errors.push(`Deduplicated ${classDefLines.length - uniqueClassDefs.size} classDef statements`);
-      const otherLines = fixed.split('\n').filter(line => !line.trim().startsWith('classDef '));
-      fixed = otherLines.join('\n') + '\n' + Array.from(uniqueClassDefs.values()).join('\n');
-    }
-
-    // Deduplicate linkStyle statements
-    const linkStyleLines = fixed.split('\n').filter(line => line.trim().startsWith('linkStyle '));
-    const uniqueLinkStyles = new Map<string, string>();
-    fixed.split('\n').forEach(line => {
-      const trimmed = line.trim();
-      if (trimmed.startsWith('linkStyle ')) {
-        const parts = trimmed.split(/\s+/);
-        if (parts.length > 1) {
-          const index = parts[1];
-          uniqueLinkStyles.set(index, trimmed);
-        }
-      }
-    });
-
-    if (uniqueLinkStyles.size > 0 && linkStyleLines.length > uniqueLinkStyles.size) {
-      errors.push(`Deduplicated ${linkStyleLines.length - uniqueLinkStyles.size} linkStyle statements`);
-      const otherLines = fixed.split('\n').filter(line => !line.trim().startsWith('linkStyle '));
-      fixed = otherLines.join('\n') + '\n' + Array.from(uniqueLinkStyles.values()).join('\n');
-    }
-
-    // Validation 10: Ensure proper line breaks between classDef statements
-    const classDefSection = fixed.split('\n').filter(line => line.trim().startsWith('classDef'));
-    if (classDefSection.length > 1) {
-      // Check if classDef statements are properly separated
-      const classDefText = classDefSection.join('\n');
-      if (!classDefText.includes('\nclassDef')) {
-        errors.push('classDef statements should be on separate lines');
-        fixed = fixed.replace(/classDef/g, '\nclassDef').replace(/^\n/, '');
-      }
-    }
-
-    // Validation 11: Fix semicolons in arrow connections (invalid Mermaid syntax)
-    const semicolonErrors = fixed.match(/--[^>]*;[^>]*-->/g) || [];
-    if (semicolonErrors.length > 0) {
-      errors.push(`Found ${semicolonErrors.length} semicolons in arrow connections`);
-      // Remove semicolons from arrow connections
-      fixed = fixed.replace(/--([^>]*);([^>]*)-->/g, '--$1$2-->');
-    }
-
-    // Validation 12: Fix multiple arrows on same line
-    const multipleArrowErrors = fixed.match(/--[^>]*-->\s*[A-Za-z][^;]*-->/g) || [];
-    if (multipleArrowErrors.length > 0) {
-      errors.push(`Found ${multipleArrowErrors.length} multiple arrows on same line`);
-      // Split multiple arrows into separate lines
-      fixed = fixed.replace(/(--[^>]*-->)\s*([A-Za-z][^;]*-->)/g, '$1\n  $2');
-    }
-
-    // Validation 9: Check for proper indentation
-    const lines = fixed.split('\n');
-    let indentationErrors = 0;
-    const fixedLines = lines.map(line => {
-      const trimmed = line.trim();
-      if (trimmed.startsWith('subgraph')) {
-        if (!line.startsWith('  ')) indentationErrors++;
-        return '  ' + trimmed;
-      } else if (trimmed.startsWith('end')) {
-        if (!line.startsWith('  ')) indentationErrors++;
-        return '  ' + trimmed;
-      } else if (trimmed.includes('-->') || trimmed.includes('--')) {
-        if (!line.startsWith('    ')) indentationErrors++;
-        return '    ' + trimmed;
-      } else if (trimmed.startsWith('classDef')) {
-        return trimmed;
-      } else if (trimmed.includes(':::')) {
-        return trimmed;
-      } else if (trimmed.startsWith('%%')) {
-        // Comments should be on their own lines
-        return '  ' + trimmed;
-      }
-      return trimmed;
-    });
-
-    if (indentationErrors > 0) {
-      errors.push(`Found ${indentationErrors} indentation issues`);
-    }
-
-    fixed = fixedLines.join('\n');
-
-    const isValid = errors.length === 0;
-
-    if (!isValid) {
-      console.warn('Mermaid syntax validation failed:', errors);
-      console.log('Fixed syntax:', fixed.substring(0, 200) + '...');
-    } else {
-      console.log('Mermaid syntax validation passed');
-    }
-
-    return { isValid, fixedCode: fixed, errors };
-  };
 
   // SAFELY set content without destroying global mermaid
   const setSvgContentSafely = (element: HTMLElement, svgContent: string) => {
@@ -965,27 +638,6 @@ export const AnswerCard = ({ answer, question, mode, streaming = true, onEdit, o
 
           mermaidProcessingRef.current = true;
 
-          const normalizeMermaid = (src: string): string => {
-            let t = (src || '').trim();
-            if (t.includes('subgraph') || t.includes('classDef') || t.includes('class ') || t.includes(':::')) return t;
-            const newlineCount = (t.match(/\n/g) || []).length;
-            if (newlineCount >= 3) return t;
-            const lines: string[] = [];
-            let currentLine = '';
-            const parts = t.split(/(\s+subgraph\s+|\s+end\s+|\s+classDef\s+|\s+-->\s+)/);
-            for (let j = 0; j < parts.length; j++) {
-              const part = parts[j].trim();
-              if (!part) continue;
-              if (part.startsWith('flowchart') || part.startsWith('subgraph') || part === 'end' || part.startsWith('classDef') || part.includes('-->') || (part.includes('[') && part.includes(']')) || part.includes(':::')) {
-                lines.push(part);
-              } else {
-                if (currentLine) currentLine += ' ' + part;
-                else currentLine = part;
-              }
-            }
-            if (currentLine) lines.push(currentLine);
-            return lines.join('\n');
-          };
 
           const tryRender = async (el: HTMLElement, i: number) => {
             if ((el as any).dataset.mermaidProcessed === 'true') return;
@@ -1002,31 +654,30 @@ export const AnswerCard = ({ answer, question, mode, streaming = true, onEdit, o
                 el.setAttribute('data-mermaid-source', sanitizedSrc.trim());
               }
 
-              const containsSubgraph = /\bsubgraph\b/.test(sanitizedSrc);
+              // The backend owns diagram content.
+              //
+              // This used to run a second sanitizing/mutating pass over what the
+              // API returned — normalizeMermaid, crowFootToErDiagram,
+              // validateAndFixMermaidSyntax, a subgraph-title rewrite that
+              // appended " Layer", fixCommonMermaidEdgeSyntax and
+              // addConnectionNumbers — then POSTed the *mutated* code to
+              // /api/render_mermaid, which sanitizes again. The diagram the
+              // backend generated was never the diagram that got rendered.
+              //
+              // Confirmed in production: the API emitted `subgraph Azure`, and
+              // the payload sent on to the renderer read `subgraph Azure[Azure
+              // Layer]`. That rewrite also only matched single-word titles, so
+              // "Global Edge & Routing" was skipped — labelling came out
+              // inconsistent inside a single diagram.
+              //
+              // Two sanitizers in two languages could disagree, and any backend
+              // fix was silently overwritten here. The backend already
+              // sanitizes on generate and again on render, so this pass added
+              // inconsistency rather than safety.
+              //
+              // What stays client-side is presentation only: the %%{init}%%
+              // theme below. Content passes through untouched.
               let fixedSrc = sanitizedSrc;
-
-              if (!containsSubgraph) {
-                let src = normalizeMermaid(sanitizedSrc);
-                src = crowFootToErDiagram(src);
-                const validation = validateAndFixMermaidSyntax(src);
-                fixedSrc = validation.fixedCode;
-                if (fixedSrc !== sanitizedSrc) el.textContent = fixedSrc;
-              }
-
-              if (containsSubgraph) {
-                fixedSrc = fixedSrc.replace(/(^|\n)\s*subgraph\s+([A-Za-z0-9_-]+)\s*\[(.*?)\]/g, (_m, lead, id, label) => {
-                  const needsLayer = !/layer$/i.test(String(label).trim());
-                  return `${lead}subgraph ${id}[${needsLayer ? `${label} Layer` : label}]`;
-                });
-                fixedSrc = fixedSrc.replace(/(^|\n)\s*subgraph\s+([A-Za-z0-9_-]+)\s*$/gm, (_m, lead, id) => {
-                  const title = id.replace(/_/g, ' ');
-                  const needsLayer = !/layer$/i.test(title);
-                  return `${lead}subgraph ${id}[${needsLayer ? `${title} Layer` : title}]`;
-                });
-              }
-
-              fixedSrc = fixCommonMermaidEdgeSyntax(fixedSrc);
-              fixedSrc = addConnectionNumbers(fixedSrc);
 
               const hasInitDirective = /^%%\{\s*init:/m.test(fixedSrc);
               if (!hasInitDirective) {
@@ -2538,22 +2189,10 @@ export const AnswerCard = ({ answer, question, mode, streaming = true, onEdit, o
     : (!responseComplete ? 'Please wait for response to complete' : 'Evaluate response');
 
   const handleDownloadDiagram = async (mermaidCode: string) => {
-    // Use the same pipeline as on-screen render to avoid mismatch
-    let fixedCode = autoFixMermaidSyntax(stripMermaidFences(mermaidCode));
-    fixedCode = crowFootToErDiagram(fixedCode);
-    // For complex subgraph diagrams, skip strict validation and let backend render
-    if (!containsSubgraph(fixedCode)) {
-      const validation = validateAndFixMermaidSyntax(fixedCode);
-      if (!validation.isValid) {
-        toast({
-          title: "Invalid Diagram Syntax",
-          description: (validation.errors && validation.errors[0]) || "The diagram contains syntax errors that prevent rendering.",
-          variant: "destructive",
-        });
-        return;
-      }
-      fixedCode = validation.fixedCode;
-    }
+    // Same pipeline as the on-screen render: strip the markdown fence, then let
+    // the backend render its own code. No client-side rewriting — a downloaded
+    // diagram must match the rendered one, and the renderer already sanitizes.
+    const fixedCode = stripMermaidFences(mermaidCode);
 
     try {
       const response = await apiRenderMermaid({ code: fixedCode, theme: 'neutral', style: 'modern', size: 'medium' });
@@ -2638,26 +2277,6 @@ export const AnswerCard = ({ answer, question, mode, streaming = true, onEdit, o
     }
   };
 
-  const autoFixMermaidSyntax = (code: string): string => {
-    // Auto-fix common syntax errors
-    let fixedCode = code;
-
-    // Fix single % comments to double %%
-    fixedCode = fixedCode.replace(/^(\s*)%(\s)/gm, '$1%%$2');
-
-    // Fix comments in the middle of lines
-    fixedCode = fixedCode.replace(/(\s)%(\s)/g, '$1%%$2');
-
-    // Fix reserved keyword class names
-    fixedCode = fixedCode.replace(/:::graph\b/g, ':::graphdb');
-    fixedCode = fixedCode.replace(/classDef graph\b/g, 'classDef graphdb');
-
-    // Fix other common reserved keywords
-    fixedCode = fixedCode.replace(/:::class\b/g, ':::classdef');
-    fixedCode = fixedCode.replace(/classDef class\b/g, 'classDef classdef');
-
-    return fixedCode;
-  };
 
   const handleExpandDiagram = async (mermaidCode: string) => {
     // Allow expand for ER as well (handled by ER-safe pipeline below)
@@ -2679,21 +2298,8 @@ export const AnswerCard = ({ answer, question, mode, streaming = true, onEdit, o
       return;
     }
 
-    // Match normal-view pipeline
-    let fixedCode = autoFixMermaidSyntax(stripMermaidFences(mermaidCode));
-    fixedCode = crowFootToErDiagram(fixedCode);
-    if (!containsSubgraph(fixedCode)) {
-      const validation = validateAndFixMermaidSyntax(fixedCode);
-      if (!validation.isValid) {
-        toast({
-          title: "Invalid Diagram Syntax",
-          description: (validation.errors && validation.errors[0]) || "The diagram contains syntax errors that prevent rendering.",
-          variant: "destructive",
-        });
-        return;
-      }
-      fixedCode = validation.fixedCode;
-    }
+    // Match normal-view pipeline: fence-strip only, backend renders its own code.
+    const fixedCode = stripMermaidFences(mermaidCode);
 
     setExpandedDiagram(mermaidCode);
     setExpandedSvgHtml(null);
@@ -2905,7 +2511,7 @@ export const AnswerCard = ({ answer, question, mode, streaming = true, onEdit, o
         </div >
       </CardHeader >
 
-      <CardContent className="pl-2 pr-3 md:px-6 py-2 overflow-x-hidden">
+      <CardContent className="px-3 md:px-6 py-2 overflow-x-hidden">
         {((!answer || answer.includes("Analyzing your question")) && isGenerating) ||
           (answer && !answer.includes("Analyzing your question") && displayedBlocks.length === 0 && !typedText && streaming) ? (
           <div className="space-y-3 py-2 animate-in fade-in duration-500">
