@@ -1,6 +1,7 @@
 import { useEffect, useState, useRef } from "react";
 import { SearchBar } from "./SearchBar";
 import { AnswerCard } from "./AnswerCard";
+import { CopilotFeatureNav, type CopilotFeature } from "./CopilotFeatureNav";
 
 // Stratax brand mark — Architecture-driven flow with decision nodes
 const StrataxMark = ({ className }: { className?: string }) => (
@@ -1754,6 +1755,44 @@ export const InterviewAssistant = () => {
     }
     setSelectedMockSession(session);
     setActiveMainTab("mock-interview"); // Switch to Mock Interview tab
+  };
+
+  // Act on a feature the copilot pointed the user at. The chip is the whole
+  // point of the suggestion, so it must land them in the feature rather than
+  // in a menu they still have to read.
+  const handleCopilotNavigate = (feature: CopilotFeature) => {
+    if (practiceScreenShareLock && feature !== "mirror") {
+      toast({
+        title: "Screen sharing is active",
+        description: "Finish Live Practice before switching views.",
+      });
+      return;
+    }
+
+    switch (feature) {
+      case "practice":
+        setActiveMainTab("practice");
+        break;
+      case "mock-interview":
+        setActiveMainTab("mock-interview");
+        break;
+      case "intelligence":
+        setActiveMainTab("intelligence");
+        break;
+      case "progress":
+        navigate("/progress");
+        break;
+      case "mirror":
+        // Mirror lives inside this chat, so stay put and arm the mode. Without
+        // the toast the toggle flips silently and looks like nothing happened.
+        setQuestionMode("mirror");
+        setActiveMainTab("answer");
+        toast({
+          title: "Mirror Mode on",
+          description: "Paste your answer and I'll analyse it.",
+        });
+        break;
+    }
   };
 
   // 🏗️ Architecture Mode Selection Handler
@@ -4296,6 +4335,16 @@ export const InterviewAssistant = () => {
                                   versionIndex={1}
                                   versionTotal={1}
                                   onShowUpgrade={() => setShowUpgradeBanner(true)}
+                                />
+                              )}
+                              {/* Make the copilot's navigation advice actionable.
+                                  Only on the settled latest answer: mid-stream the
+                                  text is incomplete, so chips would flicker in and
+                                  out as sentences complete. */}
+                              {isLatest && !streaming && !isGenerating && item.answer && (
+                                <CopilotFeatureNav
+                                  answer={item.answer}
+                                  onNavigate={handleCopilotNavigate}
                                 />
                               )}
                             </div>
