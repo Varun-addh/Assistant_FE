@@ -125,6 +125,10 @@ export const InterviewAssistant = () => {
   const [evaluationReason, setEvaluationReason] = useState<string | null>(null);
   const [showAnswer, setShowAnswer] = useState(false);
   const [sessionId, setSessionId] = useState<string>("");
+  // Latest selected session, readable from async callbacks that closed over a
+  // stale value. Without it a slow history fetch for a session the user has
+  // already navigated away from can overwrite the one now on screen.
+  const sessionIdRef = useRef<string>("");
   const [style, setStyle] = useState<AnswerStyle>("detailed");
   const [questionMode, setQuestionMode] = useState<"answer" | "mirror">(() => {
     try {
@@ -216,6 +220,7 @@ export const InterviewAssistant = () => {
 
   // Keep ref in sync so non-dependency effects can read the latest value
   useEffect(() => { isGeneratingRef.current = isGenerating; }, [isGenerating]);
+  useEffect(() => { sessionIdRef.current = sessionId; }, [sessionId]);
 
   const showBottomSearchBar =
     activeMainTab === "answer" &&
@@ -2016,12 +2021,17 @@ export const InterviewAssistant = () => {
         }
       } catch (e) {
         console.error("[api] history error", e);
-        // Fallback to cached history if network fails or session temporarily missing
+        // Fallback to cached history if network fails or session temporarily missing.
+        // ia_history_cache is a single global key holding ONE session's history,
+        // so it must only be applied to the session it was written for. Checking
+        // merely that a sessionId exists rendered whichever conversation was
+        // cached last under the session the user had open - the reported
+        // "previous chats getting mixed up".
         try {
           const raw = window.localStorage.getItem('ia_history_cache');
           if (raw) {
             const cached = JSON.parse(raw);
-            if (cached?.sessionId && !cancelled && !isGeneratingRef.current) {
+            if (cached?.sessionId === sessionId && !cancelled && !isGeneratingRef.current) {
               setHistory(cached.data);
             }
           }
@@ -3718,6 +3728,14 @@ export const InterviewAssistant = () => {
                                         setActiveMainTab("answer");
 
                                         const h = await apiGetHistory(s.session_id);
+                                        // Clicking through sessions leaves several
+                                        // fetches in flight at once; without this the
+                                        // slowest response wins and paints an older
+                                        // session's messages over the current one.
+                                        if (sessionIdRef.current !== s.session_id) {
+                                          console.log(`[api] discarding stale history for ${s.session_id}`);
+                                          return;
+                                        }
                                         setHistory(h);
                                         setShowAnswer(true);
 
