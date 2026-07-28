@@ -513,6 +513,25 @@ export const InterviewAssistant = () => {
     }
   };
 
+  // The API returns history in append order (oldest first). The UI's canonical
+  // order is the opposite - the archive unshifts new entries, the transcript
+  // renders [...items].reverse(), and the session title reads the last entry.
+  //
+  // Normalising on arrival keeps every paint in agreement. Without it the
+  // cached preload showed the raw server order while the subsequent merge
+  // showed timestamp-descending order, so a session with 3+ messages visibly
+  // flipped end-to-end a moment after opening.
+  const toNewestFirst = (items: HistoryItem[]): HistoryItem[] => {
+    const list = [...(items || [])];
+    if (list.length > 1 && list.every((it) => it?.created_at)) {
+      return list.sort(
+        (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+      );
+    }
+    // No usable timestamps: rely on the documented append order.
+    return list.reverse();
+  };
+
   // History cache, keyed per session.
   //
   // This used to be one global key holding whichever session was fetched last.
@@ -2017,7 +2036,10 @@ export const InterviewAssistant = () => {
                 return true;
               });
               if (complete.length > 0) {
-                const items = complete.map(it => ({ question: it.question, answer: it.answer, mode: it.mode })) as any;
+                // Same comparator the merge below uses, so this first paint and
+                // the final one cannot disagree about order.
+                const ordered = [...complete].sort((a, b) => (b.ts || 0) - (a.ts || 0));
+                const items = ordered.map(it => ({ question: it.question, answer: it.answer, mode: it.mode })) as any;
                 if (!cancelled && !isGeneratingRef.current) {
                   setHistory({ session_id: sessionId, items } as any);
                 }
@@ -2035,9 +2057,13 @@ export const InterviewAssistant = () => {
         if (cachedHistory && !cancelled && !isGeneratingRef.current) {
           setHistory(cachedHistory);
         }
-        const h = await apiGetHistory(sessionId);
+        const fetched = await apiGetHistory(sessionId);
         // 🛡️ Re-check after async: if generation started while we were fetching, bail out
         if (cancelled || isGeneratingRef.current) return;
+        // Put the server response into the UI's canonical order before anything
+        // reads it - the merge below, the cache write, and the no-archive path
+        // all consume this value.
+        const h = { ...fetched, items: toNewestFirst(fetched?.items || []) };
         // Merge with durable local archive to ensure persistence even across outages
         let merged = h;
         try {
@@ -2045,7 +2071,18 @@ export const InterviewAssistant = () => {
           const raw = window.localStorage.getItem(archiveKey);
           if (raw) {
             const archived = JSON.parse(raw) as Array<{ question: string; answer: string; ts: number; mode?: "answer" | "mirror" }>;
-            const serverItems = (h?.items || []).map(it => ({ question: it.question, answer: it.answer, ts: Date.now(), mode: (it as any)?.mode })) as any;
+            // Carry the real creation time through. Stamping every server item
+            // with Date.now() made them all equal and newer than anything
+            // archived, so the sort below could not interleave them - archived
+            // entries were forced to the bottom regardless of when they were
+            // written. The index fallback keeps newest-first when the server
+            // omits created_at.
+            const serverItems = (h?.items || []).map((it, i) => ({
+              question: it.question,
+              answer: it.answer,
+              ts: it.created_at ? new Date(it.created_at).getTime() : Date.now() - i,
+              mode: (it as any)?.mode,
+            })) as any;
             const combined = [...archived, ...serverItems];
             // De-duplicate by question+answer
             const seen = new Set<string>();
@@ -3770,6 +3807,15 @@ export const InterviewAssistant = () => {
                                       // already open would blank the pane with nothing
                                       // to trigger a refetch.
                                       if (s.session_id !== sessionId) {
+                                        // lastQuestion was left holding the previous
+                                        // chat's question. showAnswer flips true right
+                                        // away, so the outgoing conversation's card
+                                        // stayed on screen until history arrived - the
+                                        // brief flash of the wrong chat. Worse, the
+                                        // persist effect below runs on the sessionId
+                                        // change and would write that stale question
+                                        // into the newly selected session's last-view.
+                                        setLastQuestion("");
                                         setHistory(null);
                                         // Setting sessionId is all that is needed: the
                                         // effect loads this session, hydrating from the
