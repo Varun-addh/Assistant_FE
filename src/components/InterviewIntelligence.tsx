@@ -24,7 +24,9 @@ import type {
   EnhancedQuestion,
   CompanyInfo,
   HistoryTabSummary,
+  SearchPlan,
 } from "@/lib/api";
+import { SearchPlanBar } from "@/components/SearchPlanBar";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
 import { Slider } from "@/components/ui/slider";
@@ -504,6 +506,11 @@ export const InterviewIntelligence = ({
   const activeWsRef = useRef<WebSocket | null>(null);
   // Advanced controls hidden by default to reduce UI clutter
   const [showAdvancedControls, setShowAdvancedControls] = useState<boolean>(false);
+  // Filters are inferred from the query unless the user opens Refine. Until they
+  // do, verifiedOnly/minCred/limit are not sent at all, which is what lets the
+  // backend planner choose them. Opening Refine pins whatever is on screen.
+  const [refineOpen, setRefineOpen] = useState<boolean>(false);
+  const [searchPlan, setSearchPlan] = useState<SearchPlan | null>(null);
   // Collapsible filters drawer
   const [showFilters, setShowFilters] = useState<boolean>(false);
   // Copy button state for answer panel
@@ -918,9 +925,12 @@ export const InterviewIntelligence = ({
       if (enhanced) {
         searchData = await apiSearchQuestionsEnhanced({
           query,
-          limit,
-          verified_only: verifiedOnly,
-          min_credibility: minCred,
+          // Omitted while Refine is closed, which is what lets the backend infer
+          // them from the query. Sending a value — even a default — reads as a
+          // deliberate choice and pins it.
+          limit: refineOpen ? limit : undefined,
+          verified_only: refineOpen ? verifiedOnly : undefined,
+          min_credibility: refineOpen ? minCred : undefined,
           company,
           refresh: refreshEnhanced || !!forceRefresh,
           enable_reranking: featureGates.reranking ? enableReranking : undefined,
@@ -928,6 +938,17 @@ export const InterviewIntelligence = ({
           save_to_history: saveToHistory, // Pass through to API
         });
         setSearchResults((searchData.questions as unknown as InterviewQuestion[]) || []);
+        if (searchData?.plan) {
+          setSearchPlan(searchData.plan as SearchPlan);
+          // Reflect the chosen settings in the controls, so opening Refine starts
+          // from what actually ran rather than stale defaults.
+          if (!refineOpen) {
+            const p = searchData.plan as SearchPlan;
+            setLimit(p.limit);
+            setVerifiedOnly(p.verified_only);
+            setMinCred(p.min_credibility);
+          }
+        }
       } else {
         searchData = await apiSearchQuestions(query, limit, !!forceRefresh, saveToHistory); // Pass through to API
         setSearchResults(searchData.questions || []);
@@ -1226,8 +1247,10 @@ export const InterviewIntelligence = ({
             />
           </div>
 
-          {/* Enhanced filters - show when enhanced mode is on */}
-          {enhanced && (
+          {/* Enhanced filters - only once the user has asked to refine. These are
+              pipeline settings, not user intents; the planner chooses them and
+              the plan bar reports the choice. */}
+          {enhanced && refineOpen && (
             <div className="flex flex-wrap items-center gap-1.5 sm:gap-2">
               <button
                 onClick={() => setVerifiedOnly(!verifiedOnly)}
@@ -1285,8 +1308,17 @@ export const InterviewIntelligence = ({
           )}
         </div>
 
+        {/* What the search decided, with Refine as the way in to the controls. */}
+        {enhanced && (
+          <SearchPlanBar
+            plan={searchPlan}
+            refineOpen={refineOpen}
+            onToggleRefine={() => setRefineOpen((v) => !v)}
+          />
+        )}
+
         {/* Advanced controls - show when enabled */}
-        {enhanced && showAdvancedControls && (
+        {enhanced && refineOpen && showAdvancedControls && (
           <div className="flex items-center gap-1.5 sm:gap-2 flex-wrap pt-0.5">
             <button
               onClick={() => setRefreshEnhanced(!refreshEnhanced)}

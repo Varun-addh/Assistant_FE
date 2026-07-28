@@ -473,6 +473,27 @@ export interface EnhancedQuestion extends InterviewQuestion {
   };
 }
 
+/**
+ * What the backend chose for this search, and why.
+ *
+ * Present so the UI can state the decision in one line rather than asking the
+ * user to configure eight controls whose meaning nothing explains.
+ */
+export interface SearchPlan {
+  question_type: string;
+  topic?: string | null;
+  difficulty?: string | null;
+  companies: string[];
+  verified_only: boolean;
+  min_credibility: number;
+  limit: number;
+  source: "llm" | "heuristic";
+  reasoning: string;
+  summary: string;
+  /** Settings the caller pinned explicitly, so the UI can mark them as manual. */
+  overridden: string[];
+}
+
 export interface EnhancedSearchResponse {
   query: string;
   questions: EnhancedQuestion[];
@@ -483,6 +504,7 @@ export interface EnhancedSearchResponse {
     [k: string]: any;
   };
   tab_id?: string;
+  plan?: SearchPlan;
 }
 
 export interface SourceStatsResponse {
@@ -573,16 +595,20 @@ export async function apiSearchQuestionsEnhanced(req: EnhancedSearchRequest): Pr
   const enableReranking = resolveIntelligenceFlag(req.enable_reranking, "enableReranking");
   const enableQueryExpansion = resolveIntelligenceFlag(req.enable_query_expansion, "enableQueryExpansion");
 
+  // Only send filters the caller actually set. Coercing undefined to a concrete
+  // value (`!!req.verified_only`, `?? 0.0`) made "off" and "not specified"
+  // identical on the wire, so the backend planner could never tell what it was
+  // allowed to decide. Omitted keys now mean "choose for me".
   const body: Record<string, unknown> = {
     query: req.query,
-    limit: safeLimit,
-    verified_only: !!req.verified_only,
-    min_credibility: typeof req.min_credibility === "number" ? req.min_credibility : 0.0,
     company: req.company ?? null,
     refresh: !!req.refresh,
     // Only save to history if explicitly requested (default true for backward compatibility)
     save_to_history: req.save_to_history !== false,
   };
+  if (typeof req.limit === "number") body.limit = safeLimit;
+  if (typeof req.verified_only === "boolean") body.verified_only = req.verified_only;
+  if (typeof req.min_credibility === "number") body.min_credibility = req.min_credibility;
   if (typeof enableReranking === "boolean") {
     body.enable_reranking = enableReranking;
   }
