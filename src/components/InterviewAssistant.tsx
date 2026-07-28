@@ -125,10 +125,6 @@ export const InterviewAssistant = () => {
   const [evaluationReason, setEvaluationReason] = useState<string | null>(null);
   const [showAnswer, setShowAnswer] = useState(false);
   const [sessionId, setSessionId] = useState<string>("");
-  // Latest selected session, readable from async callbacks that closed over a
-  // stale value. Without it a slow history fetch for a session the user has
-  // already navigated away from can overwrite the one now on screen.
-  const sessionIdRef = useRef<string>("");
   const [style, setStyle] = useState<AnswerStyle>("detailed");
   const [questionMode, setQuestionMode] = useState<"answer" | "mirror">(() => {
     try {
@@ -220,7 +216,6 @@ export const InterviewAssistant = () => {
 
   // Keep ref in sync so non-dependency effects can read the latest value
   useEffect(() => { isGeneratingRef.current = isGenerating; }, [isGenerating]);
-  useEffect(() => { sessionIdRef.current = sessionId; }, [sessionId]);
 
   const showBottomSearchBar =
     activeMainTab === "answer" &&
@@ -515,6 +510,72 @@ export const InterviewAssistant = () => {
       );
     } catch {
       // ignore
+    }
+  };
+
+  // History cache, keyed per session.
+  //
+  // This used to be one global key holding whichever session was fetched last.
+  // Every reader then had to remember to check the embedded id, and the one that
+  // forgot rendered another conversation's messages under the open session. A
+  // per-session key makes that mistake impossible to make.
+  const HISTORY_CACHE_PREFIX = 'ia_history_cache_v2:';
+  const HISTORY_CACHE_MAX_SESSIONS = 20;
+  const LEGACY_HISTORY_CACHE_KEY = 'ia_history_cache';
+
+  const readHistoryCache = (sid: string): GetHistoryResponse | null => {
+    if (!sid || typeof window === 'undefined') return null;
+    try {
+      const raw = window.localStorage.getItem(`${HISTORY_CACHE_PREFIX}${sid}`);
+      if (!raw) return null;
+      const parsed = JSON.parse(raw);
+      // The key is already session-scoped; this second check only matters for a
+      // corrupted or hand-edited payload, and costs nothing.
+      if (!parsed?.data || parsed?.sessionId !== sid) return null;
+      return parsed.data as GetHistoryResponse;
+    } catch {
+      return null;
+    }
+  };
+
+  const pruneHistoryCache = () => {
+    if (typeof window === 'undefined') return;
+    try {
+      window.localStorage.removeItem(LEGACY_HISTORY_CACHE_KEY);
+
+      const entries: Array<{ key: string; ts: number }> = [];
+      for (let i = 0; i < window.localStorage.length; i++) {
+        const key = window.localStorage.key(i);
+        if (!key || !key.startsWith(HISTORY_CACHE_PREFIX)) continue;
+        let ts = 0;
+        try {
+          ts = JSON.parse(window.localStorage.getItem(key) || '{}')?.ts || 0;
+        } catch {
+          // Unparseable entry: treat as oldest so it is evicted first.
+        }
+        entries.push({ key, ts });
+      }
+
+      if (entries.length <= HISTORY_CACHE_MAX_SESSIONS) return;
+      entries.sort((a, b) => a.ts - b.ts);
+      for (const entry of entries.slice(0, entries.length - HISTORY_CACHE_MAX_SESSIONS)) {
+        window.localStorage.removeItem(entry.key);
+      }
+    } catch {
+      // ignore
+    }
+  };
+
+  const writeHistoryCache = (sid: string, data: GetHistoryResponse) => {
+    if (!sid || typeof window === 'undefined') return;
+    try {
+      window.localStorage.setItem(
+        `${HISTORY_CACHE_PREFIX}${sid}`,
+        JSON.stringify({ sessionId: sid, data, ts: Date.now() })
+      );
+      pruneHistoryCache();
+    } catch {
+      // Quota exceeded or storage disabled: the cache is an optimisation only.
     }
   };
 
@@ -1970,15 +2031,10 @@ export const InterviewAssistant = () => {
         } catch { }
 
         // Preload history from cache while network fetch happens
-        try {
-          const rawCached = window.localStorage.getItem('ia_history_cache');
-          if (rawCached) {
-            const cached = JSON.parse(rawCached);
-            if (cached?.sessionId === sessionId && cached?.data && !cancelled && !isGeneratingRef.current) {
-              setHistory(cached.data);
-            }
-          }
-        } catch { }
+        const cachedHistory = readHistoryCache(sessionId);
+        if (cachedHistory && !cancelled && !isGeneratingRef.current) {
+          setHistory(cachedHistory);
+        }
         const h = await apiGetHistory(sessionId);
         // 🛡️ Re-check after async: if generation started while we were fetching, bail out
         if (cancelled || isGeneratingRef.current) return;
@@ -2016,26 +2072,17 @@ export const InterviewAssistant = () => {
         }
         console.log(`[api] GET /api/history/${sessionId} ->`, h);
         // Cache to survive transient reloads or quick route switches
-        try { window.localStorage.setItem('ia_history_cache', JSON.stringify({ sessionId, data: h })); } catch {
-          // Ignore localStorage errors
-        }
+        writeHistoryCache(sessionId, h);
       } catch (e) {
         console.error("[api] history error", e);
-        // Fallback to cached history if network fails or session temporarily missing.
-        // ia_history_cache is a single global key holding ONE session's history,
-        // so it must only be applied to the session it was written for. Checking
-        // merely that a sessionId exists rendered whichever conversation was
-        // cached last under the session the user had open - the reported
-        // "previous chats getting mixed up".
-        try {
-          const raw = window.localStorage.getItem('ia_history_cache');
-          if (raw) {
-            const cached = JSON.parse(raw);
-            if (cached?.sessionId === sessionId && !cancelled && !isGeneratingRef.current) {
-              setHistory(cached.data);
-            }
-          }
-        } catch { }
+        // Fallback to cached history if network fails or session temporarily
+        // missing. Scoped to this session by construction now, so a failed fetch
+        // can only ever restore this conversation - never whichever one happened
+        // to be cached last.
+        const fallback = readHistoryCache(sessionId);
+        if (fallback && !cancelled && !isGeneratingRef.current) {
+          setHistory(fallback);
+        }
       }
     })();
     return () => { cancelled = true; };
@@ -3705,7 +3752,7 @@ export const InterviewAssistant = () => {
                                 <>
                                   <button
                                     className="flex-1 min-w-0 text-left px-3 py-2 rounded-md hover:bg-muted/50 transition-colors overflow-hidden"
-                                    onClick={async () => {
+                                    onClick={() => {
                                       if (practiceScreenShareLock) {
                                         toast({
                                           title: 'Screen sharing is active',
@@ -3713,36 +3760,30 @@ export const InterviewAssistant = () => {
                                         });
                                         return;
                                       }
-                                      try {
-                                        // Clear UI state for fresh load
-                                        setShowAnswer(false);
-                                        setAnswer("");
-                                        setQuestion("");
-                                        setViewingHistory(true);
-                                        setHistory(null);
+                                      setAnswer("");
+                                      setQuestion("");
+                                      setViewingHistory(true);
 
+                                      // Only clear and reload when actually changing
+                                      // session. The history effect keys off sessionId,
+                                      // so clearing it for a re-click on the session
+                                      // already open would blank the pane with nothing
+                                      // to trigger a refetch.
+                                      if (s.session_id !== sessionId) {
+                                        setHistory(null);
+                                        // Setting sessionId is all that is needed: the
+                                        // effect loads this session, hydrating from the
+                                        // per-session cache first. This handler used to
+                                        // fetch as well, so every click issued two
+                                        // identical requests and the slower response -
+                                        // for whichever session it belonged to - won.
                                         setSessionId(s.session_id);
                                         try { window.localStorage.setItem("ia_session_id", s.session_id); } catch { }
-
-                                        // Switch to Copilot tab if not already there
-                                        setActiveMainTab("answer");
-
-                                        const h = await apiGetHistory(s.session_id);
-                                        // Clicking through sessions leaves several
-                                        // fetches in flight at once; without this the
-                                        // slowest response wins and paints an older
-                                        // session's messages over the current one.
-                                        if (sessionIdRef.current !== s.session_id) {
-                                          console.log(`[api] discarding stale history for ${s.session_id}`);
-                                          return;
-                                        }
-                                        setHistory(h);
-                                        setShowAnswer(true);
-
-                                        console.log(`[api] GET /api/history/${s.session_id} ->`, h);
-                                      } catch (e) {
-                                        console.error("[api] history error", e);
                                       }
+
+                                      // Switch to Copilot tab if not already there
+                                      setActiveMainTab("answer");
+                                      setShowAnswer(true);
                                     }}
                                   >
                                     <div className="text-sm font-medium truncate max-w-[180px]">
