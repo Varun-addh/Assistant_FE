@@ -809,3 +809,77 @@ export async function getSessionScore(sessionId: string): Promise<SessionScore> 
     },
   };
 }
+
+// ============================================================================
+// Mirror confidence trend (cross-session)
+// ============================================================================
+
+export interface MirrorTrendPoint {
+  confidence: number;
+  created_at: string | null;
+  question: string;
+  session_id: string;
+}
+
+export interface MirrorTopicTrend {
+  topic: string;
+  attempts: number;
+  first_confidence: number;
+  latest_confidence: number;
+  best_confidence: number;
+  delta: number;
+  direction: 'improving' | 'declining' | 'steady' | 'insufficient_data';
+  points: MirrorTrendPoint[];
+}
+
+export interface MirrorTrend {
+  summary: {
+    total_attempts: number;
+    topics_tracked: number;
+    improving: number;
+    declining: number;
+    weakest_topic: string | null;
+    weakest_confidence: number | null;
+    strongest_topic: string | null;
+    strongest_confidence: number | null;
+  };
+  topics: MirrorTopicTrend[];
+}
+
+const EMPTY_MIRROR_TREND: MirrorTrend = {
+  summary: {
+    total_attempts: 0,
+    topics_tracked: 0,
+    improving: 0,
+    declining: 0,
+    weakest_topic: null,
+    weakest_confidence: null,
+    strongest_topic: null,
+    strongest_confidence: null,
+  },
+  topics: [],
+};
+
+/**
+ * Mirror Mode confidence per topic across every session.
+ *
+ * Returns an empty trend rather than throwing: this is one panel on a page of
+ * many, and a user with no Mirror history is the normal case, not an error.
+ */
+export async function getMirrorTrend(maxPoints: number = 20): Promise<MirrorTrend> {
+  try {
+    const raw = (await strataxFetchJson(
+      `${API_BASE_URL}/api/mirror/trend?max_points=${encodeURIComponent(String(maxPoints))}&_t=${Date.now()}`,
+      { method: 'GET', includeUserKeys: false, cache: 'no-store' }
+    )) as Partial<MirrorTrend> | null;
+
+    if (!raw || !Array.isArray(raw.topics)) return EMPTY_MIRROR_TREND;
+    return {
+      summary: { ...EMPTY_MIRROR_TREND.summary, ...(raw.summary || {}) },
+      topics: raw.topics,
+    };
+  } catch (err) {
+    console.warn('[Progress API] Mirror trend unavailable:', err);
+    return EMPTY_MIRROR_TREND;
+  }
+}

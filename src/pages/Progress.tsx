@@ -1,5 +1,6 @@
 import { useMemo, useState, useEffect, useRef } from 'react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
+import { MirrorTrendCard } from '@/components/MirrorTrendCard';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { ScrollArea } from '@/components/ui/scroll-area';
@@ -897,8 +898,13 @@ export default function Progress() {
     <div className="h-[var(--app-height)] min-h-[var(--app-height)] flex flex-col overflow-hidden">
       {header}
       <ScrollArea className="flex-1">
-        <div className="container mx-auto max-w-7xl px-3 sm:px-6 py-4 sm:py-6">
+        <div className="container mx-auto max-w-7xl px-3 sm:px-6 py-4 sm:py-6 space-y-4 sm:space-y-6">
           {content}
+          {/* Outside `content` deliberately: Mirror history is independent of
+              practice sessions, so a user with Mirror attempts and no practice
+              runs would otherwise see the practice empty-state and none of
+              their own data. */}
+          <MirrorTrendCard />
         </div>
       </ScrollArea>
     </div>
