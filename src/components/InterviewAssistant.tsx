@@ -3,6 +3,7 @@ import { SearchBar } from "./SearchBar";
 import { AnswerCard } from "./AnswerCard";
 import { CopilotFeatureNav, type CopilotFeature } from "./CopilotFeatureNav";
 import { CopilotStuckNudge } from "./CopilotStuckNudge";
+import { TryItYourselfPrompt } from "./TryItYourselfPrompt";
 
 // Stratax brand mark — Architecture-driven flow with decision nodes
 const StrataxMark = ({ className }: { className?: string }) => (
@@ -323,6 +324,10 @@ export const InterviewAssistant = () => {
   // Cleared on dismissal, on acting on it, and whenever the session changes -
   // a nudge earned in one conversation must not follow the user into another.
   const [stuckOffer, setStuckOffer] = useState<{ message: string; feature: string } | null>(null);
+  // Suppresses the "try saying it back" offer for the rest of the session once
+  // the user has declined it. Someone who dismissed it does not need convincing
+  // again after every long answer.
+  const [rehearsalDismissed, setRehearsalDismissed] = useState(false);
 
   // Versioning for edit-and-compare flow
   const [originalQA, setOriginalQA] = useState<{ q: string; a: string } | null>(null);
@@ -4371,6 +4376,24 @@ export const InterviewAssistant = () => {
                                     handleCopilotNavigate(f);
                                   }}
                                   onDismiss={() => setStuckOffer(null)}
+                                />
+                              )}
+                              {/* Only when nothing more urgent is on screen. The stuck
+                                  nudge is a response to evidence the user is struggling;
+                                  this is a general invitation, and stacking both would
+                                  read as pestering. Mirror answers are already the
+                                  exercise, so they are excluded. */}
+                              {isLatest && !streaming && !isGenerating && !stuckOffer &&
+                                !rehearsalDismissed && itemMode !== "mirror" && item.answer && (
+                                <TryItYourselfPrompt
+                                  question={item.question}
+                                  answer={item.answer}
+                                  onAccept={() => {
+                                    setPendingMirrorQuestion(item.question);
+                                    setMirrorUserAnswer("");
+                                    setMirrorDialogOpen(true);
+                                  }}
+                                  onDismiss={() => setRehearsalDismissed(true)}
                                 />
                               )}
                             </div>
