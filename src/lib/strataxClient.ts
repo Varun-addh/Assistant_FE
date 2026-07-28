@@ -114,6 +114,26 @@ function getUserKeys(): { groqKey?: string; geminiKey?: string } {
   return { groqKey: groqKey || undefined, geminiKey: geminiKey || undefined };
 }
 
+/**
+ * The LLM key to use for transports that cannot carry headers.
+ *
+ * WebSocket has no header phase in the browser, so the realtime search sends
+ * credentials in its first message instead. Without this the streaming path
+ * always ran on server keys, which quietly defeated BYOK for the whole
+ * realtime flow.
+ *
+ * Mirrors buildHeaders: keys are only released once the user is authenticated
+ * or has explicitly connected them, so stale localStorage cannot leak into a
+ * demo session.
+ */
+export function getUserLlmKeyForSocket(): string | undefined {
+  if (typeof window === "undefined") return undefined;
+  const allow = !!getJwtToken() || hasExplicitByokConnectionFlag();
+  if (!allow) return undefined;
+  const { groqKey, geminiKey } = getUserKeys();
+  return groqKey || geminiKey || undefined;
+}
+
 function hasExplicitByokConnectionFlag(): boolean {
   if (typeof window === 'undefined') return false;
   try {

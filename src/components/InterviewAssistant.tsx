@@ -85,7 +85,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, DropdownMenuSeparator, DropdownMenuLabel, DropdownMenuRadioGroup, DropdownMenuRadioItem } from "@/components/ui/dropdown-menu";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import { startEvaluationOverlay } from "@/overlayHost";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -2921,7 +2921,18 @@ export const InterviewAssistant = () => {
     <div className="relative h-[var(--app-height)] overflow-hidden overflow-x-hidden bg-background" style={{ overscrollBehavior: 'none' }}>
       {user && !authLoading && (
         <Dialog open={bridgeSettingsOpen} onOpenChange={setBridgeSettingsOpen}>
-          <DialogContent className="w-[calc(100vw-2rem)] sm:max-w-[450px] p-0 border-none bg-transparent">
+          <DialogContent
+            className="w-[calc(100vw-2rem)] sm:max-w-[450px] p-0 border-none bg-transparent"
+            aria-describedby="bridge-settings-description"
+          >
+            {/* ApiKeySettings renders its own visual heading, so these are for
+                assistive tech only. Radix warns without them and, more to the
+                point, a screen reader otherwise announces an unlabelled dialog
+                on the screen where users enter API keys. */}
+            <DialogTitle className="sr-only">Bridge Settings</DialogTitle>
+            <DialogDescription id="bridge-settings-description" className="sr-only">
+              Connect your own Groq or Gemini API key.
+            </DialogDescription>
             <ApiKeySettings />
           </DialogContent>
         </Dialog>

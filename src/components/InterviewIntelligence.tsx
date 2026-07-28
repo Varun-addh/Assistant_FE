@@ -47,7 +47,7 @@ import {
   intelligenceFeatureDefaults,
   intelligenceFeatureGates,
 } from "@/lib/intelligenceConfig";
-import { STRATAX_API_BASE_URL } from "@/lib/strataxClient";
+import { STRATAX_API_BASE_URL, getUserLlmKeyForSocket } from "@/lib/strataxClient";
 
 // Syntax highlighting helper functions
 const applyHighlighting = (token: string, tokenType: string): string => {
@@ -760,6 +760,10 @@ export const InterviewIntelligence = ({
         console.log('[Intelligence] WebSocket connected');
         setSearchStatus('searching');
         ws.send(JSON.stringify({
+          // WebSocket has no header phase in the browser, so the key travels in
+          // the first message. Omitting it made every streaming search run on
+          // server credentials regardless of what the user connected.
+          api_key: getUserLlmKeyForSocket(),
           query: query,
           limit: limit,
           verified_only: verifiedOnly,
@@ -861,10 +865,13 @@ export const InterviewIntelligence = ({
             activeWsRef.current = null;
             setSearchLoading(false);
           } else if (msg.type === 'error') {
-            console.error('[Intelligence] WebSocket error:', msg.message);
+            // The server sends `error`; this read only `message`, so every
+            // failure logged "undefined" and toasted a generic string.
+            const detail = msg.message || msg.error;
+            console.error('[Intelligence] WebSocket error:', detail || msg);
             toast({
-              title: "Search failed",
-              description: msg.message || "Could not search questions.",
+              title: msg.code === 'invalid_api_key' ? "API key rejected" : "Search failed",
+              description: detail || "Could not search questions.",
               variant: "destructive",
             });
             setSearchStatus('error');
