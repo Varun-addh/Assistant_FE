@@ -58,6 +58,12 @@ export interface SubmitQuestionResponse {
   ui_payload?: {
     default?: string;
     options?: Array<{ id: string; label: string; description?: string }>;
+    /** ui_action "offer_help": why the copilot thinks the user is stuck. */
+    reason?: string;
+    /** ui_action "offer_help": the sentence to show, in the copilot's voice. */
+    message?: string;
+    /** ui_action "offer_help": the feature being offered as a way out. */
+    feature?: string;
     [key: string]: unknown;
   };
 }

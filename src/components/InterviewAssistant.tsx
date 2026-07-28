@@ -2,6 +2,7 @@ import { useEffect, useState, useRef } from "react";
 import { SearchBar } from "./SearchBar";
 import { AnswerCard } from "./AnswerCard";
 import { CopilotFeatureNav, type CopilotFeature } from "./CopilotFeatureNav";
+import { CopilotStuckNudge } from "./CopilotStuckNudge";
 
 // Stratax brand mark — Architecture-driven flow with decision nodes
 const StrataxMark = ({ className }: { className?: string }) => (
@@ -318,6 +319,10 @@ export const InterviewAssistant = () => {
   // Answer Engine unlock dialog
   const [showUnlockAnswerEngine, setShowUnlockAnswerEngine] = useState(false);
   const [showUpgradeBanner, setShowUpgradeBanner] = useState(false);
+  // Backend suggestion shown when the user appears to be circling one topic.
+  // Cleared on dismissal, on acting on it, and whenever the session changes -
+  // a nudge earned in one conversation must not follow the user into another.
+  const [stuckOffer, setStuckOffer] = useState<{ message: string; feature: string } | null>(null);
 
   // Versioning for edit-and-compare flow
   const [originalQA, setOriginalQA] = useState<{ q: string; a: string } | null>(null);
@@ -2625,6 +2630,15 @@ export const InterviewAssistant = () => {
           return;
         }
 
+        // The backend thinks this user is circling the same thing. It caps
+        // itself at one offer per session, so no throttling is needed here.
+        if (res?.ui_action === "offer_help" && res.ui_payload?.message && res.ui_payload?.feature) {
+          setStuckOffer({
+            message: String(res.ui_payload.message),
+            feature: String(res.ui_payload.feature),
+          });
+        }
+
         if (isEditingFromAnswer && originalQA) {
           // Save as latest and show latest
           const latest = { q: currentQuestion, a: res.answer };
@@ -3855,6 +3869,7 @@ export const InterviewAssistant = () => {
                                         // change and would write that stale question
                                         // into the newly selected session's last-view.
                                         setLastQuestion("");
+                                        setStuckOffer(null);
                                         setHistory(null);
                                         // Setting sessionId is all that is needed: the
                                         // effect loads this session, hydrating from the
@@ -4345,6 +4360,17 @@ export const InterviewAssistant = () => {
                                 <CopilotFeatureNav
                                   answer={item.answer}
                                   onNavigate={handleCopilotNavigate}
+                                />
+                              )}
+                              {isLatest && !streaming && !isGenerating && stuckOffer && (
+                                <CopilotStuckNudge
+                                  message={stuckOffer.message}
+                                  feature={stuckOffer.feature}
+                                  onAccept={(f) => {
+                                    setStuckOffer(null);
+                                    handleCopilotNavigate(f);
+                                  }}
+                                  onDismiss={() => setStuckOffer(null)}
                                 />
                               )}
                             </div>
