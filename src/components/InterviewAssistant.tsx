@@ -66,11 +66,10 @@ const LoadingDots = () => (
 );
 import { MockInterviewMode } from "./MockInterviewMode";
 import { PracticeMode } from "./PracticeMode";
-import { InterviewIntelligence } from "./InterviewIntelligence";
 import { AnswerEngineUpgradeBanner } from "./AnswerEngineUpgradeBanner";
 import { UserProfile } from "./UserProfile";
 import { MessageSquare, MoreVertical, Trash2, Menu, X, History as HistoryIcon, RefreshCw, Loader2, AlertCircle, Sparkles, Copy, Download, Edit2, Code2, PanelLeft } from "lucide-react";
-import { apiCreateSession, apiSubmitQuestion, apiSubmitQuestionStream, apiGetHistory, apiGetSessions, apiDeleteSession, apiUpdateSessionTitle, apiDeleteHistoryItemByIndex, apiGetHistoryTabs, apiDeleteHistoryTab, apiDeleteAllHistory, apiUploadProfile, type AnswerStyle, type SessionSummary, type GetHistoryResponse, type HistoryTabSummary, type HistoryItem } from "@/lib/api";
+import { apiCreateSession, apiSubmitQuestion, apiSubmitQuestionStream, apiGetHistory, apiGetSessions, apiDeleteSession, apiUpdateSessionTitle, apiDeleteHistoryItemByIndex, apiUploadProfile, type AnswerStyle, type SessionSummary, type GetHistoryResponse, type HistoryItem } from "@/lib/api";
 import { apiRenderMermaid, questionCardsPayload, type CopilotMode } from "@/lib/api";
 import { downloadAnswerPdf } from "@/lib/utils";
 import { generateArchitecture, type ArchitecturePackage } from "@/lib/architectureApi";
@@ -163,10 +162,10 @@ export const InterviewAssistant = () => {
   const [showInstallBanner, setShowInstallBanner] = useState(false);
   const location = useLocation();
   const navigate = useNavigate();
-  const [activeMainTab, setActiveMainTab] = useState<"answer" | "intelligence" | "mock-interview" | "practice">(() => {
+  const [activeMainTab, setActiveMainTab] = useState<"answer" | "mock-interview" | "practice">(() => {
     try {
       const stored = window.localStorage.getItem('ia_active_main_tab');
-      if (stored === 'answer' || stored === 'intelligence' || stored === 'mock-interview' || stored === 'practice') return stored;
+      if (stored === 'answer' || stored === 'mock-interview' || stored === 'practice') return stored;
     } catch { }
     return 'answer';
   });
@@ -178,7 +177,7 @@ export const InterviewAssistant = () => {
     const raw = (location.state as any)?.openTab;
     const openTab = typeof raw === 'string' ? raw : null;
     if (!openTab) return;
-    if (openTab === 'answer' || openTab === 'intelligence' || openTab === 'mock-interview' || openTab === 'practice') {
+    if (openTab === 'answer' || openTab === 'mock-interview' || openTab === 'practice') {
       setActiveMainTab(openTab);
 
       // IMPORTANT: react-router location state persists in browser history across refresh.
@@ -267,23 +266,6 @@ export const InterviewAssistant = () => {
       vv?.removeEventListener('scroll', updateViewportVars);
     };
   }, []);
-
-  // Intelligence history state (only for intelligence tab)
-  const [intelligenceHistoryTabs, setIntelligenceHistoryTabs] = useState<HistoryTabSummary[]>(() => {
-    try {
-      const cached = window.localStorage.getItem('intelligence_history_cache');
-      return cached ? JSON.parse(cached) : [];
-    } catch {
-      return [];
-    }
-  });
-  const [intelligenceHistoryLoading, setIntelligenceHistoryLoading] = useState<boolean>(false);
-  const [intelligenceHistoryRefreshing, setIntelligenceHistoryRefreshing] = useState<boolean>(false);
-  const [intelligenceHistoryError, setIntelligenceHistoryError] = useState<string | null>(null);
-  const [intelligenceHistoryDeletingTabId, setIntelligenceHistoryDeletingTabId] = useState<string | null>(null);
-  const [intelligenceHistoryClearingAll, setIntelligenceHistoryClearingAll] = useState<boolean>(false);
-  const [selectedIntelligenceHistoryTabId, setSelectedIntelligenceHistoryTabId] = useState<string | null>(null);
-  const [pendingIntelligenceHistorySelection, setPendingIntelligenceHistorySelection] = useState<{ tab?: HistoryTabSummary; type?: 'select' | 'clear'; ts: number } | null>(null);
 
   // Mock Interview history state (only for mock interview tab)
   const [mockInterviewSessions, setMockInterviewSessions] = useState<MockInterviewHistorySession[]>([]);
@@ -1253,55 +1235,6 @@ export const InterviewAssistant = () => {
     }
   };
 
-  const handleExportPdfIntelligenceTab = async (tab: HistoryTabSummary) => {
-    if (isExportingPdf) {
-      console.log('PDF export already in progress');
-      return;
-    }
-
-    const exportKey = `intelligence:${tab.tab_id}`;
-
-    try {
-      setIsExportingPdf(true);
-      setExportingSessionId(exportKey);
-
-      toast({
-        title: "Starting PDF Export...",
-        description: "Preparing your document...",
-        duration: 60000,
-      });
-
-      const questions = Array.isArray(tab.questions) ? tab.questions : [];
-      if (questions.length === 0) {
-        toast({ title: "No questions to export" });
-        return;
-      }
-
-      const html = await buildPdfHtmlFromQA(questions);
-
-      await downloadAnswerPdf({
-        question: tab.query || 'Interview Intelligence Export',
-        answerHtml: html,
-        fileName: `Stratax-Interview-Intelligence-${tab.tab_id.slice(0, 8)}.pdf`,
-        onProgress: (stage) => {
-          toast({
-            title: `Exporting: ${stage}`,
-            description: stage === 'Complete!' ? 'PDF ready!' : 'Please wait...',
-            duration: stage === 'Complete!' ? 3000 : 60000,
-          });
-        }
-      });
-
-      toast({ title: "Export complete", description: "Your PDF has been downloaded.", variant: 'success' });
-    } catch (e) {
-      console.error('[PDF Export] Error:', e);
-      toast({ title: 'Export failed', description: 'Could not generate the PDF. Please try again or check your connection.', variant: 'destructive' });
-    } finally {
-      setIsExportingPdf(false);
-      setExportingSessionId(null);
-    }
-  };
-
   const handleDeleteAllSessions = async () => {
     openDestructiveConfirm({
       title: "Delete all conversations?",
@@ -1449,141 +1382,6 @@ export const InterviewAssistant = () => {
     }
   };
 
-  // Intelligence history handlers
-  const loadIntelligenceHistoryTabs = async (opts?: { silent?: boolean }) => {
-    setIntelligenceHistoryError(null);
-    if (opts?.silent) {
-      setIntelligenceHistoryRefreshing(true);
-    } else {
-      setIntelligenceHistoryLoading(true);
-    }
-    try {
-      const data = await apiGetHistoryTabs({
-        limit: 50,
-        sort_by: "created_at",
-        ascending: false,
-      });
-      if (Array.isArray(data?.tabs)) {
-        console.log('[InterviewAssistant] History tabs loaded:', data.tabs.map(t => ({
-          tab_id: t.tab_id,
-          query: t.query,
-          question_count: t.question_count,
-          metadata: t.metadata,
-          enhanced: t.metadata?.enhanced
-        })));
-        console.log('[InterviewAssistant] Total tabs loaded:', data.tabs.length);
-        setIntelligenceHistoryTabs(data.tabs);
-        // Persist to localStorage
-        try {
-          window.localStorage.setItem('intelligence_history_cache', JSON.stringify(data.tabs));
-        } catch (e) {
-          console.warn("[InterviewAssistant] Failed to cache intelligence history", e);
-        }
-      } else {
-        setIntelligenceHistoryTabs([]);
-      }
-    } catch (err: unknown) {
-      const message = (err as Error)?.message || "Failed to load search history.";
-      if (!message.includes("404") && !opts?.silent) {
-        setIntelligenceHistoryError(message);
-      } else {
-        setIntelligenceHistoryTabs([]);
-      }
-    } finally {
-      setIntelligenceHistoryLoading(false);
-      setIntelligenceHistoryRefreshing(false);
-    }
-  };
-
-  const handleDeleteIntelligenceHistoryTab = async (tabId: string) => {
-    openDestructiveConfirm({
-      title: "Delete saved search?",
-      description: "This will permanently delete this saved search. This action cannot be undone.",
-      confirmLabel: "Delete",
-      onConfirm: async () => {
-        setIntelligenceHistoryDeletingTabId(tabId);
-        try {
-          await apiDeleteHistoryTab(tabId);
-          setIntelligenceHistoryTabs((prev) => {
-            const filtered = prev.filter((tab) => tab.tab_id !== tabId);
-            if (selectedIntelligenceHistoryTabId === tabId) {
-              if (filtered.length > 0) {
-                setSelectedIntelligenceHistoryTabId(filtered[0].tab_id);
-                setPendingIntelligenceHistorySelection({ tab: filtered[0], type: 'select', ts: Date.now() });
-              } else {
-                setSelectedIntelligenceHistoryTabId(null);
-                setPendingIntelligenceHistorySelection({ type: 'clear', ts: Date.now() });
-              }
-            }
-            return filtered;
-          });
-          try {
-            const cached = window.localStorage.getItem('intelligence_history_cache');
-            if (cached) {
-              const tabs = JSON.parse(cached) as HistoryTabSummary[];
-              const updated = tabs.filter(t => t.tab_id !== tabId);
-              window.localStorage.setItem('intelligence_history_cache', JSON.stringify(updated));
-            }
-          } catch (e) {
-            console.warn("[InterviewAssistant] Failed to update history cache after delete", e);
-          }
-          toast({
-            title: "History entry deleted",
-            description: "The saved search has been removed.",
-          });
-        } catch (err: unknown) {
-          toast({
-            title: "Failed to delete history",
-            description: (err as Error)?.message || "Could not remove saved search.",
-            variant: "destructive",
-          });
-          throw err;
-        } finally {
-          setIntelligenceHistoryDeletingTabId(null);
-        }
-      },
-    });
-  };
-
-  const handleDeleteAllIntelligenceHistory = async () => {
-    openDestructiveConfirm({
-      title: "Delete all saved searches?",
-      description: "This will permanently delete all saved searches. This action cannot be undone.",
-      confirmLabel: "Delete all",
-      requireAckLabel: "I understand this will permanently delete all saved searches",
-      onConfirm: async () => {
-        setIntelligenceHistoryClearingAll(true);
-        try {
-          const result = await apiDeleteAllHistory();
-          setIntelligenceHistoryTabs([]);
-          setSelectedIntelligenceHistoryTabId(null);
-          try {
-            window.localStorage.removeItem('intelligence_history_cache');
-          } catch {
-            // ignore
-          }
-          toast({
-            title: "History cleared",
-            description: result?.message || "All saved searches were deleted.",
-          });
-        } catch (err: unknown) {
-          toast({
-            title: "Failed to clear history",
-            description: (err as Error)?.message || "Could not delete saved searches.",
-            variant: "destructive",
-          });
-          throw err;
-        } finally {
-          setIntelligenceHistoryClearingAll(false);
-        }
-      },
-    });
-  };
-
-  const handleSelectIntelligenceHistoryTab = (tab: HistoryTabSummary) => {
-    setSelectedIntelligenceHistoryTabId(tab.tab_id);
-    setPendingIntelligenceHistorySelection({ tab, type: 'select', ts: Date.now() });
-  };
 
   // Mock Interview history handlers
   const loadMockInterviewHistory = async () => {
@@ -1924,18 +1722,6 @@ export const InterviewAssistant = () => {
       setPendingArchitectureQuestion("");
     }
   };
-
-  // Load intelligence history on initial mount and when switching to the tab
-  useEffect(() => {
-    // On mount, load if empty (even if not on intelligence tab yet, to populate sidebar)
-    if (intelligenceHistoryTabs.length === 0 && !intelligenceHistoryLoading) {
-      loadIntelligenceHistoryTabs({ silent: true });
-    }
-    // and also load when switching to the tab to ensure fresh data
-    else if (activeMainTab === "intelligence" && !intelligenceHistoryRefreshing) {
-      loadIntelligenceHistoryTabs({ silent: true });
-    }
-  }, [activeMainTab]); // Run when tab changes
 
   // Load mock interview history when mock interview tab is active
   useEffect(() => {
@@ -3172,7 +2958,6 @@ export const InterviewAssistant = () => {
                     <div className="space-y-1">
                       {[
                         { id: "answer", label: "AI Copilot", icon: MessageSquare },
-                        { id: "intelligence", label: "Search Intelligence", icon: Sparkles },
                         { id: "mock-interview", label: "Mock Interview", icon: HistoryIcon },
                         { id: "practice", label: "Live Practice", icon: RefreshCw },
                       ].map((item) => (
@@ -3228,8 +3013,7 @@ export const InterviewAssistant = () => {
                   <div>
                     <div className="flex items-center justify-between px-2 mb-4">
                       <h3 className="text-[10px] font-bold text-muted-foreground uppercase tracking-[0.2em]">
-                        {activeMainTab === "intelligence" ? "Search History" :
-                          activeMainTab === "mock-interview" ? "Mock History" : "Answer History"}
+                        {activeMainTab === "mock-interview" ? "Mock History" : "Answer History"}
                       </h3>
                     </div>
 
@@ -3328,81 +3112,6 @@ export const InterviewAssistant = () => {
                         ) : <div className="px-2 py-4 text-xs text-muted-foreground/60 text-center italic">No messages yet</div>
                       )}
 
-                      {/* Search Intelligence History */}
-                      {activeMainTab === "intelligence" && (
-                        intelligenceHistoryTabs.length ? (
-                          <div className="space-y-1">
-                            {intelligenceHistoryTabs.map((tab) => (
-                              <div
-                                key={tab.tab_id}
-                                onClick={() => {
-                                  handleSelectIntelligenceHistoryTab(tab);
-                                  setIsMobileSidebarOpen(false);
-                                }}
-                                className="group relative flex items-center gap-3 p-3 rounded-xl hover:bg-muted/50 cursor-pointer transition-all border border-transparent hover:border-border/40"
-                              >
-                                <div className="p-2 rounded-lg bg-primary/5 text-primary">
-                                  <Sparkles className="h-3.5 w-3.5" />
-                                </div>
-                                <div className="flex-1 min-w-0 pr-14">
-                                  <div className="text-xs font-medium line-clamp-1 opacity-90">{tab.query || "Untitled Search"}</div>
-                                  <div className="text-[10px] text-muted-foreground mt-0.5 flex items-center gap-1.5">
-                                    <span>{tab.created_at ? new Date(tab.created_at).toLocaleDateString() : 'Recent'}</span>
-                                    <span>•</span>
-                                    <span>{tab.question_count || 0} questions</span>
-                                  </div>
-                                </div>
-                                {/* Mobile Actions Dropdown (match AI Copilot) */}
-                                <DropdownMenu>
-                                  <DropdownMenuTrigger asChild onClick={(e) => e.stopPropagation()}>
-                                    <Button
-                                      variant="ghost"
-                                      size="icon"
-                                      className="absolute right-2 top-2 h-7 w-7 text-muted-foreground hover:text-primary"
-                                    >
-                                      <MoreVertical className="h-3.5 w-3.5" />
-                                    </Button>
-                                  </DropdownMenuTrigger>
-                                  <DropdownMenuContent align="end" className="w-40">
-                                    <DropdownMenuItem
-                                      onClick={(e) => {
-                                        e.stopPropagation();
-                                        handleExportPdfIntelligenceTab(tab);
-                                        setIsMobileSidebarOpen(false);
-                                      }}
-                                      disabled={isExportingPdf}
-                                    >
-                                      {isExportingPdf && exportingSessionId === `intelligence:${tab.tab_id}` ? (
-                                        <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                                      ) : (
-                                        <Download className="h-4 w-4 mr-2" />
-                                      )}
-                                      <span>{isExportingPdf && exportingSessionId === `intelligence:${tab.tab_id}` ? "Exporting..." : "Export PDF"}</span>
-                                    </DropdownMenuItem>
-                                    <DropdownMenuSeparator />
-                                    <DropdownMenuItem
-                                      className="text-destructive focus:text-destructive"
-                                      onClick={(e) => {
-                                        e.stopPropagation();
-                                        handleDeleteIntelligenceHistoryTab(tab.tab_id);
-                                        setIsMobileSidebarOpen(false);
-                                      }}
-                                      disabled={intelligenceHistoryDeletingTabId === tab.tab_id}
-                                    >
-                                      {intelligenceHistoryDeletingTabId === tab.tab_id ? (
-                                        <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                                      ) : (
-                                        <Trash2 className="h-4 w-4 mr-2" />
-                                      )}
-                                      <span>Delete</span>
-                                    </DropdownMenuItem>
-                                  </DropdownMenuContent>
-                                </DropdownMenu>
-                              </div>
-                            ))}
-                          </div>
-                        ) : <div className="px-2 py-4 text-xs text-muted-foreground/60 text-center italic">No searches yet</div>
-                      )}
 
                       {/* Mock Interview History */}
                       {activeMainTab === "mock-interview" && (
@@ -3544,161 +3253,7 @@ export const InterviewAssistant = () => {
           </div>
 
           <div className="flex-1 overflow-hidden">
-            {activeMainTab === "intelligence" ? (
-              <Card className="h-full flex flex-col rounded-none border-0 shadow-none bg-transparent">
-                <CardContent className="flex-1 min-h-0 p-0 overflow-hidden flex flex-col">
-                  <ScrollArea className="flex-1">
-                    {intelligenceHistoryLoading && !intelligenceHistoryTabs.length ? (
-                      <div className="flex items-center justify-center py-10 text-sm text-muted-foreground">
-                        <Loader2 className="h-4 w-4 animate-spin mr-2" />
-                        Loading history...
-                      </div>
-                    ) : intelligenceHistoryTabs.length === 0 ? (
-                      <div className="flex flex-col items-center justify-center py-10 text-center text-sm text-muted-foreground px-4">
-                        <AlertCircle className="h-5 w-5 mb-2" />
-                        <p>No saved searches yet. Run a query and it will appear here automatically.</p>
-                      </div>
-                    ) : (
-                      <div className="divide-y">
-                        {intelligenceHistoryTabs
-                          .filter(tab => tab.query)
-                          .map((tab) => (
-                            <div
-                              key={tab.tab_id}
-                              className={`px-4 py-3 space-y-2 border-l-2 transition-colors cursor-pointer ${selectedIntelligenceHistoryTabId === tab.tab_id ? "border-l-primary bg-primary/5" : "border-l-transparent"
-                                }`}
-                              onClick={() => handleSelectIntelligenceHistoryTab(tab)}
-                            >
-                              <div className="flex items-start justify-between gap-3">
-                                <div className="min-w-0">
-                                  <p className="text-sm font-medium line-clamp-1">{tab.query}</p>
-                                  <p className="text-xs text-muted-foreground">
-                                    {new Date(tab.created_at).toLocaleDateString("en-US", {
-                                      year: "numeric",
-                                      month: "short",
-                                      day: "numeric",
-                                    })} · {tab.question_count} questions
-                                  </p>
-                                </div>
-                                <div className="flex items-center gap-1">
-                                  {/* Desktop Actions Dropdown (match AI Copilot) */}
-                                  <DropdownMenu>
-                                    <DropdownMenuTrigger asChild onClick={(e) => e.stopPropagation()}>
-                                      <Button
-                                        variant="ghost"
-                                        size="icon"
-                                        className="text-muted-foreground hover:text-foreground"
-                                      >
-                                        <MoreVertical className="h-4 w-4" />
-                                      </Button>
-                                    </DropdownMenuTrigger>
-                                    <DropdownMenuContent align="end" className="w-40">
-                                      <DropdownMenuItem
-                                        onClick={(e) => {
-                                          e.stopPropagation();
-                                          handleExportPdfIntelligenceTab(tab);
-                                        }}
-                                        disabled={isExportingPdf}
-                                      >
-                                        {isExportingPdf && exportingSessionId === `intelligence:${tab.tab_id}` ? (
-                                          <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                                        ) : (
-                                          <Download className="h-4 w-4 mr-2" />
-                                        )}
-                                        <span>{isExportingPdf && exportingSessionId === `intelligence:${tab.tab_id}` ? "Exporting..." : "Export PDF"}</span>
-                                      </DropdownMenuItem>
-                                      <DropdownMenuSeparator />
-                                      <DropdownMenuItem
-                                        className="text-destructive focus:text-destructive"
-                                        onClick={(e) => {
-                                          e.stopPropagation();
-                                          handleDeleteIntelligenceHistoryTab(tab.tab_id);
-                                        }}
-                                        disabled={intelligenceHistoryDeletingTabId === tab.tab_id}
-                                      >
-                                        {intelligenceHistoryDeletingTabId === tab.tab_id ? (
-                                          <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                                        ) : (
-                                          <Trash2 className="h-4 w-4 mr-2" />
-                                        )}
-                                        <span>Delete</span>
-                                      </DropdownMenuItem>
-                                    </DropdownMenuContent>
-                                  </DropdownMenu>
-                                </div>
-                              </div>
-                              {tab.metadata && (
-                                <div className="flex flex-wrap gap-2 text-[11px] text-muted-foreground">
-                                  {typeof tab.metadata.enhanced === "boolean" && (
-                                    <span className={`rounded-full border px-2 py-0.5 ${tab.metadata.enhanced ? 'border-blue-500 text-blue-600 bg-blue-50' : 'border-gray-500 text-gray-600 bg-gray-50'}`}>
-                                      {tab.metadata.enhanced ? "Enhanced" : "Basic"}
-                                    </span>
-                                  )}
-                                  {typeof tab.metadata.limit === "number" && (
-                                    <span className="rounded-full border px-2 py-0.5">limit {tab.metadata.limit}</span>
-                                  )}
-                                  {typeof tab.metadata.refresh === "boolean" && (
-                                    <span className="rounded-full border px-2 py-0.5">
-                                      {tab.metadata.refresh ? "refresh" : "cached"}
-                                    </span>
-                                  )}
-                                </div>
-                              )}
-                              {/* Quality indicator for search results */}
-                              {(() => {
-                                if (!tab.questions || tab.questions.length === 0) return null;
-
-                                const questions = tab.questions as any[];
-                                const total = questions.length;
-                                const verifiedCount = questions.filter(q =>
-                                  q.verification_status === "verified" || q.source_type === "verified"
-                                ).length;
-                                const verifiedRatio = total > 0 ? verifiedCount / total : 0;
-
-                                // For enhanced searches, show stats if available
-                                if (tab.metadata?.enhanced) {
-                                  const avgCredibility = questions
-                                    .filter(q => typeof q.credibility_score === "number")
-                                    .reduce((sum, q) => sum + q.credibility_score, 0) /
-                                    (questions.filter(q => typeof q.credibility_score === "number").length || 1);
-
-                                  return (
-                                    <div className="text-[10px] text-muted-foreground space-y-1">
-                                      {verifiedCount > 0 && (
-                                        <div className="flex items-center gap-1">
-                                          <span className="text-green-600">✓ {verifiedCount}/{total} verified</span>
-                                          <span>({(verifiedRatio * 100).toFixed(0)}%)</span>
-                                        </div>
-                                      )}
-                                      {!isNaN(avgCredibility) && avgCredibility > 0 && (
-                                        <div>Avg credibility: {avgCredibility.toFixed(2)}</div>
-                                      )}
-                                    </div>
-                                  );
-                                }
-
-                                // For basic searches, show warning if verified ratio is low
-                                if (verifiedRatio < 0.5) {
-                                  return (
-                                    <div className="text-[10px] text-amber-600 flex items-center gap-1">
-                                      ⚠️ Low verified ratio ({(verifiedRatio * 100).toFixed(0)}%)
-                                    </div>
-                                  );
-                                }
-
-                                return null;
-                              })()}
-                            </div>
-                          ))}
-                      </div>
-                    )}
-                    {intelligenceHistoryError && (
-                      <div className="px-4 py-3 text-xs text-red-500">{intelligenceHistoryError}</div>
-                    )}
-                  </ScrollArea>
-                </CardContent>
-              </Card>
-            ) : activeMainTab === "mock-interview" ? (
+            {activeMainTab === "mock-interview" ? (
               <Card className="h-full flex flex-col rounded-none border-0 shadow-none bg-transparent">
                 <CardHeader className="px-4 py-3 border-b">
                   <div className="flex items-center justify-between">
@@ -4139,7 +3694,7 @@ export const InterviewAssistant = () => {
                 });
                 return;
               }
-              setActiveMainTab(v as "answer" | "intelligence" | "mock-interview" | "practice");
+              setActiveMainTab(v as "answer" | "mock-interview" | "practice");
               // Clear any lingering openTab navigation state so refresh doesn't hijack the tab.
               navigate(location.pathname, { replace: true, state: {} });
             }}
@@ -4155,13 +3710,6 @@ export const InterviewAssistant = () => {
                     className="data-[state=active]:bg-primary/10 data-[state=active]:text-primary font-bold px-4 transition-all whitespace-nowrap"
                   >
                     AI Copilot
-                  </TabsTrigger>
-                  <TabsTrigger
-                    value="intelligence"
-                    disabled={practiceScreenShareLock}
-                    className="data-[state=active]:bg-primary/10 data-[state=active]:text-primary font-bold px-4 transition-all whitespace-nowrap"
-                  >
-                    Search Intelligence
                   </TabsTrigger>
                   <TabsTrigger
                     value="mock-interview"
@@ -4565,19 +4113,6 @@ export const InterviewAssistant = () => {
                       </div>
                     </div>
                   )}
-                </TabsContent>
-
-                <TabsContent value="intelligence" className="mt-0">
-
-
-                  <div className="h-[calc(var(--app-height)-85px)] md:h-[calc(var(--app-height)-200px)] md:min-h-[600px] pb-4 md:pb-0">
-                    <InterviewIntelligence
-                      onHistoryRefresh={() => loadIntelligenceHistoryTabs({ silent: true })}
-                      historyTabs={intelligenceHistoryTabs}
-                      externalHistorySelection={pendingIntelligenceHistorySelection}
-                      onExternalHistorySelectionConsumed={() => setPendingIntelligenceHistorySelection(null)}
-                    />
-                  </div>
                 </TabsContent>
 
                 <TabsContent value="mock-interview" className="mt-0">
