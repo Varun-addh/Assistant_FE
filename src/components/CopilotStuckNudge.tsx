@@ -16,7 +16,7 @@ const FEATURE_CTA: Record<string, string> = {
   mirror: "Try Mirror Mode",
   practice: "Open Practice Mode",
   "mock-interview": "Start a Mock Interview",
-  intelligence: "Browse Question Bank",
+  questions: "Generate practice questions",
   progress: "View Progress",
 };
 

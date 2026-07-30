@@ -28,12 +28,23 @@ export async function apiCreateSession(): Promise<CreateSessionResponse> {
   return res.json();
 }
 
+/**
+ * Which copilot behaviour a request asks for.
+ *
+ * "questions" is Search Intelligence folded into the copilot: it shares the
+ * session, key resolution and quota, and returns question cards through the same
+ * ui_action mechanism as mirror prompts and architecture choices.
+ */
+export type CopilotMode = "answer" | "mirror" | "questions";
+
 export interface SubmitQuestionRequest {
   session_id: string;
   question: string;
   style: AnswerStyle;
   // Default behavior is "answer". Mirror mode analyzes a user's draft answer.
-  mode?: "answer" | "mirror";
+  // "questions" generates a set of practice questions for the topic instead of
+  // answering it, returned as cards in ui_payload.
+  mode?: CopilotMode;
   // Used only when mode === "mirror".
   user_answer?: string;
   // Optional backend hinting (kept flexible for forward-compat).
@@ -47,7 +58,7 @@ export interface SubmitQuestionResponse {
   truncated?: boolean; // Backend indicates if answer was cut off
 
   // Echoed by backend for clarity and debugging.
-  mode?: "answer" | "mirror";
+  mode?: CopilotMode;
 
   // Optional: backend may return the effective session id used.
   // If omitted, we will try to recover it from response headers.
@@ -64,7 +75,43 @@ export interface SubmitQuestionResponse {
     message?: string;
     /** ui_action "offer_help": the feature being offered as a way out. */
     feature?: string;
+    /** ui_action "render_question_cards": the query the set was generated for. */
+    query?: string;
+    /** ui_action "render_question_cards": how many cards are in `questions`. */
+    count?: number;
+    /** ui_action "render_question_cards": the generated practice questions. */
+    questions?: EnhancedQuestion[];
     [key: string]: unknown;
+  };
+}
+
+/**
+ * A turn that rendered question cards.
+ *
+ * `answer` carries only a one-line preamble -- the questions themselves are in
+ * ui_payload, so rendering both would show every question twice.
+ */
+export const RENDER_QUESTION_CARDS = "render_question_cards" as const;
+
+export interface QuestionCardsPayload {
+  query: string;
+  count: number;
+  questions: EnhancedQuestion[];
+}
+
+/** Narrow a response (or a stored history turn) to its question-card payload. */
+export function questionCardsPayload(source: {
+  ui_action?: string;
+  ui_payload?: Record<string, unknown> | null;
+}): QuestionCardsPayload | null {
+  if (source?.ui_action !== RENDER_QUESTION_CARDS) return null;
+  const payload = source.ui_payload as Partial<QuestionCardsPayload> | undefined;
+  const questions = payload?.questions;
+  if (!Array.isArray(questions) || questions.length === 0) return null;
+  return {
+    query: typeof payload?.query === "string" ? payload.query : "",
+    count: typeof payload?.count === "number" ? payload.count : questions.length,
+    questions,
   };
 }
 export async function apiSubmitQuestion(body: SubmitQuestionRequest): Promise<SubmitQuestionResponse> {
@@ -81,8 +128,7 @@ export async function apiSubmitQuestion(body: SubmitQuestionRequest): Promise<Su
 
   const effectiveMode =
     (res.headers.get("X-Stratax-Chat-Mode") || res.headers.get("x-stratax-chat-mode") || undefined) as
-      | "answer"
-      | "mirror"
+      | CopilotMode
       | undefined;
 
   const data = (await res.json()) as SubmitQuestionResponse;
@@ -99,7 +145,7 @@ export async function apiSubmitQuestion(body: SubmitQuestionRequest): Promise<Su
 export async function apiSubmitQuestionStream(
   body: SubmitQuestionRequest,
   onChunk: (chunk: string) => void
-): Promise<{ answer: string; style: AnswerStyle; created_at: string; truncated?: boolean; session_id?: string; mode?: "answer" | "mirror" }> {
+): Promise<{ answer: string; style: AnswerStyle; created_at: string; truncated?: boolean; session_id?: string; mode?: CopilotMode }> {
   const res = await strataxFetch(`${BASE_URL}/api/question`, {
     method: "POST",
     headers: buildHeaders(),
@@ -119,8 +165,7 @@ export async function apiSubmitQuestionStream(
 
   const effectiveMode =
     (res.headers.get("X-Stratax-Chat-Mode") || res.headers.get("x-stratax-chat-mode") || undefined) as
-      | "answer"
-      | "mirror"
+      | CopilotMode
       | undefined;
 
   while (true) {
@@ -246,7 +291,18 @@ export interface HistoryItem {
   answer: string;
   style: AnswerStyle;
   created_at: string;
-  mode?: "answer" | "mirror";
+  mode?: CopilotMode;
+  /**
+   * Per-turn extras stored server-side. Turns that rendered more than text put
+   * their ui_action/ui_payload here, so reloading a session can restore them --
+   * question cards would otherwise show once and vanish on refresh.
+   */
+  meta?: {
+    mode?: CopilotMode;
+    ui_action?: string;
+    ui_payload?: Record<string, unknown>;
+    [key: string]: unknown;
+  } | null;
   /** Client-side only: file attached when asking this question */
   attachment?: { name: string; type: string } | null;
 }

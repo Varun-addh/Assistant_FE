@@ -25,7 +25,7 @@ import {
 export type CopilotFeature =
   | "practice"
   | "mock-interview"
-  | "intelligence"
+  | "questions"
   | "progress"
   | "mirror";
 

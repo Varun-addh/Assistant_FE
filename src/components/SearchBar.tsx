@@ -3,6 +3,40 @@ import { Mic, MicOff, Upload, Monitor } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { useToast } from "@/hooks/use-toast";
+import type { CopilotMode } from "@/lib/api";
+
+/**
+ * Badge and tooltip copy per mode.
+ *
+ * A keyed record rather than a ternary chain: the previous
+ * `mode === "mirror" ? "Mirror" : "Answer"` silently labelled any new mode
+ * "Answer", so adding one mislabelled the badge instead of failing.
+ */
+const MODE_COPY: Record<CopilotMode, {
+  badge: string;
+  name: string;
+  title: string;
+  blurb: string;
+}> = {
+  answer: {
+    badge: "Answer",
+    name: "Answer Mode",
+    title: "Answer Mode: generate a full answer",
+    blurb: "Get a complete interview-ready answer with examples.",
+  },
+  mirror: {
+    badge: "Mirror",
+    name: "Mirror Mode",
+    title: "Mirror Mode: enter the question, then paste your draft answer for feedback",
+    blurb: "Enter the question, then paste your draft answer for critique and a stronger rewrite.",
+  },
+  questions: {
+    badge: "Questions",
+    name: "Practice Questions",
+    title: "Practice Questions: enter a topic and get a set of questions to practise",
+    blurb: "Enter a topic and get a set of interview questions, each with a model answer.",
+  },
+};
 
 interface SearchBarProps {
   value: string;
@@ -18,8 +52,8 @@ interface SearchBarProps {
   isGenerating?: boolean;
   // Whether generating is allowed (e.g., disabled when viewing history)
   canGenerate?: boolean;
-  // Current mode (Answer/Mirror) to display as a badge inside the input
-  mode?: "answer" | "mirror";
+  // Current mode to display as a badge inside the input
+  mode?: CopilotMode;
   // Callback when user clicks the mode badge to change it
   onModeClick?: () => void;
 }
@@ -1079,27 +1113,16 @@ export const SearchBar = ({ value, onChange, placeholder = "Type your question..
                         onModeClick?.();
                       }}
                       className="flex items-center gap-0.5 px-1.5 sm:px-2 py-0.5 sm:py-1 rounded-full bg-primary/10 hover:bg-primary/20 text-primary text-[10px] sm:text-xs font-medium transition-colors cursor-pointer self-start mt-1.5 sm:mt-2 flex-shrink-0"
-                      title={mode === "mirror" ? "Mirror Mode: enter the question, then paste your draft answer for feedback" : "Answer Mode: generate a full answer"}
+                      title={MODE_COPY[mode].title}
                     >
-                      {mode === "mirror" ? "Mirror" : "Answer"}
+                      {MODE_COPY[mode].badge}
                     </button>
                   </TooltipTrigger>
                   <TooltipContent side="top" className="max-w-[280px] text-xs">
-                    {mode === "mirror" ? (
-                      <div className="space-y-1">
-                        <div className="font-medium">Mirror Mode</div>
-                        <div className="text-muted-foreground">
-                          Enter the question, then paste your draft answer for critique and a stronger rewrite.
-                        </div>
-                      </div>
-                    ) : (
-                      <div className="space-y-1">
-                        <div className="font-medium">Answer Mode</div>
-                        <div className="text-muted-foreground">
-                          Get a complete interview-ready answer with examples.
-                        </div>
-                      </div>
-                    )}
+                    <div className="space-y-1">
+                      <div className="font-medium">{MODE_COPY[mode].name}</div>
+                      <div className="text-muted-foreground">{MODE_COPY[mode].blurb}</div>
+                    </div>
                   </TooltipContent>
                 </Tooltip>
               </TooltipProvider>

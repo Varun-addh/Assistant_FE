@@ -1,6 +1,7 @@
 import { useEffect, useState, useRef } from "react";
 import { SearchBar } from "./SearchBar";
 import { AnswerCard } from "./AnswerCard";
+import { QuestionCards } from "./QuestionCards";
 import { CopilotFeatureNav, type CopilotFeature } from "./CopilotFeatureNav";
 import { CopilotStuckNudge } from "./CopilotStuckNudge";
 import { TryItYourselfPrompt } from "./TryItYourselfPrompt";
@@ -70,7 +71,7 @@ import { AnswerEngineUpgradeBanner } from "./AnswerEngineUpgradeBanner";
 import { UserProfile } from "./UserProfile";
 import { MessageSquare, MoreVertical, Trash2, Menu, X, History as HistoryIcon, RefreshCw, Loader2, AlertCircle, Sparkles, Copy, Download, Edit2, Code2, PanelLeft } from "lucide-react";
 import { apiCreateSession, apiSubmitQuestion, apiSubmitQuestionStream, apiGetHistory, apiGetSessions, apiDeleteSession, apiUpdateSessionTitle, apiDeleteHistoryItemByIndex, apiGetHistoryTabs, apiDeleteHistoryTab, apiDeleteAllHistory, apiUploadProfile, type AnswerStyle, type SessionSummary, type GetHistoryResponse, type HistoryTabSummary, type HistoryItem } from "@/lib/api";
-import { apiRenderMermaid } from "@/lib/api";
+import { apiRenderMermaid, questionCardsPayload, type CopilotMode } from "@/lib/api";
 import { downloadAnswerPdf } from "@/lib/utils";
 import { generateArchitecture, type ArchitecturePackage } from "@/lib/architectureApi";
 import { Plus, Check, FileText, XCircle } from "lucide-react";
@@ -129,10 +130,11 @@ export const InterviewAssistant = () => {
   const [showAnswer, setShowAnswer] = useState(false);
   const [sessionId, setSessionId] = useState<string>("");
   const [style, setStyle] = useState<AnswerStyle>("detailed");
-  const [questionMode, setQuestionMode] = useState<"answer" | "mirror">(() => {
+  const [questionMode, setQuestionMode] = useState<CopilotMode>(() => {
     try {
       const raw = window.localStorage.getItem("ia_question_mode");
-      return raw === "mirror" ? "mirror" : "answer";
+      if (raw === "mirror" || raw === "questions") return raw;
+      return "answer";
     } catch {
       return "answer";
     }
@@ -1786,8 +1788,15 @@ export const InterviewAssistant = () => {
       case "mock-interview":
         setActiveMainTab("mock-interview");
         break;
-      case "intelligence":
-        setActiveMainTab("intelligence");
+      case "questions":
+        // Generating a question set happens in this chat now, so stay put and
+        // arm the mode -- same shape as mirror below.
+        setQuestionMode("questions");
+        setActiveMainTab("answer");
+        toast({
+          title: "Practice Questions on",
+          description: "Enter a topic and I'll generate a set with answers.",
+        });
         break;
       case "progress":
         navigate("/progress");
@@ -2666,13 +2675,19 @@ export const InterviewAssistant = () => {
           const base = prev?.items ? [...prev.items] : [];
           const pendingIdx = base.findIndex(it => it.question === currentQuestion && it.answer === '');
           let next: HistoryItem[];
+          // Carried so a turn that rendered question cards keeps them without
+          // waiting for a session reload to fetch them back from the server.
+          const turnMeta = res?.ui_action
+            ? { mode: effectiveMode, ui_action: res.ui_action, ui_payload: res.ui_payload }
+            : undefined;
           if (pendingIdx >= 0) {
             next = base.map((it, i) => i === pendingIdx ? ({
               question: currentQuestion,
               answer: res.answer,
               style: res.style,
               created_at: base[pendingIdx].created_at,
-              mode: (it as any)?.mode ?? effectiveMode
+              mode: (it as any)?.mode ?? effectiveMode,
+              meta: turnMeta ?? (it as any)?.meta
             }) : it);
           } else {
             next = [{
@@ -2680,7 +2695,8 @@ export const InterviewAssistant = () => {
               answer: res.answer,
               style: res.style,
               created_at: new Date().toISOString(),
-              mode: effectiveMode
+              mode: effectiveMode,
+              meta: turnMeta
             }, ...base];
           }
           // Remove any other duplicates of the same question (both answered and pending), keeping the first occurrence
@@ -4368,6 +4384,22 @@ export const InterviewAssistant = () => {
                                   onShowUpgrade={() => setShowUpgradeBanner(true)}
                                 />
                               )}
+                              {/* A generated question set. `answer` above is only a
+                                  one-line preamble; the questions themselves come
+                                  from the turn's stored payload, which is why this
+                                  survives a refresh. */}
+                              {(() => {
+                                const cards = questionCardsPayload({
+                                  ui_action: (item as any)?.meta?.ui_action,
+                                  ui_payload: (item as any)?.meta?.ui_payload,
+                                });
+                                if (!cards) return null;
+                                return (
+                                  <div className="pl-2 pr-3 md:px-6 pt-1 pb-2">
+                                    <QuestionCards query={cards.query} questions={cards.questions} />
+                                  </div>
+                                );
+                              })()}
                               {/* Make the copilot's navigation advice actionable.
                                   Only on the settled latest answer: mid-stream the
                                   text is incomplete, so chips would flicker in and
@@ -4480,13 +4512,14 @@ export const InterviewAssistant = () => {
                                 <DropdownMenuLabel>Mode</DropdownMenuLabel>
                                 <DropdownMenuRadioGroup
                                   value={questionMode}
-                                  onValueChange={(v) => setQuestionMode(v as "answer" | "mirror")}
+                                  onValueChange={(v) => setQuestionMode(v as CopilotMode)}
                                 >
                                   <DropdownMenuRadioItem value="answer">Answer</DropdownMenuRadioItem>
                                   <DropdownMenuRadioItem value="mirror">Mirror (Feedback)</DropdownMenuRadioItem>
+                                  <DropdownMenuRadioItem value="questions">Practice Questions</DropdownMenuRadioItem>
                                 </DropdownMenuRadioGroup>
                                 <div className="px-2 py-1.5 text-xs text-muted-foreground">
-                                  Mirror Mode: enter the question, then paste your draft answer for critique + a stronger rewrite.
+                                  Mirror Mode: enter the question, then paste your draft answer for critique + a stronger rewrite. Practice Questions: enter a topic and get a set of interview questions with answers.
                                 </div>
                               </DropdownMenuContent>
                             </DropdownMenu>
@@ -4505,7 +4538,7 @@ export const InterviewAssistant = () => {
                                 isGenerating={isGenerating}
                                 canGenerate={!viewingHistory}
                                 mode={questionMode}
-                                onModeClick={() => setQuestionMode(questionMode === "answer" ? "mirror" : "answer")}
+                                onModeClick={() => setQuestionMode(questionMode === "answer" ? "questions" : questionMode === "questions" ? "mirror" : "answer")}
                               />
                             </div>
                           </div>
@@ -4660,13 +4693,14 @@ export const InterviewAssistant = () => {
                         <DropdownMenuLabel>Mode</DropdownMenuLabel>
                         <DropdownMenuRadioGroup
                           value={questionMode}
-                          onValueChange={(v) => setQuestionMode(v as "answer" | "mirror")}
+                          onValueChange={(v) => setQuestionMode(v as CopilotMode)}
                         >
                           <DropdownMenuRadioItem value="answer">Answer</DropdownMenuRadioItem>
                           <DropdownMenuRadioItem value="mirror">Mirror (Feedback)</DropdownMenuRadioItem>
+                          <DropdownMenuRadioItem value="questions">Practice Questions</DropdownMenuRadioItem>
                         </DropdownMenuRadioGroup>
                         <div className="px-2 py-1.5 text-xs text-muted-foreground">
-                          Mirror Mode: enter the question, then paste your draft answer for critique + a stronger rewrite.
+                          Mirror Mode: enter the question, then paste your draft answer for critique + a stronger rewrite. Practice Questions: enter a topic and get a set of interview questions with answers.
                         </div>
                       </DropdownMenuContent>
                     </DropdownMenu>
@@ -4685,7 +4719,7 @@ export const InterviewAssistant = () => {
                         isGenerating={isGenerating}
                         canGenerate={!viewingHistory}
                         mode={questionMode}
-                        onModeClick={() => setQuestionMode(questionMode === "answer" ? "mirror" : "answer")}
+                        onModeClick={() => setQuestionMode(questionMode === "answer" ? "questions" : questionMode === "questions" ? "mirror" : "answer")}
                       />
                     </div>
                   </div>
